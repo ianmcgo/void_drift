@@ -16,6 +16,7 @@
     --shield:#5cc9ff;
     --xp:#c98dff;
     --panel-bg: rgba(3,10,8,0.72);
+    --panel-bg-solid: #060f0c;
     --panel-border: rgba(109,255,194,0.45);
     box-sizing:border-box;
     padding-top: env(safe-area-inset-top,0px);
@@ -166,11 +167,6 @@
   @media (pointer:coarse){
     #mobileFullscreenWarning{ display:block; }
   }
-  /* hidden by default, shown via JS (see updateSaveFoundNote()) only once a cloud
-     save was actually found for this account -- not a media-query toggle like
-     the two above */
-  #bootSaveFoundNote{ display:none; margin-top:10px; font-size:13px; color:var(--phosphor); letter-spacing:1px; max-width:420px; }
-  #bootSaveFoundNote.show{ display:block; }
   @media (max-width:640px){
     .keys{font-size:13px; margin-top:14px; line-height:1.6;}
     #bootscreen p{margin:8px 0;}
@@ -630,23 +626,32 @@
     .popupPanel{ left:14px; top:calc(14px + env(safe-area-inset-top,0px) + 2px); width:min(88vw,260px); }
   }
 
-  /* Escape-triggered settings/pause menu -- centered modal, same panel-color
-     language as #dockedPanel */
+  /* Escape-triggered settings/pause menu -- centered modal. Solid (not
+     see-through) background and a much smaller footprint than the old version,
+     since this is a short list of controls, not a data-heavy panel like
+     #dockedPanel. #settingsBackdrop (a separate full-screen element, see the
+     HTML) sits just behind it at the same z-index layer and swallows every
+     click that isn't on the menu itself, so nothing behind it -- ship
+     controls, other HUD panels -- can be interacted with while it's open. */
   #settingsMenu{
     display:none;
     top:50%; left:50%; transform:translate(-50%,-50%);
-    width:min(92vw,380px);
-    background:var(--panel-bg); border:1px solid var(--panel-border);
-    padding:20px 24px 22px; text-align:center; pointer-events:auto; z-index:70;
+    width:min(90vw,260px);
+    background:var(--panel-bg-solid); border:1px solid var(--panel-border);
+    padding:14px 16px 16px; text-align:center; pointer-events:auto; z-index:71;
   }
   #settingsMenu.show{display:block;}
-  #settingsMenu h2{font-family:'VT323',monospace; font-size:26px; letter-spacing:3px; color:var(--amber); margin:0 0 14px; text-shadow:0 0 8px rgba(255,176,32,0.5);}
-  .settingsRow{text-align:left; margin:14px 0;}
-  .settingsRow label{font-size:13px; color:var(--phosphor-dim); letter-spacing:1px; display:block; margin-bottom:4px;}
+  #settingsMenu h2{font-family:'VT323',monospace; font-size:19px; letter-spacing:2px; color:var(--amber); margin:0 0 8px; text-shadow:0 0 8px rgba(255,176,32,0.5);}
+  .settingsRow{text-align:left; margin:9px 0;}
+  .settingsRow label{font-size:11px; color:var(--phosphor-dim); letter-spacing:1px; display:block; margin-bottom:3px;}
   .settingsRow input[type=range]{width:100%; accent-color:var(--phosphor);}
-  #settingsMenu .dbtns{display:flex; flex-direction:column; gap:10px; margin-top:6px;}
-  #settingsCredits{margin-top:18px; font-size:11px; color:var(--phosphor-dim); line-height:1.6;}
-  #settingsCredits a{color:var(--phosphor-dim);}
+  #settingsMenu .dbtns{display:flex; flex-direction:column; gap:6px; margin-top:4px;}
+  #settingsMenu .dbtns .cmdbtn{font-size:13px; padding:6px 8px;}
+  #settingsBackdrop{
+    display:none; position:fixed; inset:0; z-index:70;
+    background:rgba(0,0,0,0.45); pointer-events:auto;
+  }
+  #settingsBackdrop.show{display:block;}
   .settingsRow input[type=email], .settingsRow input[type=password], .settingsRow input[type=text]{
     width:100%; background:rgba(0,0,0,0.4); border:1px solid var(--panel-border); color:var(--phosphor);
     font-family:'Share Tech Mono',monospace; font-size:14px; padding:7px 8px;
@@ -657,12 +662,16 @@
      below the mobile-fullscreen/saved-game notes, above LAUNCH. Hidden outright
      when Supabase isn't configured (see supabaseConfigured()) via JS, not CSS,
      since that's a one-time boot-time decision rather than a media query. */
-  #bootAccountRow{ margin-top:14px; font-size:12px; letter-spacing:1px; color:var(--phosphor-dim); display:flex; flex-direction:column; align-items:center; gap:4px; }
+  #bootAccountRow{ margin-top:14px; font-size:12px; letter-spacing:1px; color:var(--phosphor-dim); display:flex; flex-direction:column; align-items:center; gap:8px; }
+  /* boxed buttons (LOG IN/REGISTER, LOG OUT) -- same bordered-button language as
+     .serverBtn/.cmdbtn instead of a bare underlined text link, so they're easier
+     to tap/click, especially on mobile. */
   .bootLinkBtn{
-    background:transparent; border:none; color:var(--phosphor); font-family:'Share Tech Mono',monospace;
-    font-size:12px; letter-spacing:1px; text-decoration:underline; cursor:pointer; pointer-events:auto; padding:2px 4px;
+    background:transparent; color:var(--phosphor); font-family:'VT323',monospace;
+    font-size:15px; letter-spacing:1px; cursor:pointer; pointer-events:auto;
+    border:1px solid var(--panel-border); padding:6px 16px;
   }
-  .bootLinkBtn:hover{ color:var(--amber); }
+  .bootLinkBtn:hover{ background:rgba(109,255,194,0.12); color:var(--amber); border-color:var(--amber); }
 
   /* server selector (PVE/PVP/HARDCORE) -- multiplayer roadmap step 3 */
   #bootServerRow{ margin-top:14px; display:flex; flex-direction:column; align-items:center; gap:6px; max-width:420px; }
@@ -675,35 +684,57 @@
   .serverBtn:hover{ background:rgba(109,255,194,0.12); color:var(--phosphor); }
   .serverBtn.active{ background:var(--phosphor); border-color:var(--phosphor); color:#001108; font-weight:bold; }
   .serverBtn[data-server="HARDCORE"].active{ background:var(--danger); border-color:var(--danger); color:#1a0000; }
-  #bootServerDesc{ font-size:11px; color:var(--phosphor-dim); max-width:400px; margin:2px 0 0; line-height:1.5; }
+  /* fixed min-height sized for the longest of the three descriptions (HARDCORE's)
+     so switching servers never changes #bootServerDesc's own height -- without
+     this, a shorter PVE/PVP description reflowed the whole centered #bootContent
+     column shorter, which visibly shifted the VOID DRIFT title above it up/down
+     every time a different server was picked. */
+  #bootServerDesc{ font-size:11px; color:var(--phosphor-dim); max-width:400px; min-height:52px; margin:2px 0 0; line-height:1.5; }
   #bootServerDesc.warn{ color:var(--danger); }
 
-  /* LOG IN / REGISTER modal -- same centered panel-color language as #settingsMenu,
+  /* LOG IN / REGISTER modal -- same centered modal language as #settingsMenu,
      stacked above the boot screen (which stays visible, dimmed underneath, so
-     CANCEL just returns to it with nothing lost). */
+     CANCEL just returns to it with nothing lost). Solid (not see-through)
+     background, unlike the translucent in-flight HUD panels, since this sits
+     over the busy starfield boot screen and needs to stay legible. */
   #authPanel{
     display:none;
     top:50%; left:50%; transform:translate(-50%,-50%);
     width:min(92vw,360px);
-    background:var(--panel-bg); border:1px solid var(--panel-border);
+    background:var(--panel-bg-solid); border:1px solid var(--panel-border);
     padding:20px 24px 22px; text-align:center; pointer-events:auto; z-index:110;
   }
   #authPanel.show{display:block;}
   #authPanel h2{font-family:'VT323',monospace; font-size:24px; letter-spacing:3px; color:var(--amber); margin:0 0 14px; text-shadow:0 0 8px rgba(255,176,32,0.5);}
   #authPanel .dbtns{display:flex; flex-direction:column; gap:10px; margin-top:14px;}
+  .authRememberRow{ margin:10px 0 !important; }
+  .authRememberLabel{
+    display:flex !important; align-items:center; gap:8px; cursor:pointer;
+    font-size:12px; letter-spacing:1px; color:var(--phosphor-dim);
+  }
+  .authRememberLabel input[type=checkbox]{ accent-color:var(--phosphor); width:15px; height:15px; cursor:pointer; }
   #authError{ color:var(--danger); font-size:12px; margin-top:10px; min-height:1em; letter-spacing:0.5px; }
   #authStatus{ color:var(--phosphor-dim); font-size:12px; margin-top:6px; min-height:1em; letter-spacing:0.5px; }
 
-  /* HARDCORE server confirmation modal -- same centered panel-color language as
-     #authPanel, stacked at the same layer so it can sit above the boot screen */
+  /* HARDCORE server confirmation modal -- same centered modal language as
+     #authPanel, stacked at the same layer so it can sit above the boot screen.
+     Solid background (not see-through) plus a flickering flame animation
+     around the border, underlining how serious this warning is. */
   #hardcoreConfirmPanel{
     display:none;
     top:50%; left:50%; transform:translate(-50%,-50%);
     width:min(92vw,380px);
-    background:var(--panel-bg); border:1px solid var(--danger);
+    background:var(--panel-bg-solid); border:2px solid var(--danger);
     padding:20px 24px 22px; text-align:center; pointer-events:auto; z-index:110;
+    animation:hardcoreFlame 1.1s ease-in-out infinite;
   }
   #hardcoreConfirmPanel.show{display:block;}
+  @keyframes hardcoreFlame{
+    0%,100%{ box-shadow:0 0 10px 2px rgba(255,90,20,0.55), inset 0 0 18px rgba(255,60,0,0.25); border-color:#ff4d1a; }
+    25%{ box-shadow:0 0 18px 5px rgba(255,150,30,0.75), inset 0 0 26px rgba(255,120,0,0.35); border-color:#ffb020; }
+    50%{ box-shadow:0 0 8px 1px rgba(255,60,20,0.5), inset 0 0 14px rgba(255,40,0,0.22); border-color:#ff2d0f; }
+    75%{ box-shadow:0 0 22px 6px rgba(255,170,40,0.8); border-color:#ff8a1a; }
+  }
   #hardcoreConfirmPanel h2{
     font-family:'VT323',monospace; font-size:24px; letter-spacing:3px; color:var(--danger);
     margin:0 0 14px; text-shadow:0 0 8px rgba(255,60,60,0.6);
@@ -953,13 +984,13 @@
     #dockedPanel .dbtns{ gap:7px; margin-top:12px; }
     #dockedPanel .dbtns .cmdbtn{ font-size:14px; padding:7px 8px; }
     #dockedPanel .psection{ font-size:11px; margin-top:8px; }
-    #settingsMenu, #helpMenu{ width:min(94vw,360px); max-height:88vh; padding:14px 16px 16px; }
-    #settingsMenu h2, #helpMenu h2{ font-size:20px; margin-bottom:10px; }
-    .settingsRow{ margin:9px 0; }
+    #settingsMenu{ width:min(88vw,260px); padding:12px 14px 14px; }
+    #helpMenu{ width:min(94vw,360px); max-height:88vh; padding:14px 16px 16px; }
+    #settingsMenu h2, #helpMenu h2{ font-size:18px; margin-bottom:8px; }
+    .settingsRow{ margin:8px 0; }
     .settingsRow label{ font-size:11px; }
-    #settingsMenu .dbtns, #helpMenu .dbtns{ gap:7px; margin-top:6px; }
-    #settingsMenu .dbtns .cmdbtn, #helpMenu .dbtns .cmdbtn{ font-size:14px; padding:7px 8px; }
-    #settingsCredits{ font-size:10px; margin-top:12px; }
+    #settingsMenu .dbtns, #helpMenu .dbtns{ gap:6px; margin-top:4px; }
+    #settingsMenu .dbtns .cmdbtn, #helpMenu .dbtns .cmdbtn{ font-size:13px; padding:6px 8px; }
     #helpMenu p{ font-size:12px; }
     .keys{ font-size:12px; margin-top:12px; line-height:1.5; }
     .popupPanel{ max-height:78vh; }
@@ -1093,7 +1124,6 @@
   <div id="bootContent">
     <h1>VOID DRIFT</h1>
     <p id="mobileFullscreenWarning">On mobile, tapping LAUNCH will enter full screen.</p>
-    <p id="bootSaveFoundNote">A saved game was found — LAUNCH will continue from where you left off.</p>
     <!-- account row -- an account is required to play at all now (no guest mode,
          no local save file -- see supabaseConfigured()/updateAccountUI()). If
          Supabase isn't configured, this row explains the game can't be played
@@ -1136,6 +1166,9 @@
   <div class="settingsRow">
     <label for="authPassword">PASSWORD</label>
     <input type="password" id="authPassword" autocomplete="current-password">
+  </div>
+  <div class="settingsRow authRememberRow">
+    <label class="authRememberLabel"><input type="checkbox" id="authRemember"> REMEMBER PASSWORD</label>
   </div>
   <div id="authError"></div>
   <div id="authStatus"></div>
@@ -1217,7 +1250,7 @@
     <!-- on-screen equivalent of the Escape key -- exits inspect mode / opens or closes
          the settings menu (see handleEscapeAction). Mobile/touch has no physical
          Escape key, so this is the only way a touch-only player can reach either. -->
-    <button class="cmdbtn" id="btnMenuEsc" style="flex:1; font-size:11px; padding:5px 2px; min-width:0;">MENU</button>
+    <button class="cmdbtn" id="btnMenuEsc" style="flex:1; font-size:11px; padding:5px 2px; min-width:0;">SETTINGS</button>
   </div>
   <div class="row clickable" style="margin-top:4px; gap:4px;">
     <button class="cmdbtn" id="btnServer" style="flex:1; font-size:11px; padding:5px 2px; min-width:0;">SERVER</button>
@@ -1385,12 +1418,11 @@
     <button class="cmdbtn" id="btnCloseSettings">RESUME</button>
     <button class="cmdbtn danger" id="btnSaveExit">SAVE &amp; EXIT</button>
   </div>
-  <div id="settingsCredits">
-    Game created by Ian McGonigal<br>
-    <a href="mailto:ianmcgon@gmail.com">ianmcgon@gmail.com</a><br>
-    <span id="versionRead">v0.0.0</span>
-  </div>
 </div>
+<!-- click-blocking backdrop behind #settingsMenu -- see openSettingsMenu()/
+     closeSettingsMenu() -- so nothing under the menu (ship controls, other HUD
+     panels) can be interacted with while it's open, only the menu itself. -->
+<div id="settingsBackdrop"></div>
 
 <div class="hud" id="helpMenu">
   <h2>HOW TO PLAY</h2>
@@ -1717,9 +1749,9 @@
 // compatibility depends on it. Add new keys, don't rename old ones.
 
 // ---------- version / build info (shown in the ESC settings menu) ----------
-const GAME_VERSION = "0.15.0";
+const GAME_VERSION = "0.16.0";
 const GAME_LAST_EDITED = "2026-09-23";
-const GAME_BUILD_TIME = "15:44 PT"; // wall-clock time this build was published, not just the date
+const GAME_BUILD_TIME = "16:20 PT"; // wall-clock time this build was published, not just the date
 
 // ---------- update-available banner ----------
 // Periodically re-fetches this very page (same-origin -- works identically whether
@@ -9616,8 +9648,8 @@ document.getElementById('btnThrottle50').addEventListener('click', ()=>{ setThro
 document.getElementById('btnThrottleFull').addEventListener('click', ()=>{ setThrottle(1.0); });
 // ---------- Escape-triggered settings/pause menu ----------
 (function(){
-  const versionText = 'v' + GAME_VERSION + ' — last edited ' + GAME_LAST_EDITED;
-  const v = document.getElementById('versionRead'); if(v) v.textContent = versionText;
+  // the in-game settings menu no longer shows a credits/version line (removed
+  // per user request), so there's no #versionRead element to fill in anymore --
   // the boot screen carries its own copy, folded into the date + time line at
   // the bottom of the page (see #bootBuildStamp) rather than the word "BUILD"
   const bootVersionText = 'v' + GAME_VERSION + ' — ' + GAME_LAST_EDITED + ' ' + GAME_BUILD_TIME;
@@ -9628,10 +9660,14 @@ function openSettingsMenu(){
   if(settingsMenuOpen || docked || dockingSequence || warpSequence || inspecting || inspectTransition) return;
   settingsMenuOpen = true;
   document.getElementById('settingsMenu').classList.add('show');
+  const backdrop = document.getElementById('settingsBackdrop');
+  if(backdrop) backdrop.classList.add('show');
 }
 function closeSettingsMenu(){
   settingsMenuOpen = false;
   document.getElementById('settingsMenu').classList.remove('show');
+  const backdrop = document.getElementById('settingsBackdrop');
+  if(backdrop) backdrop.classList.remove('show');
 }
 document.getElementById('btnCloseSettings').addEventListener('click', closeSettingsMenu);
 // ---------- HELP window (item: moved tutorial text out of the boot screen) ----------
@@ -10235,9 +10271,35 @@ function setAuthError(msg){
   if(el) el.textContent = msg || '';
 }
 
+// "REMEMBER PASSWORD" checkbox -- stored in plaintext in localStorage (this is a
+// small self-hosted browser game, not a bank; the tradeoff is convenience over
+// security, same spirit as the rest of this file). Only ever written when the
+// checkbox is actually checked at the moment of a successful login/register, and
+// cleared outright the moment it's unchecked so nothing lingers unexpectedly.
+function saveRememberedCredentials(email, password){
+  try{ localStorage.setItem('voidDriftRememberedAuth', JSON.stringify({ email, password })); }catch(e){}
+}
+function clearRememberedCredentials(){
+  try{ localStorage.removeItem('voidDriftRememberedAuth'); }catch(e){}
+}
+function loadRememberedCredentials(){
+  try{ const raw = localStorage.getItem('voidDriftRememberedAuth'); return raw ? JSON.parse(raw) : null; }catch(e){ return null; }
+}
+
 if(supabaseClient){
   document.getElementById('btnOpenAuth').addEventListener('click', ()=>{
     setAuthError(''); setAuthBusy(false, '');
+    const remembered = loadRememberedCredentials();
+    const emailEl = document.getElementById('authEmail');
+    const passwordEl = document.getElementById('authPassword');
+    const rememberEl = document.getElementById('authRemember');
+    if(remembered && remembered.email){
+      if(emailEl) emailEl.value = remembered.email;
+      if(passwordEl) passwordEl.value = remembered.password || '';
+      if(rememberEl) rememberEl.checked = true;
+    } else if(rememberEl){
+      rememberEl.checked = false;
+    }
     document.getElementById('authPanel').classList.add('show');
   });
   document.getElementById('btnAuthCancel').addEventListener('click', ()=>{
@@ -10266,6 +10328,9 @@ if(supabaseClient){
       if(error){ setAuthError(error.message.toUpperCase()); }
       else{
         currentUser = data.user;
+        const rememberEl = document.getElementById('authRemember');
+        if(rememberEl && rememberEl.checked) saveRememberedCredentials(email, password);
+        else clearRememberedCredentials();
         setAuthBusy(true, 'SYNCING SAVE…');
         await fetchCloudSaveIntoPending();
         document.getElementById('authPanel').classList.remove('show');
@@ -10291,6 +10356,9 @@ if(supabaseClient){
       else if(data.session){
         // email confirmation disabled on this Supabase project -- signed in immediately
         currentUser = data.user;
+        const rememberEl = document.getElementById('authRemember');
+        if(rememberEl && rememberEl.checked) saveRememberedCredentials(email, password);
+        else clearRememberedCredentials();
         document.getElementById('authPanel').classList.remove('show');
         updateAccountUI();
         flashMessage('ACCOUNT CREATED — SIGNED IN', 'good');
@@ -13639,10 +13707,10 @@ function updateOrientationGuard(){
 window.addEventListener('resize', updateOrientationGuard);
 window.addEventListener('orientationchange', updateOrientationGuard);
 
-// boot-screen "continue" note -- purely informational (LAUNCH always does the
-// same thing; see applyPlayerSaveData() call below), just lets a returning
-// player know their progress is about to be restored before they click. Re-run
-// after a cloud fetch resolves too (see fetchCloudSaveIntoPending's callers).
+// the boot-screen "a saved game was found" note has been removed (it added
+// noise every time a server was picked) -- this is now a harmless no-op kept
+// only so its several existing callers (after login, after a server switch,
+// etc.) don't need to be found and stripped out individually.
 function updateSaveFoundNote(){
   const note = document.getElementById('bootSaveFoundNote');
   if(note) note.classList.toggle('show', !!pendingCloudSave);
