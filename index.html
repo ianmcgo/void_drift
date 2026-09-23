@@ -1451,6 +1451,7 @@
       <button class="cmdbtn" id="btnDockRepair">REPAIR HULL</button>
       <button class="cmdbtn" id="btnDockCargoPanel">SELL CARGO</button>
       <button class="cmdbtn" id="btnDockMarketPanel">MARKET</button>
+      <button class="cmdbtn" id="btnDockAuctionPanel">AUCTION HOUSE</button>
       <button class="cmdbtn" id="btnDockFittingPanel">FITTING</button>
       <button class="cmdbtn" id="btnDockStoragePanel">STORAGE</button>
       <button class="cmdbtn" id="btnDockShipyardPanel">SHIPYARD</button>
@@ -1459,6 +1460,7 @@
       <button class="cmdbtn" id="btnDockNavyPanel">GALACTIC NAVY OFFICE</button>
       <button class="cmdbtn" id="btnDockMiningPanel">MINING CORP OFFICE</button>
       <button class="cmdbtn" id="btnDockTransportPanel">TRANSPORTATION GUILD</button>
+      <button class="cmdbtn" id="btnDockGovPanel">SECTOR GOVERNMENT</button>
     </div>
 
     <div class="dbtns" style="margin-top:18px;">
@@ -1497,6 +1499,41 @@
     </div>
     <div class="dbtns" style="margin-top:14px;">
       <button class="cmdbtn" id="btnDockMarketBack">◀ BACK</button>
+    </div>
+  </div>
+
+  <div id="dockAuctionPanel" class="dockSubPanel">
+    <div class="sub" style="color:var(--amber); text-align:left;">AUCTION HOUSE — PLAYER LISTINGS</div>
+    <div style="color:var(--phosphor-dim); font-size:11px; margin-top:2px;">CREDITS: <span id="auctionCreditsRead">0</span> cr</div>
+    <div class="psection" style="margin-top:10px;">LIST AN ITEM (1 CR LISTING FEE)</div>
+    <div class="dpRow" style="margin-top:4px;">
+      <select id="auctionSellItemSelect" style="flex:1 1 auto; background:rgba(0,0,0,0.4); border:1px solid var(--panel-border); color:var(--phosphor); font-family:'Share Tech Mono',monospace; font-size:12px; padding:4px;"></select>
+    </div>
+    <div class="dpRow" style="margin-top:6px;">
+      <input type="number" id="auctionSellQty" min="1" step="1" value="1" style="width:64px;">
+      <span style="font-size:11px; color:var(--phosphor-dim);">QTY</span>
+      <input type="number" id="auctionSellPrice" min="1" step="1" value="1" style="width:80px;">
+      <span style="font-size:11px; color:var(--phosphor-dim);">CR TOTAL</span>
+      <button class="cmdbtn" id="btnAuctionList">LIST</button>
+    </div>
+    <div class="psection">CURRENT LISTINGS</div>
+    <div id="auctionListingsGrid" style="margin-top:4px;"></div>
+    <div class="dbtns" style="margin-top:14px;">
+      <button class="cmdbtn" id="btnDockAuctionBack">◀ BACK</button>
+    </div>
+  </div>
+
+  <div id="dockGovPanel" class="dockSubPanel">
+    <div class="sub" style="color:var(--amber); text-align:left;">SECTOR GOVERNMENT — GOVERNMENT TRUST</div>
+    <div class="drow"><span>GOVERNMENT TRUST BALANCE</span><span id="govTrustBalanceRead">0 cr</span></div>
+    <div style="color:var(--phosphor-dim); font-size:11px; margin-top:8px; text-align:left; line-height:1.5;">
+      Funded entirely by station taxes (market purchases/sales, auction fees). Once per
+      real-world day, any pilot may withdraw 5% of this station's trust as a Universal
+      Basic Income payout.
+    </div>
+    <div class="dbtns" style="margin-top:14px;">
+      <button class="cmdbtn" id="btnWithdrawUbi">WITHDRAW UBI</button>
+      <button class="cmdbtn" id="btnDockGovBack">◀ BACK</button>
     </div>
   </div>
 
@@ -1676,9 +1713,9 @@
 // compatibility depends on it. Add new keys, don't rename old ones.
 
 // ---------- version / build info (shown in the ESC settings menu) ----------
-const GAME_VERSION = "0.13.0";
+const GAME_VERSION = "0.14.0";
 const GAME_LAST_EDITED = "2026-09-23";
-const GAME_BUILD_TIME = "14:25 PT"; // wall-clock time this build was published, not just the date
+const GAME_BUILD_TIME = "15:10 PT"; // wall-clock time this build was published, not just the date
 
 // ---------- update-available banner ----------
 // Periodically re-fetches this very page (same-origin -- works identically whether
@@ -3135,13 +3172,39 @@ function randomAsteroidPositionAt(center, spread){
 function randomAsteroidPosition(){
   return randomAsteroidPositionAt(BELT_ZONE_CENTER);
 }
+// item: asteroid/mining-node LOCATIONS are the same for every player, every load --
+// a tiny deterministic PRNG seeded from the node's own id (e.g. "ast_3") in place of
+// Math.random() for placement, so every client independently computes the identical
+// position for that id without needing any network round-trip at all. Only the
+// MUTABLE state (current ore type/amount, alive/depleted) needs real cross-player
+// syncing -- see the shared zone_mining_state cloud table further below.
+function seededRng(seedStr){
+  let h = 0;
+  for(let i=0;i<seedStr.length;i++) h = (h*31 + seedStr.charCodeAt(i)) | 0;
+  let s = (h >>> 0) || 1;
+  return function(){
+    s = (Math.imul(s, 1664525) + 1013904223) >>> 0;
+    return s / 4294967296;
+  };
+}
+function seededAsteroidPositionAt(center, spread, rng){
+  const sMin = spread ? spread.min : 500, sMax = spread ? spread.max : 3700, sH = spread ? spread.height : 900;
+  const ang = rng()*Math.PI*2;
+  const rad = sMin + rng()*(sMax - sMin);
+  const height = (rng()-0.5)*sH;
+  return new THREE.Vector3(
+    center.x + Math.cos(ang)*rad,
+    center.y + height,
+    center.z + Math.sin(ang)*rad
+  );
+}
 
 // generalized asteroid-field builder, reused for both the yellow (belt) field and the
 // green (Haven Reach) field -- each zone's asteroids carry their own zoneCenter (used
 // by respawn to put a depleted rock back in the SAME zone, not a random one) and
 // oreWeights (used by assignAsteroidOre for that zone's own rarity table, see
 // ORE_WEIGHTS_YELLOW/ORE_WEIGHTS_GREEN above)
-function buildAsteroidField(center, count, oreWeights, idPrefix, spread){
+function buildAsteroidField(center, count, oreWeights, idPrefix, spread, zoneKey){
   const group = new THREE.Group();
   for(let i=0;i<count;i++){
     const seed = i*1.37;
@@ -3151,11 +3214,12 @@ function buildAsteroidField(center, count, oreWeights, idPrefix, spread){
     const mat = applyPS1(new THREE.MeshLambertMaterial({ vertexColors:true, flatShading:true }));
     const mesh = new THREE.Mesh(geo, mat);
 
-    mesh.position.copy(randomAsteroidPositionAt(center, spread));
+    const posRng = seededRng(idPrefix + '_' + i);
+    mesh.position.copy(seededAsteroidPositionAt(center, spread, posRng));
     mesh.rotation.set(Math.random()*Math.PI, Math.random()*Math.PI, Math.random()*Math.PI);
     mesh.userData.spin = new THREE.Vector3((Math.random()-0.5)*0.05,(Math.random()-0.5)*0.05,(Math.random()-0.5)*0.05);
     group.add(mesh);
-    const entry = { mesh, id: idPrefix+'_'+i, name: '', radius: 1, type:'asteroid', hostile:false, alive:true, oreType:null, oreAmount:0, respawnAt:0, colorSeed: seed, debrisGroup:null, zoneCenter: center, oreWeights, spread: spread || null };
+    const entry = { mesh, id: idPrefix+'_'+i, name: '', radius: 1, type:'asteroid', hostile:false, alive:true, oreType:null, oreAmount:0, respawnAt:0, colorSeed: seed, debrisGroup:null, zoneCenter: center, oreWeights, spread: spread || null, zoneKey: zoneKey || idPrefix };
     assignAsteroidOre(entry);
     entry.debrisGroup = buildAsteroidDebrisField(mesh.position, entry.radius);
     scene.add(entry.debrisGroup);
@@ -3165,11 +3229,14 @@ function buildAsteroidField(center, count, oreWeights, idPrefix, spread){
 }
 function buildAsteroids(){
   // YELLOW (Kestrel Belt): unchanged layout/count from before (14 rocks), just now
-  // explicitly tagged with its own zone center + boosted rare-ore weighting
-  buildAsteroidField(BELT_ZONE_CENTER, 14, ORE_WEIGHTS_YELLOW, 'ast');
+  // explicitly tagged with its own zone center + boosted rare-ore weighting.
+  // zoneKey matches the STAR_MAP_ZONES/currentZoneKey() key for this field, so the
+  // shared zone_mining_state sync (see syncZoneMiningNodesOnEnter) can key off the
+  // same zone boundary the multiplayer zone channel already uses.
+  buildAsteroidField(BELT_ZONE_CENTER, 14, ORE_WEIGHTS_YELLOW, 'ast', null, 'belt');
   // GREEN (Haven Reach): a smaller, safer field with less rare ore -- no pirates ever
   // spawn here (see ZONE_PIRATE_CONFIGS), so a slightly thinner field is intentional
-  buildAsteroidField(GREEN_ZONE_CENTER, 10, ORE_WEIGHTS_GREEN, 'gast');
+  buildAsteroidField(GREEN_ZONE_CENTER, 10, ORE_WEIGHTS_GREEN, 'gast', null, 'green');
   // RED (The Maelstrom): deliberately no asteroid field at all -- dangerous, wreck-
   // salvage-only zone (see redzone wreck placement + ZONE_PIRATE_CONFIGS below)
   // Galaxies B/C/D: every new green/yellow zone with an `ast` block gets its own field,
@@ -3179,7 +3246,7 @@ function buildAsteroids(){
     if(!z.ast) return;
     const weights = z.tier === 'yellow' ? ORE_WEIGHTS_YELLOW : ORE_WEIGHTS_GREEN;
     const prefix = z.galaxy.toLowerCase() + (z.tier === 'yellow' ? 'yast' : 'gast');
-    buildAsteroidField(z.center, z.ast.count, weights, prefix, z.ast);
+    buildAsteroidField(z.center, z.ast.count, weights, prefix, z.ast, z.key);
   });
 }
 buildAsteroids();
@@ -3207,7 +3274,10 @@ function updateAsteroidRespawns(){
   asteroidData.forEach(a=>{
     if(a.alive || !a.respawnAt) return;
     if(clock.elapsedTime < a.respawnAt) return;
-    a.mesh.position.copy(randomAsteroidPositionAt(a.zoneCenter || BELT_ZONE_CENTER, a.spread));
+    // item: position is deliberately NOT re-rolled here any more -- a node's location
+    // is a fixed, deterministic fact about its id (see seededAsteroidPositionAt), so
+    // it comes back in exactly the same spot every player already sees it in, rather
+    // than jumping to a new random spot only this client would know about.
     assignAsteroidOre(a);
     a.alive = true;
     a.mesh.visible = true;
@@ -3218,7 +3288,81 @@ function updateAsteroidRespawns(){
     }
     addOverviewRow(a);
     logEvent('NEW ASTEROID DETECTED — ' + a.name.toUpperCase());
+    pushZoneMiningNodesToCloud(a.zoneKey);
   });
+}
+
+// ---------- shared, persistent mining-node state (signed-in players only) ----------
+// One row per (server, zone_key) holding every node's current mutable state (ore
+// type/amount, alive/depleted) as jsonb -- same pattern as station_market. Node
+// POSITIONS never need syncing at all (see seededAsteroidPositionAt above); only
+// what's actually been mined out needs to travel between clients. Guests keep the
+// old local-only random depletion (no cloud identity to key rows on), matching every
+// other cloud-backed feature in the game.
+function serializeMiningNodes(nodes){
+  return nodes.map(n => ({
+    id: n.id, oreType: n.oreType, oreAmount: n.oreAmount, alive: n.alive,
+    // in-game elapsedTime is per-session/per-client and meaningless to anyone else,
+    // so respawn timing travels as a real wall-clock epoch instead
+    respawnAtEpoch: n.alive ? null : Date.now() + Math.max(0, (n.respawnAt - clock.elapsedTime) * 1000)
+  }));
+}
+function applyMiningNodeRow(entry, row){
+  entry.oreType = row.oreType;
+  entry.oreAmount = row.oreAmount;
+  applyAsteroidVertexColors(entry);
+  applyAsteroidScale(entry);
+  const num = 100 + parseInt(entry.id.split('_')[1], 10);
+  entry.name = ORE_DISPLAY_NAMES[entry.oreType] + ' ' + num;
+  if(row.alive){
+    if(!entry.alive){
+      entry.alive = true; entry.mesh.visible = true;
+      if(entry.debrisGroup) entry.debrisGroup.visible = true;
+      addOverviewRow(entry);
+    }
+  } else {
+    if(entry.alive) depleteAsteroid(entry);
+    if(row.respawnAtEpoch) entry.respawnAt = clock.elapsedTime + Math.max(0, (row.respawnAtEpoch - Date.now()) / 1000);
+  }
+}
+function zoneMiningNodes(zoneKey){ return asteroidData.filter(a=>a.zoneKey === zoneKey); }
+async function fetchZoneMiningNodesFromCloud(zoneKey){
+  if(!supabaseClient || !currentUser) return null;
+  try{
+    const { data, error } = await supabaseClient.from('zone_mining_state')
+      .select('nodes').eq('server', currentServer).eq('zone_key', zoneKey).maybeSingle();
+    if(error){ console.warn('mining node fetch error', error); return null; }
+    return (data && data.nodes) || null;
+  }catch(e){ console.warn('mining node fetch exception', e); return null; }
+}
+// best-effort, fire-and-forget -- never blocks/rolls back the mining tick or respawn
+// that triggered it (local oreAmount/alive state is already applied by the caller)
+async function pushZoneMiningNodesToCloud(zoneKey){
+  if(!supabaseClient || !currentUser) return;
+  const nodes = zoneMiningNodes(zoneKey);
+  if(!nodes.length) return;
+  try{
+    await supabaseClient.from('zone_mining_state').upsert(
+      { server: currentServer, zone_key: zoneKey, nodes: serializeMiningNodes(nodes), updated_at: new Date().toISOString() },
+      { onConflict: 'server,zone_key' }
+    );
+  }catch(e){ console.warn('mining node push exception', e); }
+}
+// called whenever the player actually enters a new zone (see joinZoneChannel) --
+// pulls that zone's shared node state down from the cloud, or seeds the cloud with
+// this client's freshly-generated state if nobody's created that row yet
+async function syncZoneMiningNodesOnEnter(zoneKey){
+  if(!supabaseClient || !currentUser) return;
+  const nodes = zoneMiningNodes(zoneKey);
+  if(!nodes.length) return; // e.g. the red zone has no asteroid field at all
+  const cloudNodes = await fetchZoneMiningNodesFromCloud(zoneKey);
+  if(cloudNodes && Array.isArray(cloudNodes) && cloudNodes.length){
+    const byId = {};
+    cloudNodes.forEach(n=> byId[n.id] = n);
+    nodes.forEach(entry=>{ const row = byId[entry.id]; if(row) applyMiningNodeRow(entry, row); });
+  } else {
+    pushZoneMiningNodesToCloud(zoneKey);
+  }
 }
 
 // ---------- mining debris (lightweight visual feedback while carving out ore) ----------
@@ -6148,7 +6292,7 @@ function updateDockedPanel(){
 // its own -- SELL CARGO opens the flight-HUD cargo hold box directly instead (see
 // btnDockCargoPanel's click handler below).
 function showDockSubPanel(name){
-  ['dockMainPanel','dockCargoPanel','dockStoragePanel','dockShipyardPanel','dockLoanPanel','dockMarketPanel','dockFittingPanel','dockManufacturingPanel','dockNavyPanel','dockMiningPanel','dockTransportPanel'].forEach(id=>{
+  ['dockMainPanel','dockCargoPanel','dockStoragePanel','dockShipyardPanel','dockLoanPanel','dockMarketPanel','dockAuctionPanel','dockGovPanel','dockFittingPanel','dockManufacturingPanel','dockNavyPanel','dockMiningPanel','dockTransportPanel'].forEach(id=>{
     const el = document.getElementById(id);
     if(el) el.classList.toggle('show', id === name);
   });
@@ -6157,6 +6301,8 @@ function showDockSubPanel(name){
   if(name === 'dockShipyardPanel') renderDockShipyardPanel();
   if(name === 'dockLoanPanel') renderDockLoanPanel();
   if(name === 'dockMarketPanel') renderMarketPanel();
+  if(name === 'dockAuctionPanel') renderAuctionPanel();
+  if(name === 'dockGovPanel') renderGovPanel();
   if(name === 'dockFittingPanel') renderFittingPanel();
   if(name === 'dockManufacturingPanel') renderManufacturingPanel();
   if(name === 'dockNavyPanel') renderQuestPanel('navy');
@@ -6193,6 +6339,10 @@ function enterDock(station){
   zoneMessage('DOCKED AT ' + dockedStation.name.toUpperCase(), 'good');
   logEvent('DOCKED AT ' + dockedStation.name.toUpperCase(), 'good');
   syncStationMarketOnDock();
+  syncQuestBoardsOnDock(dockedStation);
+  syncAuctionListingsOnDock(dockedStation);
+  syncGovTrustOnDock(dockedStation);
+  claimAuctionPayouts();
 }
 
 function exitDock(){
@@ -6403,6 +6553,7 @@ document.getElementById('dockCargoSellConfirm').addEventListener('click', ()=>{
   refreshEquipmentPanel();
   updateDockedPanel();
   renderDockCargoPanel();
+  addStationTax(activeStationEntry().id, tax);
 });
 
 // ---------- item 8: station MARKET -- replaces the old per-item OUTFITTING buy
@@ -6578,9 +6729,283 @@ document.getElementById('marketBuyConfirm').addEventListener('click', ()=>{
   refreshEquipmentPanel();
   renderMarketPanel();
   pushStationMarketToCloud();
+  addStationTax(activeStationEntry().id, tax);
 });
 document.getElementById('btnDockMarketPanel').addEventListener('click', ()=> showDockSubPanel('dockMarketPanel'));
 document.getElementById('btnDockMarketBack').addEventListener('click', ()=> showDockSubPanel('dockMainPanel'));
+document.getElementById('btnDockAuctionPanel').addEventListener('click', ()=> showDockSubPanel('dockAuctionPanel'));
+document.getElementById('btnDockAuctionBack').addEventListener('click', ()=> showDockSubPanel('dockMainPanel'));
+document.getElementById('btnDockGovPanel').addEventListener('click', ()=> showDockSubPanel('dockGovPanel'));
+document.getElementById('btnDockGovBack').addEventListener('click', ()=> showDockSubPanel('dockMainPanel'));
+
+// ---------- Sector Government / station tax trust (signed-in players only) ----------
+// One row per (server, station_id) holding a running credit balance -- every station
+// tax (market buy/sell tax, auction listing fees, auction sale tax) feeds it via
+// addStationTax(); nothing else does (repair costs, loan interest, manufacturing,
+// callsign fees etc. are fees for a service, not a tax, and stay out of the trust).
+// stationTreasury is a local mirror (always updated) so the panel shows something
+// sensible even before/without a cloud round-trip; guests accumulate a purely local,
+// never-shared tally, same as every other cloud-backed feature.
+let stationTreasury = {};
+async function addStationTax(stationId, amount){
+  if(!amount) return;
+  stationTreasury[stationId] = (stationTreasury[stationId] || 0) + amount;
+  if(!supabaseClient || !currentUser) return;
+  try{
+    const { data } = await supabaseClient.from('station_treasury')
+      .select('balance').eq('server', currentServer).eq('station_id', stationId).maybeSingle();
+    const newBalance = ((data && data.balance) || 0) + amount;
+    stationTreasury[stationId] = newBalance;
+    await supabaseClient.from('station_treasury').upsert(
+      { server: currentServer, station_id: stationId, balance: newBalance, updated_at: new Date().toISOString() },
+      { onConflict: 'server,station_id' }
+    );
+    const panel = document.getElementById('dockGovPanel');
+    if(panel && panel.classList.contains('show')) renderGovPanel();
+  }catch(e){ console.warn('station treasury add exception', e); }
+}
+async function fetchStationTreasuryFromCloud(stationId){
+  if(!supabaseClient || !currentUser) return null;
+  try{
+    const { data, error } = await supabaseClient.from('station_treasury')
+      .select('balance').eq('server', currentServer).eq('station_id', stationId).maybeSingle();
+    if(error) return null;
+    return data ? data.balance : null;
+  }catch(e){ return null; }
+}
+// called from enterDock() -- pulls this station's trust balance down from the cloud,
+// and checks whether this player has already claimed today's UBI here
+let ubiClaimedHereToday = false;
+async function syncGovTrustOnDock(station){
+  ubiClaimedHereToday = false;
+  if(!supabaseClient || !currentUser) { renderGovPanel(); return; }
+  const balance = await fetchStationTreasuryFromCloud(station.id);
+  if(balance != null) stationTreasury[station.id] = balance;
+  try{
+    const { data } = await supabaseClient.from('ubi_claims')
+      .select('user_id').eq('server', currentServer).eq('station_id', station.id)
+      .eq('user_id', currentUser.id).eq('day', todayKey()).maybeSingle();
+    ubiClaimedHereToday = !!data;
+  }catch(e){}
+  renderGovPanel();
+}
+function renderGovPanel(){
+  const el = document.getElementById('govTrustBalanceRead');
+  if(!el) return;
+  const st = activeStationEntry();
+  const balance = Math.floor(stationTreasury[st.id] || 0);
+  el.textContent = balance.toLocaleString() + ' cr';
+  const btn = document.getElementById('btnWithdrawUbi');
+  if(btn){
+    if(!supabaseClient || !currentUser){ btn.disabled = true; btn.textContent = 'SIGN IN TO CLAIM UBI'; }
+    else if(ubiClaimedHereToday){ btn.disabled = true; btn.textContent = 'UBI ALREADY CLAIMED TODAY'; }
+    else { btn.disabled = false; btn.textContent = 'WITHDRAW UBI'; }
+  }
+}
+document.getElementById('btnWithdrawUbi').addEventListener('click', async ()=>{
+  if(!supabaseClient || !currentUser){ flashMessage('SIGN IN REQUIRED FOR UBI', 'warn'); return; }
+  if(!docked || !dockedStation) return;
+  const st = dockedStation;
+  const day = todayKey();
+  try{
+    const { data: claim } = await supabaseClient.from('ubi_claims')
+      .select('user_id').eq('server', currentServer).eq('station_id', st.id).eq('user_id', currentUser.id).eq('day', day).maybeSingle();
+    if(claim){ ubiClaimedHereToday = true; flashMessage('UBI ALREADY CLAIMED TODAY', 'warn'); renderGovPanel(); return; }
+    const balance = (await fetchStationTreasuryFromCloud(st.id)) || 0;
+    const payout = Math.floor(balance * 0.05);
+    if(payout <= 0){ flashMessage('TRUST HAS NOTHING TO DISBURSE', 'warn'); return; }
+    const newBalance = balance - payout;
+    await supabaseClient.from('station_treasury').upsert(
+      { server: currentServer, station_id: st.id, balance: newBalance, updated_at: new Date().toISOString() },
+      { onConflict: 'server,station_id' }
+    );
+    await supabaseClient.from('ubi_claims').upsert(
+      { server: currentServer, station_id: st.id, user_id: currentUser.id, day, amount: payout, claimed_at: new Date().toISOString() },
+      { onConflict: 'server,station_id,user_id,day' }
+    );
+    stationTreasury[st.id] = newBalance;
+    ubiClaimedHereToday = true;
+    bountyCredits += payout;
+    addLedgerEntry(payout, 'Sector Government UBI (' + st.name + ')');
+    flashMessage('UBI RECEIVED — +' + payout + ' CR', 'good');
+    logEvent('WITHDREW UBI FROM ' + st.name.toUpperCase() + ' GOVERNMENT TRUST — +' + payout + ' CR', 'good');
+    updateCargoUI();
+    renderGovPanel();
+  }catch(e){
+    console.warn('ubi withdraw exception', e);
+    flashMessage('UBI WITHDRAWAL FAILED', 'warn');
+  }
+});
+
+// ---------- AUCTION HOUSE (signed-in players only) ----------
+// Player-to-player listings, one row per listing in a shared auction_listings table
+// (unlike station_market/quest_boards, this can't be one blob per station -- many
+// players adding/removing individual listings concurrently needs row-level inserts/
+// deletes, not a whole-array overwrite). Listing costs a flat 1cr fee; a sale is
+// taxed 5% (deducted from the seller's proceeds, same convention as selling to the
+// station itself). Both the listing fee and the sale tax feed the station's
+// Government Trust via addStationTax().
+//
+// Paying the SELLER is the one place this game can't just mutate a local variable --
+// the seller's own client may not even be running. A real Supabase player_saves row
+// can only be written by its own owner (RLS: auth.uid() = user_id), so the buyer
+// can't credit the seller directly. Instead the buyer inserts an escrow row into
+// auction_payouts for the seller to claim (see claimAuctionPayouts(), called from
+// every enterDock()) -- an ordinary "pending payout" pattern, and RLS-safe: anyone
+// signed in may INSERT a payout for someone else, but only that seller (auth.uid()
+// = user_id) may ever SELECT or DELETE it.
+const AUCTION_LISTING_FEE = 1;
+let auctionListingsCache = [];
+async function fetchAuctionListings(stationId){
+  if(!supabaseClient) return [];
+  try{
+    const { data, error } = await supabaseClient.from('auction_listings')
+      .select('*').eq('server', currentServer).eq('station_id', stationId).order('created_at', { ascending:true });
+    return (!error && data) ? data : [];
+  }catch(e){ return []; }
+}
+// called from enterDock()
+async function syncAuctionListingsOnDock(station){
+  auctionListingsCache = await fetchAuctionListings(station.id);
+  const panel = document.getElementById('dockAuctionPanel');
+  if(panel && panel.classList.contains('show')) renderAuctionPanel();
+}
+async function claimAuctionPayouts(){
+  if(!supabaseClient || !currentUser) return;
+  try{
+    const { data, error } = await supabaseClient.from('auction_payouts')
+      .select('*').eq('server', currentServer).eq('user_id', currentUser.id);
+    if(error || !data || !data.length) return;
+    let total = 0;
+    data.forEach(p=> total += p.amount);
+    bountyCredits += total;
+    addLedgerEntry(total, 'Auction sales settled (' + data.length + ' listing' + (data.length===1?'':'s') + ')');
+    flashMessage('AUCTION SALES SETTLED — +' + total + ' CR', 'good');
+    logEvent('AUCTION SALES SETTLED — +' + total + ' CR (' + data.length + ' listing' + (data.length===1?'':'s') + ' sold)', 'good');
+    for(const p of data){ await supabaseClient.from('auction_payouts').delete().eq('id', p.id); }
+    updateCargoUI();
+  }catch(e){ console.warn('claim auction payouts exception', e); }
+}
+// which of the player's own cargo item types are eligible to auction -- same rule
+// the SELL CARGO panel already uses (def.sellPrice != null, see dockCargoSellConfirm),
+// minus anything currently tagged for an in-progress Transportation Guild delivery
+function auctionEligibleItemTypes(){
+  const totals = {};
+  cargoStacks.forEach(s=>{
+    if(s.guildQuestId) return;
+    const def = itemDisplayDef(s.itemType);
+    if(!def || def.sellPrice == null) return;
+    totals[s.itemType] = (totals[s.itemType] || 0) + s.qty;
+  });
+  return totals;
+}
+function renderAuctionPanel(){
+  const grid = document.getElementById('auctionListingsGrid');
+  if(!grid) return;
+  const credEl = document.getElementById('auctionCreditsRead');
+  if(credEl) credEl.textContent = Math.round(bountyCredits).toLocaleString();
+  const select = document.getElementById('auctionSellItemSelect');
+  if(select){
+    const totals = auctionEligibleItemTypes();
+    const types = Object.keys(totals);
+    select.innerHTML = !types.length
+      ? '<option value="">NOTHING TO LIST</option>'
+      : types.map(t=>{
+          const def = itemDisplayDef(t);
+          return '<option value="' + t + '">' + def.label.toUpperCase() + ' (' + totals[t] + ' OWNED)</option>';
+        }).join('');
+  }
+  const myId = currentUser ? currentUser.id : null;
+  grid.innerHTML = !auctionListingsCache.length
+    ? '<div class="ledgerEmpty">NO LISTINGS AT THIS STATION</div>'
+    : auctionListingsCache.map(l=>{
+        const def = itemDisplayDef(l.item_key);
+        const mine = l.seller_id === myId;
+        return '<div class="dockSubRow">'
+          + '<span class="dsName">' + l.qty + 'x ' + (def ? def.label : l.item_key) + ' — ' + l.price + ' cr<br>'
+          + '<span style="font-size:10px; color:var(--phosphor-dim);">SELLER: ' + (l.seller_name || 'UNKNOWN').toUpperCase() + '</span></span>'
+          + (mine
+            ? '<button class="cmdbtn" data-auction-cancel="' + l.id + '">CANCEL</button>'
+            : '<button class="cmdbtn" data-auction-buy="' + l.id + '">BUY</button>')
+          + '</div>';
+      }).join('');
+}
+document.getElementById('btnAuctionList').addEventListener('click', async ()=>{
+  if(!docked || !dockedStation) return;
+  if(!supabaseClient || !currentUser){ flashMessage('SIGN IN REQUIRED TO LIST ITEMS', 'warn'); return; }
+  const itemType = document.getElementById('auctionSellItemSelect').value;
+  if(!itemType){ flashMessage('NOTHING TO LIST', 'warn'); return; }
+  const have = totalOfType(itemType);
+  let qty = Math.round(parseFloat(document.getElementById('auctionSellQty').value) || 0);
+  qty = Math.max(1, Math.min(qty, have));
+  const price = Math.max(1, Math.round(parseFloat(document.getElementById('auctionSellPrice').value) || 0));
+  if(qty <= 0 || have < qty){ flashMessage('NOT ENOUGH CARGO TO LIST', 'warn'); return; }
+  if(bountyCredits < AUCTION_LISTING_FEE){ flashMessage('NOT ENOUGH CREDITS FOR LISTING FEE', 'warn'); return; }
+  const def = itemDisplayDef(itemType);
+  removeFromCargo(itemType, qty);
+  bountyCredits -= AUCTION_LISTING_FEE;
+  addLedgerEntry(-AUCTION_LISTING_FEE, 'Auction listing fee (' + def.label + ')');
+  const listing = {
+    id: 'lst_' + Date.now() + '_' + Math.floor(Math.random()*100000),
+    server: currentServer, station_id: dockedStation.id,
+    seller_id: currentUser.id, seller_name: mpIdentity ? mpIdentity.name : 'UNKNOWN',
+    item_key: itemType, qty, price, created_at: new Date().toISOString()
+  };
+  try{ await supabaseClient.from('auction_listings').upsert(listing, { onConflict:'id' }); }
+  catch(e){ console.warn('auction list exception', e); }
+  flashMessage('LISTED ' + qty + 'x ' + def.label.toUpperCase() + ' FOR ' + price + ' CR', 'good');
+  logEvent('AUCTION: LISTED ' + qty + 'x ' + def.label.toUpperCase() + ' FOR ' + price + ' CR (-1 CR LISTING FEE)', 'good');
+  updateCargoUI();
+  addStationTax(dockedStation.id, AUCTION_LISTING_FEE);
+  await syncAuctionListingsOnDock(dockedStation);
+});
+document.getElementById('auctionListingsGrid').addEventListener('click', async (e)=>{
+  if(!docked || !dockedStation) return;
+  const buyBtn = e.target.closest('button[data-auction-buy]');
+  const cancelBtn = e.target.closest('button[data-auction-cancel]');
+  if(buyBtn){
+    const id = buyBtn.dataset.auctionBuy;
+    const listing = auctionListingsCache.find(l=>l.id === id);
+    if(!listing) return;
+    if(!supabaseClient || !currentUser){ flashMessage('SIGN IN REQUIRED TO BUY', 'warn'); return; }
+    if(listing.seller_id === currentUser.id){ flashMessage('CANNOT BUY YOUR OWN LISTING', 'warn'); return; }
+    if(bountyCredits < listing.price){ flashMessage('INSUFFICIENT CREDITS', 'warn'); return; }
+    const weightNeeded = listing.qty * itemWeight(listing.item_key);
+    if(weightNeeded > cargoRemainingCapacity()){ flashMessage('CARGO HOLD FULL', 'warn'); return; }
+    const def = itemDisplayDef(listing.item_key);
+    try{ await supabaseClient.from('auction_listings').delete().eq('id', listing.id); }
+    catch(e){ console.warn('auction buy delete exception', e); }
+    const tax = Math.ceil(listing.price * STATION_SALES_TAX);
+    const sellerProceeds = listing.price - tax;
+    bountyCredits -= listing.price;
+    addToCargo(listing.item_key, listing.qty);
+    addLedgerEntry(-listing.price, 'Bought ' + (def?def.label:listing.item_key) + ' x' + listing.qty + ' from ' + (listing.seller_name||'UNKNOWN') + ' (auction)');
+    try{
+      await supabaseClient.from('auction_payouts').upsert(
+        { id: 'payout_' + Date.now() + '_' + Math.floor(Math.random()*100000), server: currentServer,
+          user_id: listing.seller_id, amount: sellerProceeds, item_label: def ? def.label : listing.item_key,
+          created_at: new Date().toISOString() },
+        { onConflict:'id' }
+      );
+    }catch(e){ console.warn('auction payout exception', e); }
+    flashMessage('BOUGHT ' + listing.qty + 'x ' + (def?def.label.toUpperCase():listing.item_key) + ' — -' + listing.price + ' CR', 'good');
+    logEvent('AUCTION: BOUGHT ' + listing.qty + 'x ' + (def?def.label.toUpperCase():listing.item_key) + ' FROM ' + (listing.seller_name||'UNKNOWN').toUpperCase() + ' — -' + listing.price + ' CR', 'good');
+    updateCargoUI();
+    addStationTax(dockedStation.id, tax);
+    await syncAuctionListingsOnDock(dockedStation);
+  } else if(cancelBtn){
+    const id = cancelBtn.dataset.auctionCancel;
+    const listing = auctionListingsCache.find(l=>l.id === id);
+    if(!listing || !currentUser || listing.seller_id !== currentUser.id) return;
+    try{ await supabaseClient.from('auction_listings').delete().eq('id', listing.id); }
+    catch(e){ console.warn('auction cancel exception', e); }
+    addToCargo(listing.item_key, listing.qty); // listing fee is NOT refunded
+    flashMessage('LISTING CANCELLED — ITEMS RETURNED TO CARGO', 'good');
+    logEvent('AUCTION: CANCELLED LISTING — ' + listing.qty + 'x ' + (itemDisplayDef(listing.item_key)||{}).label, 'good');
+    updateCargoUI();
+    await syncAuctionListingsOnDock(dockedStation);
+  }
+});
 
 // ---------- item 11: station FITTING -- the only place weapon/shield/mining-laser
 // tiers can be actively (re-)equipped, since it lives entirely inside the docked-only
@@ -7362,9 +7787,10 @@ function questBoard(stationId, faction){
 let activeQuests = [];
 let questNextId = 1;
 const QUEST_CAP = 3; // max OFFERED per station per office, and max ACCEPTED per station per office
+// item: Navy contracts no longer accept scrap turn-ins -- only black boxes (salvaged
+// from a kill) and, separately, straight kill-count contracts (see buildNavyKillQuest).
 function pickNavyQuestItem(level){
-  const pool = level >= 4 ? ['scrap','scrap','blackBox','blackBoxCaptain']
-    : level >= 2 ? ['scrap','scrap','blackBox'] : ['scrap'];
+  const pool = level >= 4 ? ['blackBox','blackBox','blackBoxCaptain'] : ['blackBox'];
   return pool[Math.floor(Math.random()*pool.length)];
 }
 function pickMiningQuestItem(level){
@@ -7439,6 +7865,9 @@ function buildQuest(faction, station){
   station = station || activeStationEntry();
   const level = repLevel(stationRep(station.id, faction));
   if(faction === 'transport') return buildTransportQuest(station, level);
+  // item: half of all Navy offers are now pure kill-count contracts (no turn-in item
+  // at all) rather than every Navy contract being a black-box/scrap turn-in
+  if(faction === 'navy' && Math.random() < 0.5) return buildNavyKillQuest(station, level);
   const itemKey = faction === 'navy' ? pickNavyQuestItem(level) : pickMiningQuestItem(level);
   const rarity = QUEST_ITEM_RARITY[itemKey] || 1;
   const baseQty = (itemKey==='blackBox' || itemKey==='blackBoxCaptain') ? 1 : 6;
@@ -7448,9 +7877,25 @@ function buildQuest(faction, station){
   const timed = Math.random() < 0.35;
   return {
     id: questNextId++, faction, stationId: station.id, stationName: station.name,
-    itemKey, itemLabel: questItemLabel(itemKey), qty, reward, repReward, timed,
+    kind:'turnin', itemKey, itemLabel: questItemLabel(itemKey), qty, reward, repReward, timed,
     timeLimit: timed ? contractTimeLimit(qty, rarity) : null,
     acceptedAt: null, expiresAt: null
+  };
+}
+// Navy "kill N pirates" contract -- kind:'kill' instead of the usual turn-in-an-item
+// shape. No itemKey to actually carry/remove on turn-in; progress is tracked via
+// killProgress, incremented by recordPirateKillForQuests() at every pirate kill (any
+// pirate, anywhere) while this contract is accepted, and read back by questHaveQty().
+function buildNavyKillQuest(station, level){
+  const qty = Math.max(2, Math.round(3 + level*1.5 + Math.random()*3));
+  const reward = Math.round((25 + level*15) * qty * (0.8 + Math.random()*0.5));
+  const repReward = Math.round(8 + level*4);
+  const timed = Math.random() < 0.35;
+  return {
+    id: questNextId++, faction:'navy', stationId: station.id, stationName: station.name,
+    kind:'kill', itemKey:'pirateKill', itemLabel:'Pirate Kills', qty, reward, repReward, timed,
+    timeLimit: timed ? contractTimeLimit(qty, 2) : null,
+    acceptedAt: null, expiresAt: null, killProgress: 0
   };
 }
 function buildTransportQuest(station, level){
@@ -7492,6 +7937,53 @@ function seedQuestBoards(perOffice){
     const board = questBoard(st.id, f);
     while(board.length < Math.min(perOffice, QUEST_CAP)) generateQuest(f, st);
   }));
+}
+// ---------- shared, persistent quest boards (signed-in players only) ----------
+// One row per (server, stationId, faction) holding that office's current OFFERED
+// board -- accepted contracts are personal (tracked in activeQuests, already saved
+// with the player) and never shared; only the unaccepted offer list is, so "everyone
+// sees the same contracts on offer" holds without a real authoritative quest server.
+// Guests keep the old purely-local random board (no cloud identity to key rows on).
+function serializeQuestBoard(board){ return board.map(q => Object.assign({}, q)); }
+async function fetchQuestBoardFromCloud(stationId, faction){
+  if(!supabaseClient || !currentUser) return null;
+  try{
+    const { data, error } = await supabaseClient.from('quest_boards')
+      .select('board').eq('server', currentServer).eq('station_id', stationId).eq('faction', faction).maybeSingle();
+    if(error){ console.warn('quest board fetch error', error); return null; }
+    return (data && data.board) || null;
+  }catch(e){ console.warn('quest board fetch exception', e); return null; }
+}
+// best-effort, fire-and-forget -- never blocks/rolls back the accept/roll that
+// triggered it (the local board mutation is already applied by the caller)
+async function pushQuestBoardToCloud(stationId, faction){
+  if(!supabaseClient || !currentUser) return;
+  const board = questBoard(stationId, faction);
+  try{
+    await supabaseClient.from('quest_boards').upsert(
+      { server: currentServer, station_id: stationId, faction, board: serializeQuestBoard(board), updated_at: new Date().toISOString() },
+      { onConflict: 'server,station_id,faction' }
+    );
+  }catch(e){ console.warn('quest board push exception', e); }
+}
+// called from enterDock() (mirrors syncStationMarketOnDock) -- pulls every office's
+// shared board for this station down from the cloud, or seeds the cloud with this
+// client's freshly-generated board if nobody's created that row yet
+async function syncQuestBoardsOnDock(station){
+  if(!supabaseClient || !currentUser) return;
+  for(const f of QUEST_FACTIONS){
+    const cloudBoard = await fetchQuestBoardFromCloud(station.id, f);
+    if(cloudBoard && Array.isArray(cloudBoard)){
+      stationQuestBoards[station.id] = stationQuestBoards[station.id] || {};
+      stationQuestBoards[station.id][f] = cloudBoard;
+      // keep questNextId ahead of every id we just pulled in so any quest this
+      // client builds later never collides with one still on a shared board
+      cloudBoard.forEach(q=>{ if(q.id >= questNextId) questNextId = q.id + 1; });
+    } else {
+      pushQuestBoardToCloud(station.id, f);
+    }
+  }
+  refreshOpenQuestPanels();
 }
 function questTimeLeft(q){
   if(!q.timed || q.expiresAt === null || q.expiresAt === undefined) return null;
@@ -7581,6 +8073,7 @@ function acceptQuest(questId){
   q.expiresAt = q.timed ? q.acceptedAt + q.timeLimit : null;
   activeQuests.push(q);
   if(faction === 'transport') loadGuildCargo(q);
+  pushQuestBoardToCloud(st.id, faction); // so this offer disappears from other players' boards too
   // deliberately no logEvent here -- accepting is a personal action, not news
   flashMessage('CONTRACT ACCEPTED — ' + q.qty + 'x ' + q.itemLabel.toUpperCase()
     + (faction === 'transport' ? ' → ' + q.destStationName.toUpperCase() : ''), 'good');
@@ -7606,11 +8099,31 @@ function expireQuests(){
 // (see generateQuest for the replace-oldest-unaccepted rule). Silent.
 function questHourlyTick(){
   expireQuests();
-  STATIONS.forEach(st=> QUEST_FACTIONS.forEach(f=> generateQuest(f, st)));
+  STATIONS.forEach(st=> QUEST_FACTIONS.forEach(f=>{
+    generateQuest(f, st);
+    // only push this station's board to the shared cloud table if we're actually
+    // docked there right now -- our local copy of any OTHER station's board could be
+    // stale (last synced whenever we last docked there, if ever), and pushing a
+    // stale-based roll risks clobbering a contract another player has since taken
+    if(docked && dockedStation && dockedStation.id === st.id) pushQuestBoardToCloud(st.id, f);
+  }));
   refreshOpenQuestPanels();
 }
 function questTurnInStationId(q){ return q.faction === 'transport' ? q.destStationId : q.stationId; }
-function questHaveQty(q){ return q.faction === 'transport' ? guildCargoOnBoard(q.id) : totalOfType(q.itemKey); }
+function questHaveQty(q){
+  if(q.kind === 'kill') return q.killProgress || 0;
+  return q.faction === 'transport' ? guildCargoOnBoard(q.id) : totalOfType(q.itemKey);
+}
+// increments progress on every accepted Navy kill-count contract -- called from both
+// pirate-kill sites (standard death + bounty-hunter/hostile kill), same as the daily
+// leaderboard's recordKillForLeaderboard(), right after piratesKilled++
+function recordPirateKillForQuests(){
+  let any = false;
+  activeQuests.forEach(q=>{
+    if(q.faction === 'navy' && q.kind === 'kill'){ q.killProgress = (q.killProgress || 0) + 1; any = true; }
+  });
+  if(any) refreshOpenQuestPanels();
+}
 function turnInQuest(questId){
   const q = activeQuests.find(x=>x.id===questId);
   if(!q) return;
@@ -7623,7 +8136,7 @@ function turnInQuest(questId){
   if(have < q.qty){ flashMessage('NOT ENOUGH ' + q.itemLabel.toUpperCase() + ' — NEED ' + q.qty, 'warn'); return; }
   activeQuests = activeQuests.filter(x=>x.id !== questId);
   if(q.faction === 'transport') stripGuildCargo(q.id);
-  else removeFromCargo(q.itemKey, q.qty);
+  else if(q.kind !== 'kill') removeFromCargo(q.itemKey, q.qty);
   bountyCredits += q.reward;
   const ledgerLabel = q.faction==='navy' ? 'Navy contract' : q.faction==='mining' ? 'Mining Corp contract' : 'Guild delivery';
   addLedgerEntry(q.reward, ledgerLabel + ' (' + q.stationName + ') — ' + q.qty + 'x ' + q.itemLabel);
@@ -7693,9 +8206,10 @@ function renderQuestPanel(faction){
             : 'TURN IN AT ' + q.stationName.toUpperCase();
           const canTurnIn = atRightStation && have >= q.qty;
           const btnLabel = !atRightStation ? ('TURN IN AT ' + stationNameById(turnInAt).toUpperCase()) : 'TURN IN';
+          const haveSuffix = faction === 'transport' ? ' ABOARD' : (q.kind === 'kill' ? ' KILLED' : ' CARRIED');
           return questRowHtml(q,
             '<div style="width:100%; display:flex; justify-content:space-between;"><span class="dsName">' + q.qty + 'x ' + q.itemLabel + '</span><span>'
-              + have + ' / ' + q.qty + (faction === 'transport' ? ' ABOARD' : ' CARRIED') + '</span></div>'
+              + have + ' / ' + q.qty + haveSuffix + '</span></div>'
             + '<div style="color:var(--phosphor-dim); font-size:11px; margin-top:4px; text-align:left;">' + where + '</div>'
             + '<div style="color:var(--phosphor-dim); font-size:11px; margin:4px 0; text-align:left;">REWARD: ' + q.reward + ' CR + ' + q.repReward + ' REP — ' + timeStr + '</div>',
             '<button class="cmdbtn" style="width:100%;" data-quest-turnin="' + q.id + '" ' + (canTurnIn ? '' : 'disabled') + '>' + btnLabel + '</button>');
@@ -7748,9 +8262,9 @@ let nextStackId = 1;
 // starting gear: base weapon/shield tier 0, owned and equipped from the first frame
 cargoStacks.push({ stackId: nextStackId++, itemType:'weaponTier0', qty:1 });
 cargoStacks.push({ stackId: nextStackId++, itemType:'shieldTier0', qty:1 });
-// starting ammo: 100 iron bullets, one stack, auto-equipped to the gun slot below
+// starting ammo: 300 iron bullets, one stack, auto-equipped to the gun slot below
 // (see equippedAmmoStackId, set right after this stack is created)
-const startingAmmoStack = { stackId: nextStackId++, itemType:AMMO_ITEM_TYPE, qty:100 };
+const startingAmmoStack = { stackId: nextStackId++, itemType:AMMO_ITEM_TYPE, qty:300 };
 cargoStacks.push(startingAmmoStack);
 function totalOfType(itemType){
   let sum = 0;
@@ -8022,6 +8536,7 @@ function checkAchievements(){
       earnedAchievements.add(a.id);
       flashMessage('MEDAL EARNED: ' + a.name.toUpperCase(), 'good');
       logEvent('=== MEDAL EARNED: ' + a.name.toUpperCase() + ' ===', 'good');
+      if(mpZoneChannel && mpIdentity) mpZoneChannel.send({ type:'broadcast', event:'achievement', payload:{ name: mpIdentity.name, medal: a.name } });
       if(walletTab === 'medals') renderMedals();
     }
   });
@@ -8882,6 +9397,8 @@ document.getElementById('btnSalvage').addEventListener('click', ()=>{
 let miningActive = false;
 let miningTarget = null;
 let miningCooldown = 0;
+let miningPushAccum = 0;
+const MINING_PUSH_INTERVAL = 8; // seconds between best-effort cloud pushes of ore-remaining while actively mining
 document.getElementById('btnMine').addEventListener('click', ()=>{
   if(inputLocked()) return;
   if(inEscapePod) return; // item 5c: no mining while podded
@@ -8991,11 +9508,22 @@ function updatePlayerMining(dt){
   }
   if(miningTarget.oreAmount <= 0){
     const name = miningTarget.name;
+    const zoneKey = miningTarget.zoneKey;
     flashMessage(name.toUpperCase() + ' DEPLETED', 'warn');
     logEvent(name.toUpperCase() + ' DEPLETED', 'warn');
     depleteAsteroid(miningTarget);
     miningActive = false;
     miningTarget = null;
+    pushZoneMiningNodesToCloud(zoneKey);
+  } else {
+    // best-effort, throttled push while actively mining so other signed-in players
+    // in this zone see roughly-current ore levels without hammering the network on
+    // every ~1.5s tick -- see MINING_PUSH_INTERVAL
+    miningPushAccum += currentMiningInterval();
+    if(miningPushAccum >= MINING_PUSH_INTERVAL){
+      miningPushAccum = 0;
+      pushZoneMiningNodesToCloud(miningTarget.zoneKey);
+    }
   }
 }
 // repair/turn-in are only available from inside the docking bay (#dockedPanel's
@@ -9476,7 +10004,129 @@ function cloudSyncSetupSql(){
     "  for insert with check (auth.uid() is not null);",
     "drop policy if exists \"signed-in players can update station market 2\" on station_market;",
     "create policy \"signed-in players can update station market 2\" on station_market",
-    "  for update using (auth.uid() is not null) with check (auth.uid() is not null);"
+    "  for update using (auth.uid() is not null) with check (auth.uid() is not null);",
+    "",
+    "-- shared, persistent asteroid/mining-node state (ore type/amount, alive/depleted)",
+    "-- per zone -- node POSITIONS never need a table, every client computes those the",
+    "-- same way locally from a seeded PRNG",
+    "create table if not exists zone_mining_state (",
+    "  server text not null,",
+    "  zone_key text not null,",
+    "  nodes jsonb not null,",
+    "  updated_at timestamptz not null default now(),",
+    "  primary key (server, zone_key)",
+    ");",
+    "alter table zone_mining_state enable row level security;",
+    "drop policy if exists \"zone mining state is publicly readable\" on zone_mining_state;",
+    "create policy \"zone mining state is publicly readable\" on zone_mining_state for select using (true);",
+    "drop policy if exists \"signed-in players can update zone mining state\" on zone_mining_state;",
+    "create policy \"signed-in players can update zone mining state\" on zone_mining_state",
+    "  for insert with check (auth.uid() is not null);",
+    "drop policy if exists \"signed-in players can update zone mining state 2\" on zone_mining_state;",
+    "create policy \"signed-in players can update zone mining state 2\" on zone_mining_state",
+    "  for update using (auth.uid() is not null) with check (auth.uid() is not null);",
+    "",
+    "-- shared, persistent quest boards -- the OFFERED (not-yet-accepted) contracts at",
+    "-- each station's office, so every player sees the same contracts on offer",
+    "create table if not exists quest_boards (",
+    "  server text not null,",
+    "  station_id text not null,",
+    "  faction text not null,",
+    "  board jsonb not null,",
+    "  updated_at timestamptz not null default now(),",
+    "  primary key (server, station_id, faction)",
+    ");",
+    "alter table quest_boards enable row level security;",
+    "drop policy if exists \"quest boards are publicly readable\" on quest_boards;",
+    "create policy \"quest boards are publicly readable\" on quest_boards for select using (true);",
+    "drop policy if exists \"signed-in players can update quest boards\" on quest_boards;",
+    "create policy \"signed-in players can update quest boards\" on quest_boards",
+    "  for insert with check (auth.uid() is not null);",
+    "drop policy if exists \"signed-in players can update quest boards 2\" on quest_boards;",
+    "create policy \"signed-in players can update quest boards 2\" on quest_boards",
+    "  for update using (auth.uid() is not null) with check (auth.uid() is not null);",
+    "",
+    "-- AUCTION HOUSE -- one row per active listing (buying deletes the row; selling",
+    "-- inserts one). Anyone may browse; any signed-in player may list or buy.",
+    "create table if not exists auction_listings (",
+    "  id text primary key,",
+    "  server text not null,",
+    "  station_id text not null,",
+    "  seller_id uuid not null references auth.users(id) on delete cascade,",
+    "  seller_name text not null,",
+    "  item_key text not null,",
+    "  qty int not null,",
+    "  price int not null,",
+    "  created_at timestamptz not null default now()",
+    ");",
+    "alter table auction_listings enable row level security;",
+    "drop policy if exists \"auction listings are publicly readable\" on auction_listings;",
+    "create policy \"auction listings are publicly readable\" on auction_listings for select using (true);",
+    "drop policy if exists \"signed-in players can list items\" on auction_listings;",
+    "create policy \"signed-in players can list items\" on auction_listings",
+    "  for insert with check (auth.uid() = seller_id);",
+    "drop policy if exists \"signed-in players can buy/cancel listings\" on auction_listings;",
+    "create policy \"signed-in players can buy/cancel listings\" on auction_listings",
+    "  for delete using (auth.uid() is not null);",
+    "",
+    "-- pending auction sale proceeds owed to a seller -- a buyer's client can never",
+    "-- write directly into a stranger's player_saves row (RLS below only allows the",
+    "-- save's own owner to touch it), so a sale instead queues a payout here for the",
+    "-- seller's own client to claim (see claimAuctionPayouts(), run on every dock)",
+    "create table if not exists auction_payouts (",
+    "  id text primary key,",
+    "  server text not null,",
+    "  user_id uuid not null references auth.users(id) on delete cascade,",
+    "  amount int not null,",
+    "  item_label text,",
+    "  created_at timestamptz not null default now()",
+    ");",
+    "alter table auction_payouts enable row level security;",
+    "drop policy if exists \"players see only their own pending payouts\" on auction_payouts;",
+    "create policy \"players see only their own pending payouts\" on auction_payouts",
+    "  for select using (auth.uid() = user_id);",
+    "drop policy if exists \"any signed-in buyer can queue a payout for a seller\" on auction_payouts;",
+    "create policy \"any signed-in buyer can queue a payout for a seller\" on auction_payouts",
+    "  for insert with check (auth.uid() is not null);",
+    "drop policy if exists \"players can claim (delete) only their own payouts\" on auction_payouts;",
+    "create policy \"players can claim (delete) only their own payouts\" on auction_payouts",
+    "  for delete using (auth.uid() = user_id);",
+    "",
+    "-- SECTOR GOVERNMENT -- each station's tax trust (market tax + auction fees/tax)",
+    "create table if not exists station_treasury (",
+    "  server text not null,",
+    "  station_id text not null,",
+    "  balance int not null default 0,",
+    "  updated_at timestamptz not null default now(),",
+    "  primary key (server, station_id)",
+    ");",
+    "alter table station_treasury enable row level security;",
+    "drop policy if exists \"station treasury is publicly readable\" on station_treasury;",
+    "create policy \"station treasury is publicly readable\" on station_treasury for select using (true);",
+    "drop policy if exists \"signed-in players can update station treasury\" on station_treasury;",
+    "create policy \"signed-in players can update station treasury\" on station_treasury",
+    "  for insert with check (auth.uid() is not null);",
+    "drop policy if exists \"signed-in players can update station treasury 2\" on station_treasury;",
+    "create policy \"signed-in players can update station treasury 2\" on station_treasury",
+    "  for update using (auth.uid() is not null) with check (auth.uid() is not null);",
+    "",
+    "-- one UBI claim per (station, real-world day) per player",
+    "create table if not exists ubi_claims (",
+    "  server text not null,",
+    "  station_id text not null,",
+    "  user_id uuid not null references auth.users(id) on delete cascade,",
+    "  day date not null,",
+    "  amount int not null,",
+    "  claimed_at timestamptz not null default now(),",
+    "  primary key (server, station_id, user_id, day)",
+    ");",
+    "alter table ubi_claims enable row level security;",
+    "drop policy if exists \"players see only their own ubi claims\" on ubi_claims;",
+    "create policy \"players see only their own ubi claims\" on ubi_claims",
+    "  for select using (auth.uid() = user_id);",
+    "drop policy if exists \"players record only their own ubi claims\" on ubi_claims;",
+    "create policy \"players record only their own ubi claims\" on ubi_claims",
+    "  for insert with check (auth.uid() = user_id);"
   ].join('\n');
 }
 
@@ -10095,6 +10745,13 @@ function joinZoneChannel(zoneKey){
     const p = msg.payload || {};
     if(p.text) logEvent('[' + (p.name || '???') + ']: ' + p.text, 'chat');
   });
+  // achievement unlocks are zone-local news, same as "X HAS ENTERED THE ZONE" --
+  // only players currently sharing this zone channel see another pilot's medal
+  // (see checkAchievements, which sends this whenever earnedAchievements grows)
+  ch.on('broadcast', { event:'achievement' }, (msg)=>{
+    const p = msg.payload || {};
+    if(p.name && p.medal) logEvent('=== ' + p.name.toUpperCase() + ' EARNED MEDAL: ' + p.medal.toUpperCase() + ' ===', 'good');
+  });
   ch.on('presence', { event:'leave' }, ({ key })=>{
     const entry = remotePlayers[key];
     if(entry) removeRemotePlayer(entry);
@@ -10102,6 +10759,7 @@ function joinZoneChannel(zoneKey){
   ch.subscribe((status)=> handleZoneChannelStatus(ch, status));
   mpZoneChannel = ch;
   mpZoneChannelKey = key;
+  syncZoneMiningNodesOnEnter(zoneKey);
 }
 
 function spawnRemotePlayer(payload){
@@ -11008,6 +11666,7 @@ function damagePirate(entry, dmg){
     gainXP(xpAward);
     piratesKilled++; // wallet stat (item 3b)
     recordKillForLeaderboard();
+    recordPirateKillForQuests();
     if(entry.isCaptain) captainsKilled++; // medals tracking
     spawnWreck(deathPos, deathName, entry.ammo||0, entry.isCaptain);
     entry.isCaptain = false; // cleared so the slot's next ordinary respawn isn't still tagged
@@ -11498,6 +12157,7 @@ function damageBountyHunter(entry, dmg){
     gainXP(XP_PER_KILL*3);
     piratesKilled++; // wallet stat (item 3b) -- counts hostile-ship kills generally
     recordKillForLeaderboard();
+    recordPirateKillForQuests();
     spawnWreck(deathPos, entry.name, entry.ammo||0);
     removeBountyHunter(entry);
   }
