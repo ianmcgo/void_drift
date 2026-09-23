@@ -149,6 +149,10 @@
     padding:12px 34px; cursor:pointer; pointer-events:auto;
   }
   #bootscreen .startbtn:hover{background:rgba(109,255,194,0.12);}
+  /* build date/time stamp, deliberately placed below LAUNCH (not up with the rest
+     of #bootCredits) -- see GAME_LAST_EDITED/GAME_BUILD_TIME and the JS that fills
+     this in on boot */
+  #bootBuildStamp{ flex:0 0 auto; margin-top:8px; font-size:11px; letter-spacing:1px; color:var(--phosphor-dim); }
   /* .keys is shared by the (now-removed-from-boot) tutorial text and the HELP
      window reachable from the settings menu -- kept unscoped (not #bootscreen .keys)
      so both places render it identically */
@@ -722,6 +726,23 @@
   #callsignPanel .dbtns{display:flex; flex-direction:column; gap:10px; margin-top:14px;}
   #callsignError{ color:var(--danger); font-size:12px; margin-top:10px; min-height:1em; letter-spacing:0.5px; }
 
+  /* PROFILE popup -- opened from the SERVER panel's ONLINE list. Same centered
+     modal language as #callsignPanel/#dockedPanel; drow/psection/dbtns mirror
+     #dockedPanel's own (scoped) rules since those classes aren't unscoped globally. */
+  #profilePanel{
+    display:none;
+    top:50%; left:50%; transform:translate(-50%,-50%);
+    width:min(92vw,380px);
+    background:var(--panel-bg); border:1px solid var(--panel-border);
+    padding:20px 24px 22px; text-align:center; pointer-events:auto; z-index:112;
+  }
+  #profilePanel.show{display:block;}
+  #profilePanel h2{ font-family:'VT323',monospace; font-size:26px; letter-spacing:3px; color:var(--amber); margin:0 0 10px; text-shadow:0 0 8px rgba(255,176,32,0.5); }
+  #profilePanel .drow{display:flex; justify-content:space-between; font-size:14px; margin:6px 0; color:var(--phosphor-dim);}
+  #profilePanel .drow span:last-child{color:var(--phosphor);}
+  #profilePanel .psection{font-size:12px; letter-spacing:1px; color:var(--amber); margin-top:12px; text-align:left;}
+  #profilePanel .dbtns{display:flex; flex-direction:column; gap:10px; margin-top:16px;}
+
   /* HELP window -- reached from the settings menu (see openHelpMenu), holds the
      tutorial/how-to-play text that used to sit on the boot screen. Same panel-color
      modal language as #settingsMenu, just wider and internally scrollable since the
@@ -1101,6 +1122,7 @@
     </div>
   </div>
   <button class="startbtn" id="startBtn">▶ LAUNCH</button>
+  <div id="bootBuildStamp"></div>
 </div>
 
 <div class="hud" id="authPanel">
@@ -1155,6 +1177,24 @@
   </div>
 </div>
 
+<div class="hud" id="profilePanel">
+  <h2 id="profilePanelName">PLAYER</h2>
+  <div class="drow"><span>Ship</span><span id="profileShip">—</span></div>
+  <div class="drow"><span>Level</span><span id="profileLevel">1</span></div>
+  <div class="drow"><span>Credits</span><span id="profileCredits">0 cr</span></div>
+  <div class="drow"><span>Kills</span><span id="profileKills">0</span></div>
+  <div class="psection">REPUTATION</div>
+  <div class="drow"><span>Galactic Navy</span><span id="profileNavyRep">0 (Level 1)</span></div>
+  <div class="drow"><span>Mining Corp</span><span id="profileMiningRep">0 (Level 1)</span></div>
+  <div class="drow"><span>Transportation Guild</span><span id="profileTransportRep">0 (Level 1)</span></div>
+  <div class="psection">ACHIEVEMENTS</div>
+  <div class="drow"><span>Earned</span><span id="profileAchievements">0 / 0</span></div>
+  <div class="dbtns">
+    <button class="cmdbtn" id="btnProfileMessage">MESSAGE</button>
+    <button class="cmdbtn danger" id="btnCloseProfile">CLOSE</button>
+  </div>
+</div>
+
 <div class="hud" id="telemetry">
   <div class="name"><span id="shipNameRead">WAYFARER-1</span></div>
   <div class="row"><span>VELOCITY</span><span id="velRead">0 m/s</span></div>
@@ -1176,6 +1216,9 @@
          the settings menu (see handleEscapeAction). Mobile/touch has no physical
          Escape key, so this is the only way a touch-only player can reach either. -->
     <button class="cmdbtn" id="btnMenuEsc" style="flex:1; font-size:11px; padding:5px 2px; min-width:0;">MENU</button>
+  </div>
+  <div class="row clickable" style="margin-top:4px; gap:4px;">
+    <button class="cmdbtn" id="btnServer" style="flex:1; font-size:11px; padding:5px 2px; min-width:0;">SERVER</button>
   </div>
   <div class="row" style="margin-top:6px;"><span>FLIGHT MODE</span><span id="modeRead">DRIFT</span></div>
   <div class="row" style="margin-top:8px;"><span>THROTTLE CAP</span></div>
@@ -1228,6 +1271,24 @@
   <div class="popupBody">
     <div class="psection" style="margin-top:0;" id="starMapGalaxyHdr">KNOWN ZONES</div>
     <div id="starMapZoneList"></div>
+  </div>
+</div>
+
+<div class="hud popupPanel" id="serverPanel">
+  <div class="phdr"><span>SERVER</span><button id="btnCloseServer">✕</button></div>
+  <div class="popupBody">
+    <div class="walletTabs">
+      <button class="clickable active" id="btnServerTabOnline">ONLINE</button>
+      <button class="clickable" id="btnServerTabLeaderboard">LEADERBOARD</button>
+    </div>
+    <div class="walletTabSection active" id="serverOnlineSection">
+      <div class="psection" style="margin-top:0;">WHO'S ONLINE</div>
+      <div id="serverOnlineList"></div>
+    </div>
+    <div class="walletTabSection" id="serverLeaderboardSection">
+      <div class="psection" style="margin-top:0;">TOP KILLS TODAY</div>
+      <div id="serverLeaderboardList"></div>
+    </div>
   </div>
 </div>
 
@@ -1299,7 +1360,7 @@
       <span id="mpStatusInfo">OFFLINE</span>
     </div>
     <div class="chatInputRow">
-      <input type="text" id="chatInput" placeholder="Broadcast a message… (Enter)" maxlength="140">
+      <input type="text" id="chatInput" placeholder="Zone chat… /a all, /w name msg" maxlength="140">
     </div>
   </div>
 </div>
@@ -1318,6 +1379,7 @@
     <button class="cmdbtn" id="btnOpenHelp">HELP</button>
     <button class="cmdbtn" id="btnToggleFullscreen">⛶ FULL SCREEN</button>
     <button class="cmdbtn" id="btnResetHud">RESET HUD LAYOUT</button>
+    <button class="cmdbtn" id="btnCopyDbSetup" style="display:none;">COPY DB SETUP SQL</button>
     <button class="cmdbtn" id="btnCloseSettings">RESUME</button>
     <button class="cmdbtn danger" id="btnSaveExit">SAVE &amp; EXIT</button>
   </div>
@@ -1614,8 +1676,9 @@
 // compatibility depends on it. Add new keys, don't rename old ones.
 
 // ---------- version / build info (shown in the ESC settings menu) ----------
-const GAME_VERSION = "0.12.0";
+const GAME_VERSION = "0.13.0";
 const GAME_LAST_EDITED = "2026-09-23";
+const GAME_BUILD_TIME = "14:25 PT"; // wall-clock time this build was published, not just the date
 
 // ---------- update-available banner ----------
 // Periodically re-fetches this very page (same-origin -- works identically whether
@@ -5962,9 +6025,11 @@ function toggleInventoryPanel(show){
   const eqPanel = document.getElementById('equipmentPanel');
   const smPanel = document.getElementById('starMapPanel');
   const wPanel = document.getElementById('walletPanel');
+  const svPanel = document.getElementById('serverPanel');
   if(eqPanel) eqPanel.classList.remove('show');
   if(smPanel) smPanel.classList.remove('show');
   if(wPanel) wPanel.classList.remove('show');
+  if(svPanel) svPanel.classList.remove('show');
   const willShow = show !== undefined ? show : !panel.classList.contains('show');
   panel.classList.toggle('show', willShow);
   if(!willShow){ closeCargoActionPrompt(); }
@@ -6127,6 +6192,7 @@ function enterDock(station){
   updateDockedPanel();
   zoneMessage('DOCKED AT ' + dockedStation.name.toUpperCase(), 'good');
   logEvent('DOCKED AT ' + dockedStation.name.toUpperCase(), 'good');
+  syncStationMarketOnDock();
 }
 
 function exitDock(){
@@ -6370,6 +6436,61 @@ function restockMarket(itemType, qty, unitPrice){
   let entry = marketStock.find(m=>m.itemType===itemType && m.qty!==Infinity && m.unitPrice===unitPrice);
   if(entry) entry.qty += qty;
   else marketStock.push({ id:nextMarketId++, itemType, qty, unitPrice });
+  pushStationMarketToCloud();
+}
+
+// ---------- shared, persistent station market stock (signed-in players only --
+// guests have no cloud identity, so they keep the old per-client random-reset
+// market exactly as before). One row per (server, station_id) holding the whole
+// stock array as jsonb -- simplest possible shape given there's currently only
+// one station in the game (stationEntry / 'station_home'), and it matches how
+// the rest of the file already keys per-station data (stationReputation,
+// stationQuestBoards) by station.id for when more stations are added later.
+// qty:Infinity can't round-trip through JSON, so it's encoded as the string
+// 'inf' on the way out and decoded back on the way in.
+function serializeMarketStock(stock){
+  return stock.map(m => ({ itemType:m.itemType, qty: m.qty===Infinity ? 'inf' : m.qty, unitPrice:m.unitPrice }));
+}
+function deserializeMarketStock(rows){
+  return (rows||[]).map(r => ({ id:nextMarketId++, itemType:r.itemType, qty: r.qty==='inf' ? Infinity : r.qty, unitPrice:r.unitPrice }));
+}
+function stationMarketRowKey(){ return activeStationEntry().id; }
+async function fetchStationMarketFromCloud(){
+  if(!supabaseClient || !currentUser) return null;
+  try{
+    const { data, error } = await supabaseClient.from('station_market')
+      .select('stock').eq('server', currentServer).eq('station_id', stationMarketRowKey()).maybeSingle();
+    if(error){ console.warn('station market fetch error', error); return null; }
+    return (data && data.stock) || null;
+  }catch(e){ console.warn('station market fetch exception', e); return null; }
+}
+// best-effort, fire-and-forget -- a failed write here never blocks or rolls back
+// the buy/sell it followed (bountyCredits/cargo are already applied by the caller)
+async function pushStationMarketToCloud(){
+  if(!supabaseClient || !currentUser) return;
+  try{
+    await supabaseClient.from('station_market').upsert(
+      { server: currentServer, station_id: stationMarketRowKey(), stock: serializeMarketStock(marketStock), updated_at: new Date().toISOString() },
+      { onConflict: 'server,station_id' }
+    );
+  }catch(e){ console.warn('station market push exception', e); }
+}
+// called from enterDock() -- pulls the shared stock for this station down from the
+// cloud (so pirates/players who bought it out stay bought out across reloads and
+// across other players), or seeds the cloud with this client's freshly-generated
+// stock if nobody's created that row yet. Async/fire-and-forget since enterDock()
+// itself is synchronous; re-renders the MARKET sub-panel if it's already open by
+// the time the fetch resolves.
+async function syncStationMarketOnDock(){
+  if(!supabaseClient || !currentUser) return; // guest/offline: keep local-only market as-is
+  const cloudStock = await fetchStationMarketFromCloud();
+  if(cloudStock && Array.isArray(cloudStock) && cloudStock.length){
+    marketStock = deserializeMarketStock(cloudStock);
+  } else {
+    pushStationMarketToCloud();
+  }
+  const panel = document.getElementById('dockMarketPanel');
+  if(panel && panel.classList.contains('show')) renderMarketPanel();
 }
 // weapon/shield tiers and the mining laser are one-time, own-at-most-one purchases
 // (buying a second Weapon Mk2 makes no sense -- FITTING just equips the one you
@@ -6456,6 +6577,7 @@ document.getElementById('marketBuyConfirm').addEventListener('click', ()=>{
   updateCargoUI();
   refreshEquipmentPanel();
   renderMarketPanel();
+  pushStationMarketToCloud();
 });
 document.getElementById('btnDockMarketPanel').addEventListener('click', ()=> showDockSubPanel('dockMarketPanel'));
 document.getElementById('btnDockMarketBack').addEventListener('click', ()=> showDockSubPanel('dockMainPanel'));
@@ -7962,9 +8084,11 @@ function toggleEquipmentPanel(show){
   const invPanel = document.getElementById('inventoryPanel');
   const smPanel = document.getElementById('starMapPanel');
   const wPanel = document.getElementById('walletPanel');
+  const svPanel = document.getElementById('serverPanel');
   if(invPanel) invPanel.classList.remove('show');
   if(smPanel) smPanel.classList.remove('show');
   if(wPanel) wPanel.classList.remove('show');
+  if(svPanel) svPanel.classList.remove('show');
   const willShow = show !== undefined ? show : !panel.classList.contains('show');
   panel.classList.toggle('show', willShow);
   if(willShow) refreshEquipmentPanel();
@@ -8193,9 +8317,11 @@ function toggleStarMapPanel(show){
   const invPanel = document.getElementById('inventoryPanel');
   const eqPanel = document.getElementById('equipmentPanel');
   const wPanel = document.getElementById('walletPanel');
+  const svPanel = document.getElementById('serverPanel');
   if(invPanel) invPanel.classList.remove('show');
   if(eqPanel) eqPanel.classList.remove('show');
   if(wPanel) wPanel.classList.remove('show');
+  if(svPanel) svPanel.classList.remove('show');
   const willShow = show !== undefined ? show : !panel.classList.contains('show');
   panel.classList.toggle('show', willShow);
   if(willShow) renderStarMap();
@@ -8208,13 +8334,101 @@ function toggleWalletPanel(show){
   const invPanel = document.getElementById('inventoryPanel');
   const eqPanel = document.getElementById('equipmentPanel');
   const smPanel = document.getElementById('starMapPanel');
+  const svPanel = document.getElementById('serverPanel');
   if(invPanel) invPanel.classList.remove('show');
   if(eqPanel) eqPanel.classList.remove('show');
   if(smPanel) smPanel.classList.remove('show');
+  if(svPanel) svPanel.classList.remove('show');
   const willShow = show !== undefined ? show : !panel.classList.contains('show');
   panel.classList.toggle('show', willShow);
   if(willShow) refreshWalletPanel();
 }
+// ---------- SERVER popup: who's online, profile viewer, daily kill leaderboard ----------
+let serverTab = 'online';
+function toggleServerPanel(show){
+  const panel = document.getElementById('serverPanel');
+  if(!panel) return;
+  const invPanel = document.getElementById('inventoryPanel');
+  const eqPanel = document.getElementById('equipmentPanel');
+  const smPanel = document.getElementById('starMapPanel');
+  const wPanel = document.getElementById('walletPanel');
+  if(invPanel) invPanel.classList.remove('show');
+  if(eqPanel) eqPanel.classList.remove('show');
+  if(smPanel) smPanel.classList.remove('show');
+  if(wPanel) wPanel.classList.remove('show');
+  const willShow = show !== undefined ? show : !panel.classList.contains('show');
+  panel.classList.toggle('show', willShow);
+  if(willShow) refreshServerPanel();
+}
+function setServerTab(tab){
+  serverTab = tab;
+  document.getElementById('btnServerTabOnline').classList.toggle('active', tab==='online');
+  document.getElementById('btnServerTabLeaderboard').classList.toggle('active', tab==='leaderboard');
+  document.getElementById('serverOnlineSection').classList.toggle('active', tab==='online');
+  document.getElementById('serverLeaderboardSection').classList.toggle('active', tab==='leaderboard');
+  refreshServerPanel();
+}
+function refreshServerPanel(){
+  const panel = document.getElementById('serverPanel');
+  if(!panel || !panel.classList.contains('show')) return;
+  if(serverTab === 'online'){
+    const list = document.getElementById('serverOnlineList');
+    const ids = Object.keys(serverRoster).filter(id=> id !== (mpIdentity && mpIdentity.id));
+    if(ids.length === 0){
+      list.innerHTML = '<div class="ledgerEmpty">NO ONE ELSE ONLINE RIGHT NOW</div>';
+    } else {
+      // player names are already restricted to [A-Z0-9_-] by sanitizeCallsignInput
+      // (or the fixed GUEST-#### template for guests), so no HTML escaping needed here
+      list.innerHTML = ids.map(id=>{
+        const p = serverRoster[id];
+        return '<div class="prow clickable" data-roster-id="' + id + '" style="cursor:pointer;"><span>' + (p.name || '???') + '</span><span>LV ' + (p.level||1) + '</span></div>';
+      }).join('');
+      list.querySelectorAll('[data-roster-id]').forEach(row=>{
+        row.addEventListener('click', ()=> openProfilePanel(serverRoster[row.getAttribute('data-roster-id')]));
+      });
+    }
+  } else {
+    const list = document.getElementById('serverLeaderboardList');
+    list.innerHTML = '<div class="ledgerEmpty">LOADING…</div>';
+    fetchDailyLeaderboard().then(rows=>{
+      if(serverTab !== 'leaderboard') return; // player switched tabs while this was in flight
+      if(!rows || rows.length === 0){ list.innerHTML = '<div class="ledgerEmpty">NO KILLS RECORDED TODAY YET</div>'; return; }
+      list.innerHTML = rows.map((r,i)=>
+        '<div class="prow"><span>#' + (i+1) + ' ' + (r.name || '???') + '</span><span>' + r.kills + ' kills</span></div>'
+      ).join('');
+    });
+  }
+}
+document.getElementById('btnServer').addEventListener('click', ()=> toggleServerPanel());
+document.getElementById('btnCloseServer').addEventListener('click', ()=> toggleServerPanel(false));
+document.getElementById('btnServerTabOnline').addEventListener('click', ()=> setServerTab('online'));
+document.getElementById('btnServerTabLeaderboard').addEventListener('click', ()=> setServerTab('leaderboard'));
+
+// ---------- player profile popup (opened from the SERVER online list) ----------
+function openProfilePanel(p){
+  if(!p) return;
+  document.getElementById('profilePanelName').textContent = p.name || '???';
+  document.getElementById('profileShip').textContent = (SHIP_CLASSES[p.classKey] && SHIP_CLASSES[p.classKey].name) || p.classKey || 'UNKNOWN';
+  document.getElementById('profileLevel').textContent = p.level || 1;
+  document.getElementById('profileCredits').textContent = (p.credits || 0) + ' cr';
+  document.getElementById('profileKills').textContent = p.kills || 0;
+  const fmtProfileRep = r=> r + ' (Level ' + repLevel(r) + ')';
+  document.getElementById('profileNavyRep').textContent = fmtProfileRep(p.navyRep || 0);
+  document.getElementById('profileMiningRep').textContent = fmtProfileRep(p.miningRep || 0);
+  document.getElementById('profileTransportRep').textContent = fmtProfileRep(p.transportRep || 0);
+  document.getElementById('profileAchievements').textContent = (p.achievements || 0) + ' / ' + (p.achievementsTotal || ACHIEVEMENTS.length);
+  profilePanelTargetName = p.name || '';
+  document.getElementById('profilePanel').classList.add('show');
+}
+function closeProfilePanel(){ document.getElementById('profilePanel').classList.remove('show'); }
+let profilePanelTargetName = '';
+document.getElementById('btnCloseProfile').addEventListener('click', closeProfilePanel);
+document.getElementById('btnProfileMessage').addEventListener('click', ()=>{
+  closeProfilePanel();
+  toggleServerPanel(false);
+  const input = document.getElementById('chatInput');
+  if(input){ input.value = '/w ' + profilePanelTargetName + ' '; input.focus(); }
+});
 function setWalletTab(tab){
   walletTab = tab;
   document.getElementById('btnWalletTabLedger').classList.toggle('active', tab==='ledger');
@@ -8826,6 +9040,10 @@ document.getElementById('btnThrottleFull').addEventListener('click', ()=>{ setTh
   const v = document.getElementById('versionRead'); if(v) v.textContent = versionText;
   // the boot screen carries its own copy of the version line (see #bootCredits)
   const bv = document.getElementById('bootVersionRead'); if(bv) bv.textContent = versionText;
+  // build date + time, shown below the LAUNCH button specifically (not grouped
+  // with the version line above) -- see #bootBuildStamp
+  const stamp = document.getElementById('bootBuildStamp');
+  if(stamp) stamp.textContent = 'BUILD ' + GAME_LAST_EDITED + ' ' + GAME_BUILD_TIME;
 })();
 let settingsMenuOpen = false;
 function openSettingsMenu(){
@@ -9159,9 +9377,23 @@ async function fetchCloudSaveIntoPending(){
       .eq('server', currentServer)
       .maybeSingle();
     if(!error && data && data.save_data) pendingCloudSave = data.save_data;
-    else pendingCloudSave = null; // no row for THIS server -- don't let a stale
-                                    // fetch from a different server leak through
-  }catch(e){ /* offline or request failed -- LAUNCH falls back to local save below */ }
+    else {
+      pendingCloudSave = null; // no row for THIS server -- don't let a stale
+                                 // fetch from a different server leak through
+      // A real query error here (as opposed to "no row yet", which comes back
+      // as error:null/data:null from maybeSingle()) used to be swallowed
+      // silently -- from the player's side that looked identical to "no cloud
+      // save exists", i.e. progress quietly not syncing at all. The single most
+      // common cause: the player_saves table on a self-hosted Supabase project
+      // is missing the 'server' column (see cloudSyncSetupSql() below) -- surface
+      // it loudly instead so it's diagnosable from the boot screen/event log
+      // rather than looking like a mystery data reset.
+      if(error){ cloudSyncError = error.message || 'unknown error'; console.warn('[VOID DRIFT] cloud save fetch failed:', error); }
+    }
+  }catch(e){
+    cloudSyncError = (e && e.message) || 'network error';
+    console.warn('[VOID DRIFT] cloud save fetch threw:', e);
+  }
 }
 
 // Upserts the current getPlayerSaveData() snapshot to this account's cloud row.
@@ -9177,8 +9409,104 @@ async function pushCloudSave(){
         { user_id: currentUser.id, server: currentServer, save_data: getPlayerSaveData(), updated_at: new Date().toISOString() },
         { onConflict: 'user_id,server' }
       );
+    if(error){ cloudSyncError = error.message || 'unknown error'; console.warn('[VOID DRIFT] cloud save push failed:', error); }
     return !error;
-  }catch(e){ return false; }
+  }catch(e){ cloudSyncError = (e && e.message) || 'network error'; console.warn('[VOID DRIFT] cloud save push threw:', e); return false; }
+}
+// Set by fetchCloudSaveIntoPending()/pushCloudSave() the first time either one hits a
+// real error (missing table/column, RLS misconfigured, etc) rather than just "no save
+// yet". Surfaced once via flashMessage/logEvent right after LAUNCH (see startBtn
+// handler) so a broken cloud-save setup is visible instead of silently behaving like
+// a data reset. NAMING STABILITY: new identifier, safe to add.
+let cloudSyncError = null;
+// A complete, idempotent setup script for the player_saves table this game's cloud
+// save/account features depend on -- safe to paste into the Supabase SQL editor
+// whether the table already exists, already has the server column, or doesn't exist
+// at all yet. Printed to the console on demand (see the ESC menu's DIAGNOSTICS
+// button) rather than needing to hunt through this file's comments.
+function cloudSyncSetupSql(){
+  return [
+    "create table if not exists player_saves (",
+    "  user_id uuid not null references auth.users(id) on delete cascade,",
+    "  server text not null default 'PVE',",
+    "  save_data jsonb not null,",
+    "  updated_at timestamptz not null default now(),",
+    "  primary key (user_id, server)",
+    ");",
+    "alter table player_saves add column if not exists server text not null default 'PVE';",
+    "alter table player_saves enable row level security;",
+    "drop policy if exists \"players manage their own saves\" on player_saves;",
+    "create policy \"players manage their own saves\" on player_saves",
+    "  for all using (auth.uid() = user_id) with check (auth.uid() = user_id);",
+    "",
+    "-- daily kill leaderboard (SERVER popup -> LEADERBOARD tab)",
+    "create table if not exists daily_kills (",
+    "  user_id uuid not null references auth.users(id) on delete cascade,",
+    "  server text not null,",
+    "  day date not null,",
+    "  name text not null,",
+    "  kills int not null default 0,",
+    "  updated_at timestamptz not null default now(),",
+    "  primary key (user_id, server, day)",
+    ");",
+    "alter table daily_kills enable row level security;",
+    "drop policy if exists \"daily kills are publicly readable\" on daily_kills;",
+    "create policy \"daily kills are publicly readable\" on daily_kills for select using (true);",
+    "drop policy if exists \"players update their own daily kill count\" on daily_kills;",
+    "create policy \"players update their own daily kill count\" on daily_kills",
+    "  for insert with check (auth.uid() = user_id);",
+    "drop policy if exists \"players update their own daily kill count 2\" on daily_kills;",
+    "create policy \"players update their own daily kill count 2\" on daily_kills",
+    "  for update using (auth.uid() = user_id) with check (auth.uid() = user_id);",
+    "",
+    "-- shared, persistent station market stock (every player on a server sees/",
+    "-- affects the same buy/sell inventory instead of each client generating its own)",
+    "create table if not exists station_market (",
+    "  server text not null,",
+    "  station_id text not null,",
+    "  stock jsonb not null,",
+    "  updated_at timestamptz not null default now(),",
+    "  primary key (server, station_id)",
+    ");",
+    "alter table station_market enable row level security;",
+    "drop policy if exists \"station market is publicly readable\" on station_market;",
+    "create policy \"station market is publicly readable\" on station_market for select using (true);",
+    "drop policy if exists \"signed-in players can update station market\" on station_market;",
+    "create policy \"signed-in players can update station market\" on station_market",
+    "  for insert with check (auth.uid() is not null);",
+    "drop policy if exists \"signed-in players can update station market 2\" on station_market;",
+    "create policy \"signed-in players can update station market 2\" on station_market",
+    "  for update using (auth.uid() is not null) with check (auth.uid() is not null);"
+  ].join('\n');
+}
+
+// ---------- daily kill leaderboard (SERVER popup) ----------
+function todayKey(){ return new Date().toISOString().slice(0,10); } // UTC calendar day, e.g. "2026-09-23"
+// Best-effort -- a leaderboard write failing never blocks or rolls back the kill
+// itself (piratesKilled/XP/loot are all already applied by the caller). Read-then-
+// upsert rather than an atomic increment since this mock-free client has no RPC to
+// call; under real concurrent play this can occasionally undercount by 1 on a race,
+// which is an acceptable tradeoff for a leaderboard rather than the save/wallet path.
+async function recordKillForLeaderboard(){
+  if(!supabaseClient || !currentUser || !mpIdentity) return;
+  try{
+    const day = todayKey();
+    const { data } = await supabaseClient.from('daily_kills').select('kills').eq('user_id', currentUser.id).eq('server', currentServer).eq('day', day).maybeSingle();
+    const newKills = ((data && data.kills) || 0) + 1;
+    await supabaseClient.from('daily_kills').upsert(
+      { user_id: currentUser.id, server: currentServer, day, name: mpIdentity.name, kills: newKills, updated_at: new Date().toISOString() },
+      { onConflict: 'user_id,server,day' }
+    );
+  }catch(e){ /* leaderboard is best-effort */ }
+}
+async function fetchDailyLeaderboard(){
+  if(!supabaseClient) return [];
+  try{
+    const { data, error } = await supabaseClient.from('daily_kills')
+      .select('name,kills').eq('server', currentServer).eq('day', todayKey())
+      .order('kills', { ascending:false }).limit(10);
+    return (!error && data) ? data : [];
+  }catch(e){ return []; }
 }
 
 function setAuthBusy(busy, statusText){
@@ -9472,8 +9800,10 @@ let mpZoneChannel = null;
 let mpZoneChannelKey = null; // "<server>:<zoneKey>" currently joined, or null
 let mpZoneCheckAccum = 0;
 let mpBroadcastAccum = 0;
+let mpRosterTrackAccum = 0;
 const MP_BROADCAST_INTERVAL = 0.15; // ~6-7Hz outgoing position updates
 const MP_STALE_TIMEOUT = 8;         // seconds with no update before a remote ship is dropped
+const MP_ROSTER_TRACK_INTERVAL = 20; // seconds between re-publishing this player's SERVER-popup profile snapshot
 let remotePlayers = {};     // id -> entry (see spawnRemotePlayer)
 
 // ---------- connection status + reconnect handling ----------
@@ -9553,9 +9883,11 @@ function leaveMultiplayer(){
   mpReconnectAttempts = { chat:0, zone:0 };
   mpChatOk = false; mpZoneOk = false;
   mpLastHitFrom = {};
-  if(mpChatChannel){ try{ supabaseClient.removeChannel(mpChatChannel); }catch(e){} mpChatChannel = null; }
+  if(mpChatChannel){ try{ mpChatChannel.untrack(); }catch(e){} try{ supabaseClient.removeChannel(mpChatChannel); }catch(e){} mpChatChannel = null; }
   leaveZoneChannel();
   leaveAccountSessionChannel();
+  serverRoster = {};
+  mpRosterTrackAccum = 0;
   mpEnabled = false;
   updateMpStatusUI();
 }
@@ -9625,19 +9957,99 @@ function handleChatChannelStatus(status){
   }
   updateMpStatusUI();
 }
+// server-wide chat channel -- carries ONLY /a broadcasts and /w whispers now (see
+// sendChatMessage). Plain, unprefixed chat is zone-scoped and lives on the zone
+// channel instead (see joinZoneChannel's own 'chat' handler below).
+// serverRoster mirrors this server's presence state from the chat channel below --
+// every player currently LAUNCHed on this server, keyed by id, with the profile
+// fields the SERVER popup's ONLINE list and PROFILE popup read (see trackServerRosterPresence).
+// NAMING STABILITY: new identifier, safe to add.
+let serverRoster = {};
+// (Re)publishes this player's own profile snapshot to the server-wide presence
+// roster. Called once right after the chat channel subscribes, and periodically
+// afterward (see updateMultiplayer's mpRosterTrackAccum) so credits/level/kills/rep
+// shown to other players don't go stale for the rest of a long session.
+function trackServerRosterPresence(){
+  if(!mpChatChannel || !mpIdentity) return;
+  try{
+    mpChatChannel.track({
+      name: mpIdentity.name,
+      classKey: activeShipInstance ? activeShipInstance.classKey : 'starter',
+      level: playerLevel,
+      credits: bountyCredits,
+      kills: piratesKilled,
+      navyRep: maxStationRep('navy'),
+      miningRep: maxStationRep('mining'),
+      transportRep: maxStationRep('transport'),
+      achievements: earnedAchievements.size,
+      achievementsTotal: ACHIEVEMENTS.length
+    });
+  }catch(e){}
+}
+function rebuildServerRosterFromPresenceState(state){
+  serverRoster = {};
+  Object.keys(state || {}).forEach(key=>{
+    const entries = state[key];
+    if(entries && entries[0]) serverRoster[key] = entries[0];
+  });
+  if(document.getElementById('serverPanel').classList.contains('show')) refreshServerPanel();
+}
 function joinChatChannel(){
   if(!supabaseClient || !mpIdentity || mpChatChannel) return;
-  const ch = supabaseClient.channel('chat:' + currentServer, { config:{ broadcast:{ self:false } } });
+  const ch = supabaseClient.channel('chat:' + currentServer, { config:{ broadcast:{ self:false }, presence:{ key: mpIdentity.id } } });
   ch.on('broadcast', { event:'chat' }, (msg)=>{
     const p = msg.payload || {};
-    if(p.text) logEvent('[' + (p.name || '???') + ']: ' + p.text, 'chat');
+    if(p.text) logEvent('[ALL][' + (p.name || '???') + ']: ' + p.text, 'chat');
   });
-  ch.subscribe((status)=> handleChatChannelStatus(status));
+  ch.on('broadcast', { event:'whisper' }, (msg)=>{
+    const p = msg.payload || {};
+    // everyone on the server receives this broadcast (there's no per-recipient
+    // routing at the transport level), but only the one player whose name matches
+    // toName ever displays it -- functionally private even though it's not
+    // transport-encrypted, same tradeoff as every other broadcast in this game.
+    if(!p.text || !p.toName || !mpIdentity) return;
+    if(p.toName.toUpperCase() !== mpIdentity.name.toUpperCase()) return;
+    logEvent('[WHISPER FROM ' + (p.fromName || '???') + ']: ' + p.text, 'chat');
+  });
+  // server-wide presence -- powers the SERVER popup's ONLINE list/profiles. Synced
+  // wholesale on 'sync' (covers initial join and any missed join/leave events) plus
+  // incremental 'join'/'leave' so the list updates live while the popup is open.
+  ch.on('presence', { event:'sync' }, ()=> rebuildServerRosterFromPresenceState(ch.presenceState()));
+  ch.on('presence', { event:'join' }, ()=> rebuildServerRosterFromPresenceState(ch.presenceState()));
+  ch.on('presence', { event:'leave' }, ()=> rebuildServerRosterFromPresenceState(ch.presenceState()));
+  ch.subscribe((status)=>{
+    handleChatChannelStatus(status);
+    if(status === 'SUBSCRIBED') trackServerRosterPresence();
+  });
   mpChatChannel = ch;
 }
-function sendChatMessage(text){
-  if(!text || !mpChatChannel || !mpIdentity) return;
-  mpChatChannel.send({ type:'broadcast', event:'chat', payload:{ name: mpIdentity.name, text } });
+// Parses /a and /w command prefixes and routes accordingly; a plain message with no
+// prefix is zone-scoped (see joinZoneChannel's 'chat' handler). Always echoes
+// locally first, even when not connected to multiplayer at all, matching the
+// pre-existing "local echo as a guest/offline fallback" behavior this replaces.
+// NAMING STABILITY: the 'whisper' broadcast event and its {toName,fromName,text}
+// payload shape are new, safe to add, never rename once other copies rely on them.
+function sendChatMessage(rawText){
+  if(!rawText) return;
+  const text = rawText.trim();
+  if(!text) return;
+  const whisperMatch = text.match(/^\/w\s+(\S+)\s+([\s\S]+)$/i);
+  if(whisperMatch){
+    const toName = whisperMatch[1];
+    const body = whisperMatch[2];
+    logEvent('[YOU → ' + toName.toUpperCase() + ']: ' + body, 'chat');
+    if(mpChatChannel && mpIdentity) mpChatChannel.send({ type:'broadcast', event:'whisper', payload:{ toName, fromName: mpIdentity.name, text: body } });
+    return;
+  }
+  const allMatch = text.match(/^\/a\s+([\s\S]+)$/i);
+  if(allMatch){
+    const body = allMatch[1];
+    logEvent('[ALL][YOU]: ' + body, 'chat');
+    if(mpChatChannel && mpIdentity) mpChatChannel.send({ type:'broadcast', event:'chat', payload:{ name: mpIdentity.name, text: body, scope:'all' } });
+    return;
+  }
+  logEvent('[YOU]: ' + text, 'chat');
+  if(mpZoneChannel && mpIdentity) mpZoneChannel.send({ type:'broadcast', event:'chat', payload:{ name: mpIdentity.name, text } });
 }
 
 function mpChannelKeyFor(zoneKey){ return currentServer + ':' + zoneKey; }
@@ -9676,6 +10088,13 @@ function joinZoneChannel(zoneKey){
   const ch = supabaseClient.channel('zone:' + key, { config:{ presence:{ key: mpIdentity.id }, broadcast:{ self:false } } });
   ch.on('broadcast', { event:'pos' }, (msg)=> handleRemotePos(msg.payload));
   ch.on('broadcast', { event:'hit' }, (msg)=> handleIncomingHit(msg.payload));
+  // plain (unprefixed) chat -- zone-scoped by construction: only players currently
+  // subscribed to THIS zone's channel ever receive it. See sendChatMessage for
+  // /a (all-zone) and /w (whisper), which go over the separate server-wide channel.
+  ch.on('broadcast', { event:'chat' }, (msg)=>{
+    const p = msg.payload || {};
+    if(p.text) logEvent('[' + (p.name || '???') + ']: ' + p.text, 'chat');
+  });
   ch.on('presence', { event:'leave' }, ({ key })=>{
     const entry = remotePlayers[key];
     if(entry) removeRemotePlayer(entry);
@@ -9778,6 +10197,11 @@ function updateMultiplayer(dt){
     mpZoneCheckAccum = 0;
     joinZoneChannel(currentZoneKey());
   }
+  mpRosterTrackAccum += dt;
+  if(mpRosterTrackAccum >= MP_ROSTER_TRACK_INTERVAL){
+    mpRosterTrackAccum = 0;
+    trackServerRosterPresence();
+  }
   Object.keys(remotePlayers).forEach(id=>{
     const e = remotePlayers[id];
     if((performance.now() - e.lastUpdate) > MP_STALE_TIMEOUT*1000){ removeRemotePlayer(e); return; }
@@ -9835,6 +10259,16 @@ document.getElementById('btnResetHud').addEventListener('click', ()=>{
   managedPanels.forEach(p=> p.resetLayout());
   flashMessage('HUD LAYOUT RESET', 'good');
 });
+document.getElementById('btnCopyDbSetup').addEventListener('click', async ()=>{
+  const sql = cloudSyncSetupSql();
+  try{
+    await navigator.clipboard.writeText(sql);
+    flashMessage('SQL COPIED TO CLIPBOARD', 'good');
+  }catch(e){
+    console.log('[VOID DRIFT] player_saves setup SQL (clipboard copy failed, printed instead):\n' + sql);
+    flashMessage('CLIPBOARD FAILED -- SQL PRINTED TO CONSOLE', 'warn');
+  }
+});
 
 // ---------- bottom-left event log chat input -- broadcast over the current
 // server's Supabase Realtime chat channel (see sendChatMessage/joinChatChannel);
@@ -9849,7 +10283,8 @@ if(chatInputEl){
     if(e.key === 'Enter'){
       const text = chatInputEl.value.trim();
       if(text){
-        logEvent('[YOU]: ' + text, 'chat');
+        // sendChatMessage handles its own local echo (varies by /a, /w, or plain
+        // zone chat) as well as actually routing the message -- see its comments
         sendChatMessage(text);
         chatInputEl.value = '';
       }
@@ -10572,6 +11007,7 @@ function damagePirate(entry, dmg){
     logEvent(deathName.toUpperCase() + ' DESTROYED', 'good');
     gainXP(xpAward);
     piratesKilled++; // wallet stat (item 3b)
+    recordKillForLeaderboard();
     if(entry.isCaptain) captainsKilled++; // medals tracking
     spawnWreck(deathPos, deathName, entry.ammo||0, entry.isCaptain);
     entry.isCaptain = false; // cleared so the slot's next ordinary respawn isn't still tagged
@@ -11061,6 +11497,7 @@ function damageBountyHunter(entry, dmg){
     logEvent(entry.name.toUpperCase() + ' DESTROYED', 'good');
     gainXP(XP_PER_KILL*3);
     piratesKilled++; // wallet stat (item 3b) -- counts hostile-ship kills generally
+    recordKillForLeaderboard();
     spawnWreck(deathPos, entry.name, entry.ammo||0);
     removeBountyHunter(entry);
   }
@@ -12541,6 +12978,14 @@ document.getElementById('startBtn').addEventListener('click', async ()=>{
     savePlayerData();
   }
   pendingCloudSave = null;
+  // surface a broken cloud-save setup loudly rather than let it silently look like
+  // a data reset -- see fetchCloudSaveIntoPending()/cloudSyncSetupSql()
+  if(currentUser && cloudSyncError){
+    flashMessage('CLOUD SYNC UNAVAILABLE -- SEE SETTINGS', 'warn');
+    logEvent('=== CLOUD SAVE SYNC FAILED: ' + cloudSyncError + ' -- progress is only saving to THIS browser until this is fixed. Open SETTINGS and use COPY DB SETUP SQL, then run it in your Supabase project\'s SQL editor. ===', 'warn');
+    const btn = document.getElementById('btnCopyDbSetup');
+    if(btn) btn.style.display = '';
+  }
   // multiplayer roadmap step 3: join the chosen server's chat + zone channels now
   // that shipState.pos/currentZoneKey() reflect wherever the save (or default
   // spawn) just put the player
