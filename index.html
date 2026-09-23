@@ -404,6 +404,30 @@
   #zoneAlert.warn{ color:var(--danger); text-shadow:0 0 8px rgba(255,60,60,0.7); border-color:rgba(255,77,77,0.6); }
   #zoneAlert.good{ color:var(--xp); text-shadow:0 0 8px rgba(201,141,255,0.7); }
 
+  /* full-width "an update is live" bar, pinned to the very top of the viewport --
+     deliberately NOT the same fade-and-vanish language as the banners above: this
+     one stays up until the player reloads or dismisses it, since it's telling them
+     something true for the rest of this tab's life, not a one-off event. See
+     checkForUpdate(). */
+  #updateBanner{
+    display:none; position:fixed; top:0; left:0; right:0; z-index:90;
+    background:rgba(255,176,32,0.16); border-bottom:1px solid var(--amber);
+    font-family:'VT323',monospace; font-size:15px; letter-spacing:1px; color:var(--amber);
+    padding:6px calc(10px + env(safe-area-inset-right,0px)) 6px calc(10px + env(safe-area-inset-left,0px));
+    padding-top:calc(6px + env(safe-area-inset-top,0px));
+    align-items:center; justify-content:center; gap:14px; pointer-events:auto; text-align:center;
+    flex-wrap:wrap;
+  }
+  #updateBanner.show{ display:flex; }
+  #updateBanner button{
+    font-family:'VT323',monospace; font-size:14px; letter-spacing:1px;
+    background:transparent; border:1px solid var(--amber); color:var(--amber);
+    padding:3px 12px; cursor:pointer; pointer-events:auto;
+  }
+  #updateBanner button:hover{ background:rgba(255,176,32,0.22); }
+  #updateBanner .updDismiss{ border-color:var(--panel-border); color:var(--phosphor-dim); }
+  #updateBanner .updDismiss:hover{ background:rgba(109,255,194,0.12); }
+
   /* top-center target-lock banner (separate element, same visual language) -- stacked
      just below #zoneAlert; see lockMessage() */
   #lockAlert{
@@ -1031,6 +1055,11 @@
 <body>
 
 <canvas id="gameCanvas"></canvas>
+<div id="updateBanner">
+  <span>A NEWER VERSION OF THIS GAME IS AVAILABLE</span>
+  <button id="btnUpdateReload">RELOAD NOW</button>
+  <button class="updDismiss" id="btnUpdateDismiss">DISMISS</button>
+</div>
 <div id="scanlines"></div>
 <div id="vignette"></div>
 <div id="orientationGuard">
@@ -1585,8 +1614,44 @@
 // compatibility depends on it. Add new keys, don't rename old ones.
 
 // ---------- version / build info (shown in the ESC settings menu) ----------
-const GAME_VERSION = "0.11.0";
-const GAME_LAST_EDITED = "2026-09-22";
+const GAME_VERSION = "0.12.0";
+const GAME_LAST_EDITED = "2026-09-23";
+
+// ---------- update-available banner ----------
+// Periodically re-fetches this very page (same-origin -- works identically whether
+// this copy is hosted on GitHub Pages, itch.io, or anywhere else) and compares the
+// GAME_VERSION embedded in the fresh copy against the one this already-loaded tab
+// is running. If they differ, someone published a newer build while this tab was
+// open. Shown as a dismissible top banner rather than a forced reload -- yanking
+// the page out from under someone mid-dogfight would be worse than a stale copy.
+// NAMING STABILITY: 'checkForUpdate'/'#updateBanner' are new identifiers, safe to add.
+const UPDATE_CHECK_INTERVAL_MS = 5 * 60 * 1000; // every 5 minutes
+let updateBannerDismissed = false;
+let updateAvailable = false;
+async function checkForUpdate(){
+  if(updateBannerDismissed || updateAvailable) return;
+  try{
+    const res = await fetch(location.href, { cache:'no-store' });
+    if(!res.ok) return;
+    const text = await res.text();
+    const m = text.match(/const GAME_VERSION\s*=\s*"([^"]+)"/);
+    if(m && m[1] && m[1] !== GAME_VERSION){
+      updateAvailable = true;
+      const banner = document.getElementById('updateBanner');
+      if(banner) banner.classList.add('show');
+    }
+  }catch(e){ /* offline, or the fetch got blocked -- silently skip, try again next interval */ }
+}
+setInterval(checkForUpdate, UPDATE_CHECK_INTERVAL_MS);
+// also check shortly after boot, in case a new version already dropped while this
+// tab was sitting on the boot screen before LAUNCH was even clicked
+setTimeout(checkForUpdate, 30000);
+document.getElementById('btnUpdateReload').addEventListener('click', ()=> window.location.reload());
+document.getElementById('btnUpdateDismiss').addEventListener('click', ()=>{
+  updateBannerDismissed = true;
+  const banner = document.getElementById('updateBanner');
+  if(banner) banner.classList.remove('show');
+});
 
 // ---------- Supabase (accounts + cloud save -- multiplayer roadmap step 2) ----------
 // The anon/public key below is MEANT to be public (it ships in every client that
@@ -9480,6 +9545,7 @@ function initMultiplayer(){
   mpEnabled = true;
   joinChatChannel();
   joinZoneChannel(currentZoneKey());
+  joinAccountSessionChannel();
   updateMpStatusUI();
 }
 function leaveMultiplayer(){
@@ -9489,8 +9555,65 @@ function leaveMultiplayer(){
   mpLastHitFrom = {};
   if(mpChatChannel){ try{ supabaseClient.removeChannel(mpChatChannel); }catch(e){} mpChatChannel = null; }
   leaveZoneChannel();
+  leaveAccountSessionChannel();
   mpEnabled = false;
   updateMpStatusUI();
+}
+
+// ---------- single-active-session enforcement (account:<uid>) ----------
+// Same account, signed in twice at once (two tabs, two devices, or -- the
+// motivating case -- the GitHub-hosted copy open in one place and the itch.io-
+// hosted copy open in another) used to just silently run both: two independent
+// sets of local state both writing to the same cloud save on their own schedule,
+// last write wins. This makes only the MOST RECENTLY LAUNCHED copy win outright,
+// and disconnects any earlier one.
+//
+// Mechanism: everyone signed into this account subscribes to one shared Realtime
+// broadcast channel, keyed only by the account id (deliberately NOT scoped to
+// currentServer -- this is about one person's account being open twice, not about
+// which server they picked). The moment a new copy finishes subscribing, it
+// broadcasts a fresh random 'claim' token. Every OTHER copy already listening on
+// that channel hears it (self:false means a copy never hears its own claim) and,
+// since its own token no longer matches the latest one broadcast, knows it's been
+// superseded and disconnects itself. No new Supabase table/SQL needed -- this is
+// pure Realtime broadcast, same primitive already used for chat/pos/hit.
+// NAMING STABILITY: 'account:'-prefixed channel names and the 'claim' broadcast
+// event are new identifiers, safe to add, never rename once other copies rely on them.
+let mpAccountChannel = null;
+let mySessionToken = null;
+let sessionTakenOver = false;
+function joinAccountSessionChannel(){
+  if(!supabaseClient || !currentUser || mpAccountChannel) return;
+  mySessionToken = 'sess_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2);
+  const ch = supabaseClient.channel('account:' + currentUser.id, { config:{ broadcast:{ self:false } } });
+  ch.on('broadcast', { event:'claim' }, (msg)=>{
+    const p = msg.payload || {};
+    if(p.token && p.token !== mySessionToken) handleSessionTakenOver();
+  });
+  ch.subscribe((status)=>{
+    if(status === 'SUBSCRIBED'){
+      // announce our claim -- any other copy of this account already listening on
+      // this same channel hears this and backs out, since it isn't their token
+      ch.send({ type:'broadcast', event:'claim', payload:{ token: mySessionToken, ts: Date.now() } });
+    }
+  });
+  mpAccountChannel = ch;
+}
+function leaveAccountSessionChannel(){
+  if(mpAccountChannel){ try{ supabaseClient.removeChannel(mpAccountChannel); }catch(e){} mpAccountChannel = null; }
+  mySessionToken = null;
+}
+function handleSessionTakenOver(){
+  if(sessionTakenOver) return; // only act on the first claim we see
+  sessionTakenOver = true;
+  flashMessage('LOGGED IN ELSEWHERE', 'warn');
+  logEvent('=== THIS ACCOUNT WAS LOGGED IN ON ANOTHER DEVICE/TAB -- DISCONNECTING ===', 'warn');
+  // save locally so nothing earned this session is lost, but deliberately do NOT
+  // push a cloud save here -- the other, newer session is now the authoritative
+  // one, and a stale write from this side could clobber its progress
+  try{ savePlayerData(); }catch(e){}
+  leaveMultiplayer();
+  setTimeout(()=>{ window.location.reload(); }, 2200);
 }
 
 function handleChatChannelStatus(status){
