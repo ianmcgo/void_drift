@@ -449,6 +449,22 @@
   }
   .popupPanel.show{display:flex;}
   .popupPanel .popupBody{ flex:1 1 auto; min-height:0; overflow-y:auto; overflow-x:hidden; }
+  /* slim, theme-colored scrollbar for every internally-scrolling panel body (WALLET's
+     STATS/MEDALS tabs, cargo/equipment popups, the docking bay, HELP) -- replaces each
+     browser's bulky default scrollbar, which read as a jarring light-grey slab against
+     this HUD's thin phosphor-green borders. scrollbar-width/-color covers Firefox; the
+     ::-webkit-scrollbar rules cover Chrome/Safari/Edge. */
+  .popupPanel .popupBody, #dockedPanel, #helpMenu, #overview .list, #eventLog .list{
+    scrollbar-width:thin; scrollbar-color:var(--panel-border) transparent;
+  }
+  .popupPanel .popupBody::-webkit-scrollbar, #dockedPanel::-webkit-scrollbar, #helpMenu::-webkit-scrollbar,
+  #overview .list::-webkit-scrollbar, #eventLog .list::-webkit-scrollbar{ width:6px; }
+  .popupPanel .popupBody::-webkit-scrollbar-track, #dockedPanel::-webkit-scrollbar-track, #helpMenu::-webkit-scrollbar-track,
+  #overview .list::-webkit-scrollbar-track, #eventLog .list::-webkit-scrollbar-track{ background:transparent; }
+  .popupPanel .popupBody::-webkit-scrollbar-thumb, #dockedPanel::-webkit-scrollbar-thumb, #helpMenu::-webkit-scrollbar-thumb,
+  #overview .list::-webkit-scrollbar-thumb, #eventLog .list::-webkit-scrollbar-thumb{
+    background-color:var(--panel-border); border-radius:3px;
+  }
   .popupPanel .phdr{
     font-family:'VT323',monospace; font-size:19px; letter-spacing:2px; color:var(--amber);
     display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;
@@ -667,6 +683,20 @@
   #hardcoreConfirmPanel p{ font-size:13px; color:var(--phosphor-dim); line-height:1.6; margin:0; text-align:left; }
   #hardcoreConfirmPanel p b.warn{ color:var(--danger); }
   #hardcoreConfirmPanel .dbtns{display:flex; flex-direction:column; gap:10px; margin-top:16px;}
+
+  /* CALLSIGN picker -- same centered panel-color modal language as #authPanel */
+  #callsignPanel{
+    display:none;
+    top:50%; left:50%; transform:translate(-50%,-50%);
+    width:min(92vw,360px);
+    background:var(--panel-bg); border:1px solid var(--panel-border);
+    padding:20px 24px 22px; text-align:center; pointer-events:auto; z-index:110;
+  }
+  #callsignPanel.show{display:block;}
+  #callsignPanel h2{ font-family:'VT323',monospace; font-size:24px; letter-spacing:3px; color:var(--amber); margin:0 0 10px; text-shadow:0 0 8px rgba(255,176,32,0.5); }
+  #callsignPanelDesc{ font-size:13px; color:var(--phosphor-dim); line-height:1.6; margin:0 0 4px; text-align:left; }
+  #callsignPanel .dbtns{display:flex; flex-direction:column; gap:10px; margin-top:14px;}
+  #callsignError{ color:var(--danger); font-size:12px; margin-top:10px; min-height:1em; letter-spacing:0.5px; }
 
   /* HELP window -- reached from the settings menu (see openHelpMenu), holds the
      tutorial/how-to-play text that used to sit on the boot screen. Same panel-color
@@ -1077,6 +1107,25 @@
   </div>
 </div>
 
+<!-- CALLSIGN picker -- shared by two flows (see openCallsignPanel(mode)): the free
+     one-time pick offered in-game to any signed-in account with no callsign set yet
+     (new registrations included -- there's deliberately no separate "pick a callsign"
+     step in the REGISTER form itself, this one modal covers both), and the paid
+     1000-credit change from the WALLET -> STATS tab, gated to once per real day. -->
+<div class="hud" id="callsignPanel">
+  <h2>CALLSIGN</h2>
+  <p id="callsignPanelDesc">Pick the name other pilots will see. This one's free.</p>
+  <div class="settingsRow">
+    <label for="callsignInput">CALLSIGN</label>
+    <input type="text" id="callsignInput" maxlength="16" autocomplete="off" spellcheck="false">
+  </div>
+  <div id="callsignError"></div>
+  <div class="dbtns">
+    <button class="cmdbtn" id="btnCallsignConfirm">CONFIRM</button>
+    <button class="cmdbtn danger" id="btnCallsignCancel">CANCEL</button>
+  </div>
+</div>
+
 <div class="hud" id="telemetry">
   <div class="name"><span id="shipNameRead">WAYFARER-1</span></div>
   <div class="row"><span>VELOCITY</span><span id="velRead">0 m/s</span></div>
@@ -1166,7 +1215,12 @@
       <div id="walletLedgerList"></div>
     </div>
     <div class="walletTabSection" id="walletStatsSection">
-      <div class="psection" style="margin-top:0;">COMBAT</div>
+      <div class="psection" style="margin-top:0;" id="statIdentitySection">IDENTITY</div>
+      <div class="prow"><span>Callsign</span><span id="statCallsign">GUEST</span></div>
+      <div class="prow clickable" id="statCallsignChangeRow" style="margin-top:4px;">
+        <button class="cmdbtn" id="btnCallsignChange" style="flex:1; font-size:12px; padding:5px 4px;">CHANGE (1000 CR)</button>
+      </div>
+      <div class="psection">COMBAT</div>
       <div class="prow"><span>Fighting Level</span><span id="statFightLevel">1</span></div>
       <div class="prow"><span id="statFightXpLabel">0 / 120 XP</span><span></span></div>
       <div class="pbar" id="statFightXpBar"><i id="statFightXpFill"></i></div>
@@ -8127,6 +8181,7 @@ function refreshWalletPanel(){
             + '<span class="ldDesc">' + e.desc + '</span><span>' + e.t + '</span></div>';
         }).join('');
   } else {
+    updateCallsignStatRow();
     document.getElementById('statFightLevel').textContent = playerLevel;
     const need = xpToNext(playerLevel);
     document.getElementById('statFightXpLabel').textContent = playerXP + ' / ' + need + ' XP';
@@ -8818,6 +8873,13 @@ function getPlayerSaveData(){
     gameVersion: GAME_VERSION,
     server: currentServer,
     savedAt: Date.now(),
+    // last flight position/facing -- restored on the next LAUNCH so the player
+    // resumes where they actually logged out instead of always at the station
+    // spawn point (see applyPlayerSaveData's restore of these two below). Only
+    // ever saved while flying (SAVE & EXIT is unreachable while docked -- see
+    // handleEscapeAction), so there's no "docked" position to worry about here.
+    pos: { x: shipState.pos.x, y: shipState.pos.y, z: shipState.pos.z },
+    quat: { x: ship.quaternion.x, y: ship.quaternion.y, z: ship.quaternion.z, w: ship.quaternion.w },
     hull: shipState.hull,
     shield: shipState.shield,
     playerLevel: playerLevel,
@@ -8962,6 +9024,22 @@ function applyPlayerSaveData(d){
   // restored max in case equipment/hull changed since the save was made
   if(typeof d.hull === 'number') shipState.hull = Math.min(d.hull, shipState.maxHull);
   if(typeof d.shield === 'number') shipState.shield = Math.min(d.shield, shipState.maxShield);
+
+  // resume in the same spot the player actually logged out from, instead of always
+  // snapping back to the station spawn point -- overwrites whatever the ship/pod
+  // setup above defaulted to (enterEscapePod({resetPosition:true}) included). Comes
+  // last so it always wins, and is skipped entirely for an older save made before
+  // this existed (no d.pos) -- that falls back to the previous station-spawn
+  // behavior exactly as before, per the NAMING STABILITY additive-only rule.
+  if(d.pos && typeof d.pos.x === 'number'){
+    shipState.pos.set(d.pos.x, d.pos.y, d.pos.z);
+    ship.position.copy(shipState.pos);
+    if(d.quat && typeof d.quat.x === 'number') ship.quaternion.set(d.quat.x, d.quat.y, d.quat.z, d.quat.w);
+    // a brief grace window on arrival, same idea as undocking/warping in -- resuming
+    // instantly next to a pirate that was mid-attack when the tab closed shouldn't
+    // be a free kill
+    shipState.invuln = 2.0;
+  }
 
   updateCargoUI();
   refreshEquipmentPanel();
@@ -9131,6 +9209,118 @@ if(supabaseClient){
 }
 updateAccountUI();
 
+// ---------- callsign (display name for signed-in accounts) ----------
+// Stored in the Supabase auth user's own user_metadata (no extra table/SQL needed --
+// supabase.auth.updateUser({data:{...}}) merges into it, and it comes back on every
+// sign-in as currentUser.user_metadata). Two ways to set it, same modal
+// (#callsignPanel, opened via openCallsignPanel(mode)):
+//   'free' -- any signed-in account with no callsign yet (a brand-new registration,
+//             or an existing pre-callsign account) is offered one free pick, in-game,
+//             right after LAUNCH -- see the startBtn handler.
+//   'paid' -- WALLET -> STATS' CHANGE button, 1000 credits, gated to once per real day.
+const CALLSIGN_CHANGE_COOLDOWN_MS = 24 * 60 * 60 * 1000;
+const CALLSIGN_CHANGE_COST = 1000;
+function getCallsign(){
+  return (currentUser && currentUser.user_metadata && currentUser.user_metadata.callsign) || null;
+}
+function getCallsignChangedAt(){
+  return (currentUser && currentUser.user_metadata && currentUser.user_metadata.callsignChangedAt) || null;
+}
+function canChangeCallsignNow(){
+  const last = getCallsignChangedAt();
+  if(!last) return true;
+  return (Date.now() - new Date(last).getTime()) >= CALLSIGN_CHANGE_COOLDOWN_MS;
+}
+// 2-16 chars, letters/digits/-/_ only -- same rough shape as the GUEST-#### names
+// this replaces, kept simple since it's broadcast to other players' event logs/chat
+function sanitizeCallsignInput(raw){
+  const s = (raw || '').trim().toUpperCase();
+  return /^[A-Z0-9_-]{2,16}$/.test(s) ? s : null;
+}
+let callsignPanelMode = 'free';
+function openCallsignPanel(mode){
+  callsignPanelMode = mode;
+  const desc = document.getElementById('callsignPanelDesc');
+  const confirmBtn = document.getElementById('btnCallsignConfirm');
+  if(mode === 'paid'){
+    if(desc) desc.textContent = 'Pick a new callsign for ' + CALLSIGN_CHANGE_COST + ' credits. Limited to once per day.';
+    if(confirmBtn) confirmBtn.textContent = 'CONFIRM — ' + CALLSIGN_CHANGE_COST + ' CR';
+  } else {
+    if(desc) desc.textContent = 'Pick the name other pilots will see. This one\'s free -- changing it later costs ' + CALLSIGN_CHANGE_COST + ' credits, once per day.';
+    if(confirmBtn) confirmBtn.textContent = 'CONFIRM';
+  }
+  const input = document.getElementById('callsignInput');
+  if(input) input.value = getCallsign() || '';
+  const err = document.getElementById('callsignError');
+  if(err) err.textContent = '';
+  document.getElementById('callsignPanel').classList.add('show');
+}
+function closeCallsignPanel(){
+  document.getElementById('callsignPanel').classList.remove('show');
+}
+async function submitCallsignChange(){
+  if(!supabaseClient || !currentUser) return;
+  const raw = document.getElementById('callsignInput').value;
+  const clean = sanitizeCallsignInput(raw);
+  const err = document.getElementById('callsignError');
+  if(!clean){ if(err) err.textContent = '2-16 CHARACTERS -- LETTERS, NUMBERS, - OR _ ONLY'; return; }
+  if(callsignPanelMode === 'paid'){
+    if(!canChangeCallsignNow()){ if(err) err.textContent = 'ALREADY CHANGED TODAY -- TRY AGAIN LATER'; return; }
+    if(bountyCredits < CALLSIGN_CHANGE_COST){ if(err) err.textContent = 'NOT ENOUGH CREDITS'; return; }
+  }
+  const confirmBtn = document.getElementById('btnCallsignConfirm');
+  if(confirmBtn) confirmBtn.disabled = true;
+  try{
+    const { data, error } = await supabaseClient.auth.updateUser({ data: { callsign: clean, callsignChangedAt: new Date().toISOString() } });
+    if(error){ if(err) err.textContent = error.message.toUpperCase(); return; }
+    currentUser = data.user;
+    if(callsignPanelMode === 'paid'){
+      bountyCredits -= CALLSIGN_CHANGE_COST;
+      addLedgerEntry(-CALLSIGN_CHANGE_COST, 'Callsign change: ' + clean);
+    }
+    // keep the live multiplayer identity/presence in sync -- otherwise other
+    // players (and your own chat lines) would keep showing the old name until
+    // the next LAUNCH re-derives mpIdentity from scratch
+    if(mpIdentity){
+      mpIdentity.name = clean;
+      if(mpZoneChannel && mpZoneOk) mpZoneChannel.track({ id: mpIdentity.id, name: mpIdentity.name, classKey: activeShipInstance ? activeShipInstance.classKey : 'starter' });
+    }
+    closeCallsignPanel();
+    flashMessage('CALLSIGN SET: ' + clean, 'good');
+    logEvent('CALLSIGN SET TO ' + clean, 'good');
+    updateCallsignStatRow();
+  }catch(e){ if(err) err.textContent = 'NETWORK ERROR -- TRY AGAIN'; }
+  if(confirmBtn) confirmBtn.disabled = false;
+}
+document.getElementById('btnCallsignConfirm').addEventListener('click', submitCallsignChange);
+document.getElementById('btnCallsignCancel').addEventListener('click', closeCallsignPanel);
+// WALLET -> STATS' CALLSIGN row + CHANGE button (called from refreshWalletPanel)
+function updateCallsignStatRow(){
+  const section = document.getElementById('statIdentitySection');
+  const row = document.getElementById('statCallsignChangeRow');
+  const label = document.getElementById('statCallsign');
+  const changeBtn = document.getElementById('btnCallsignChange');
+  if(!label) return;
+  if(!currentUser){
+    // guests have no account to attach a callsign to -- the whole IDENTITY
+    // section is irrelevant for them, not just the change button
+    if(section) section.style.display = 'none';
+    if(label.parentElement) label.parentElement.style.display = 'none';
+    if(row) row.style.display = 'none';
+    return;
+  }
+  if(section) section.style.display = '';
+  if(label.parentElement) label.parentElement.style.display = '';
+  if(row) row.style.display = '';
+  label.textContent = getCallsign() || '(NOT SET)';
+  if(changeBtn){
+    const onCooldown = !canChangeCallsignNow();
+    changeBtn.disabled = onCooldown || bountyCredits < CALLSIGN_CHANGE_COST;
+    changeBtn.textContent = onCooldown ? 'CHANGE — AVAILABLE TOMORROW' : 'CHANGE (' + CALLSIGN_CHANGE_COST + ' CR)';
+  }
+}
+document.getElementById('btnCallsignChange').addEventListener('click', ()=> openCallsignPanel('paid'));
+
 // ---------- multiplayer servers (roadmap step 3) ----------
 // Three named servers, chosen on the boot screen (see #bootServerRow), each its
 // own Supabase Realtime namespace -- a PVE player never even receives PVP/HARDCORE
@@ -9270,7 +9460,7 @@ function updateMpStatusUI(){
 }
 
 function resolvePlayerIdentity(){
-  if(currentUser) return { id: currentUser.id, name: currentUser.email.split('@')[0].toUpperCase() };
+  if(currentUser) return { id: currentUser.id, name: getCallsign() || currentUser.email.split('@')[0].toUpperCase() };
   let guestId = null, guestName = null;
   try{
     guestId = localStorage.getItem('voidDriftGuestId');
@@ -12209,13 +12399,15 @@ document.getElementById('startBtn').addEventListener('click', async ()=>{
   if(currentUser) await fetchCloudSaveIntoPending();
   // restore a previous save, if any, BEFORE dropping the player into the belt --
   // see applyPlayerSaveData()'s own comments for exactly what is and isn't
-  // restored (always resumes at the station spawn point). A signed-in account's
-  // cloud save for THIS server takes priority over this browser's local save for
-  // THIS server -- that's the whole point of an account: whichever device you
-  // signed in on last is the one that's current. A brand-new account with no
-  // cloud save yet just falls through to the local save, if this browser happens
-  // to have one (first-time sync-up). Each server's save is entirely separate
-  // (see saveStorageKeyFor) -- this never touches another server's progress.
+  // restored (resumes at the exact position/heading the ship was at on its last
+  // SAVE & EXIT, via the saved pos/quat -- no save yet just falls back to the
+  // default station spawn point). A signed-in account's cloud save for THIS
+  // server takes priority over this browser's local save for THIS server --
+  // that's the whole point of an account: whichever device you signed in on
+  // last is the one that's current. A brand-new account with no cloud save yet
+  // just falls through to the local save, if this browser happens to have one
+  // (first-time sync-up). Each server's save is entirely separate (see
+  // saveStorageKeyFor) -- this never touches another server's progress.
   const savedGame = pendingCloudSave || loadPlayerSaveRaw();
   if(savedGame){
     applyPlayerSaveData(savedGame);
@@ -12230,6 +12422,10 @@ document.getElementById('startBtn').addEventListener('click', async ()=>{
   // that shipState.pos/currentZoneKey() reflect wherever the save (or default
   // spawn) just put the player
   initMultiplayer();
+  // free one-time callsign pick: any signed-in account that hasn't chosen one yet
+  // (brand-new registrations and pre-existing accounts alike) gets prompted here,
+  // once, for free -- see openCallsignPanel/submitCallsignChange
+  if(currentUser && !getCallsign()) openCallsignPanel('free');
   // drop straight into the belt already under way: cruise at the default 25% throttle
   // cap and lock the nearest contact
   setCommand('forward');
