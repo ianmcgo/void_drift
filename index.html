@@ -149,26 +149,26 @@
     padding:12px 34px; cursor:pointer; pointer-events:auto;
   }
   #bootscreen .startbtn:hover{background:rgba(109,255,194,0.12);}
-  /* build date/time stamp, deliberately placed below LAUNCH (not up with the rest
-     of #bootCredits) -- see GAME_LAST_EDITED/GAME_BUILD_TIME and the JS that fills
-     this in on boot */
-  #bootBuildStamp{ flex:0 0 auto; margin-top:8px; font-size:11px; letter-spacing:1px; color:var(--phosphor-dim); }
+  /* version/date/time + author credit, deliberately placed below LAUNCH at the
+     bottom of the page -- see GAME_LAST_EDITED/GAME_BUILD_TIME and the JS that
+     fills #bootVersionRead in on boot */
+  #bootBuildStamp{ flex:0 0 auto; margin-top:18px; font-size:12px; letter-spacing:1px; color:var(--phosphor-dim); line-height:1.8; }
+  #bootBuildStamp a{color:var(--phosphor-dim);}
   /* .keys is shared by the (now-removed-from-boot) tutorial text and the HELP
      window reachable from the settings menu -- kept unscoped (not #bootscreen .keys)
      so both places render it identically */
   .keys{margin-top:22px; font-size:15px; color:var(--phosphor-dim); line-height:1.8; text-align:left;}
   .keys b{color:var(--phosphor);}
   .keys b.warn{color:var(--danger);}
-  #bootCredits{margin-top:24px; font-size:14px; color:var(--phosphor-dim); line-height:1.8;}
-  #bootCredits a{color:var(--phosphor-dim);}
   /* only relevant (and only shown) on touch/coarse-pointer devices -- see the
      mobile-only auto-fullscreen-on-LAUNCH block in the startBtn click handler */
   #mobileFullscreenWarning{ display:none; margin-top:16px; font-size:13px; color:var(--amber); letter-spacing:1px; max-width:420px; }
   @media (pointer:coarse){
     #mobileFullscreenWarning{ display:block; }
   }
-  /* hidden by default, shown via JS (see hasSavedGame()) only when a localStorage
-     save actually exists -- not a media-query toggle like the two above */
+  /* hidden by default, shown via JS (see updateSaveFoundNote()) only once a cloud
+     save was actually found for this account -- not a media-query toggle like
+     the two above */
   #bootSaveFoundNote{ display:none; margin-top:10px; font-size:13px; color:var(--phosphor); letter-spacing:1px; max-width:420px; }
   #bootSaveFoundNote.show{ display:block; }
   @media (max-width:640px){
@@ -1092,25 +1092,19 @@
 <div id="bootscreen">
   <div id="bootContent">
     <h1>VOID DRIFT</h1>
-    <div id="bootCredits">
-      Game made by Ian McGonigal<br>
-      <a href="mailto:ianmcgon@gmail.com">ianmcgon@gmail.com</a><br>
-      <span id="bootVersionRead">v0.0.0</span>
-    </div>
     <p id="mobileFullscreenWarning">On mobile, tapping LAUNCH will enter full screen.</p>
     <p id="bootSaveFoundNote">A saved game was found — LAUNCH will continue from where you left off.</p>
-    <!-- account row -- cloud accounts (multiplayer roadmap step 2). Hidden
-         entirely when SUPABASE_URL/SUPABASE_ANON_KEY aren't configured (see
-         supabaseConfigured()), so an unconfigured copy of this file just shows
-         the plain guest-only boot screen from step 1 with nothing extra. -->
+    <!-- account row -- an account is required to play at all now (no guest mode,
+         no local save file -- see supabaseConfigured()/updateAccountUI()). If
+         Supabase isn't configured, this row explains the game can't be played
+         rather than silently falling back to a guest. -->
     <div id="bootAccountRow">
-      <span id="bootAccountStatus">PLAYING AS GUEST</span>
+      <span id="bootAccountStatus">LOG IN TO PLAY</span>
       <button class="bootLinkBtn" id="btnOpenAuth">LOG IN / REGISTER</button>
       <button class="bootLinkBtn" id="btnBootLogout" style="display:none;">LOG OUT</button>
     </div>
-    <!-- server selection -- multiplayer roadmap step 3. Hidden via JS (same
-         supabaseConfigured() gate as #bootAccountRow) since a server choice is
-         meaningless without Supabase Realtime to actually carry it. -->
+    <!-- server selection -- only shown once signed in (see updateBootFlowVisibility()).
+         A server choice is also meaningless without Supabase Realtime to carry it. -->
     <div id="bootServerRow">
       <span class="bootServerLabel">SERVER</span>
       <div class="serverBtns">
@@ -1121,8 +1115,16 @@
       <p id="bootServerDesc"></p>
     </div>
   </div>
-  <button class="startbtn" id="startBtn">▶ LAUNCH</button>
-  <div id="bootBuildStamp"></div>
+  <!-- LAUNCH stays hidden (see updateBootFlowVisibility()) until signed in AND a
+       server has been explicitly picked. -->
+  <button class="startbtn" id="startBtn" style="display:none;">▶ LAUNCH</button>
+  <!-- version/date/time + author credit, deliberately at the bottom of the page
+       below LAUNCH rather than up with the title. -->
+  <div id="bootBuildStamp">
+    <span id="bootVersionRead">v0.0.0</span><br>
+    Game made by Ian McGonigal<br>
+    <a href="mailto:ianmcgon@gmail.com">ianmcgon@gmail.com</a>
+  </div>
 </div>
 
 <div class="hud" id="authPanel">
@@ -1518,6 +1520,8 @@
     </div>
     <div class="psection">CURRENT LISTINGS</div>
     <div id="auctionListingsGrid" style="margin-top:4px;"></div>
+    <div class="psection">YOUR LISTINGS AT OTHER STATIONS</div>
+    <div id="auctionMyListingsGrid" style="margin-top:4px;"></div>
     <div class="dbtns" style="margin-top:14px;">
       <button class="cmdbtn" id="btnDockAuctionBack">◀ BACK</button>
     </div>
@@ -1713,9 +1717,9 @@
 // compatibility depends on it. Add new keys, don't rename old ones.
 
 // ---------- version / build info (shown in the ESC settings menu) ----------
-const GAME_VERSION = "0.14.0";
+const GAME_VERSION = "0.15.0";
 const GAME_LAST_EDITED = "2026-09-23";
-const GAME_BUILD_TIME = "15:10 PT"; // wall-clock time this build was published, not just the date
+const GAME_BUILD_TIME = "15:44 PT"; // wall-clock time this build was published, not just the date
 
 // ---------- update-available banner ----------
 // Periodically re-fetches this very page (same-origin -- works identically whether
@@ -6856,6 +6860,10 @@ document.getElementById('btnWithdrawUbi').addEventListener('click', async ()=>{
 // = user_id) may ever SELECT or DELETE it.
 const AUCTION_LISTING_FEE = 1;
 let auctionListingsCache = [];
+// this player's own active listings, regardless of which station they're at
+// (unlike auctionListingsCache, not scoped to the currently docked station) --
+// so YOUR LISTINGS AT OTHER STATIONS can show and cancel them from anywhere.
+let auctionMyListingsCache = [];
 async function fetchAuctionListings(stationId){
   if(!supabaseClient) return [];
   try{
@@ -6864,12 +6872,27 @@ async function fetchAuctionListings(stationId){
     return (!error && data) ? data : [];
   }catch(e){ return []; }
 }
+async function fetchMyAuctionListings(){
+  if(!supabaseClient || !currentUser) return [];
+  try{
+    const { data, error } = await supabaseClient.from('auction_listings')
+      .select('*').eq('server', currentServer).eq('seller_id', currentUser.id).order('created_at', { ascending:true });
+    return (!error && data) ? data : [];
+  }catch(e){ return []; }
+}
 // called from enterDock()
 async function syncAuctionListingsOnDock(station){
   auctionListingsCache = await fetchAuctionListings(station.id);
+  auctionMyListingsCache = await fetchMyAuctionListings();
   const panel = document.getElementById('dockAuctionPanel');
   if(panel && panel.classList.contains('show')) renderAuctionPanel();
 }
+// Settling a sale's payout doesn't wait for the seller to specifically dock at
+// the station where it sold -- claimAuctionPayouts() is station-agnostic (keyed
+// only on user_id) and is called both right at LAUNCH and periodically while
+// playing (see initMultiplayer()/the periodic-claim interval below), so proceeds
+// land in the seller's account as soon as they're next online at all, not only
+// once they happen to visit a particular station.
 async function claimAuctionPayouts(){
   if(!supabaseClient || !currentUser) return;
   try{
@@ -6884,6 +6907,7 @@ async function claimAuctionPayouts(){
     logEvent('AUCTION SALES SETTLED — +' + total + ' CR (' + data.length + ' listing' + (data.length===1?'':'s') + ' sold)', 'good');
     for(const p of data){ await supabaseClient.from('auction_payouts').delete().eq('id', p.id); }
     updateCargoUI();
+    pushCloudSave();
   }catch(e){ console.warn('claim auction payouts exception', e); }
 }
 // which of the player's own cargo item types are eligible to auction -- same rule
@@ -6929,6 +6953,26 @@ function renderAuctionPanel(){
             : '<button class="cmdbtn" data-auction-buy="' + l.id + '">BUY</button>')
           + '</div>';
       }).join('');
+  // your own listings sitting at OTHER stations -- shown here too (not just at
+  // the station where each was posted) so you can always find and cancel any
+  // active listing of yours, regardless of where you're currently docked. The
+  // ones at THIS station already appear above (marked CANCEL there too), so
+  // this list deliberately excludes them to avoid showing every listing twice.
+  const myGrid = document.getElementById('auctionMyListingsGrid');
+  if(myGrid){
+    const elsewhere = auctionMyListingsCache.filter(l=> !dockedStation || l.station_id !== dockedStation.id);
+    myGrid.innerHTML = !elsewhere.length
+      ? '<div class="ledgerEmpty">NO OTHER ACTIVE LISTINGS</div>'
+      : elsewhere.map(l=>{
+          const def = itemDisplayDef(l.item_key);
+          const st = STATIONS.find(s=> s.id === l.station_id);
+          return '<div class="dockSubRow">'
+            + '<span class="dsName">' + l.qty + 'x ' + (def ? def.label : l.item_key) + ' — ' + l.price + ' cr<br>'
+            + '<span style="font-size:10px; color:var(--phosphor-dim);">AT ' + (st ? st.name.toUpperCase() : l.station_id.toUpperCase()) + '</span></span>'
+            + '<button class="cmdbtn" data-auction-cancel="' + l.id + '">CANCEL</button>'
+            + '</div>';
+        }).join('');
+  }
 }
 document.getElementById('btnAuctionList').addEventListener('click', async ()=>{
   if(!docked || !dockedStation) return;
@@ -6959,13 +7003,16 @@ document.getElementById('btnAuctionList').addEventListener('click', async ()=>{
   addStationTax(dockedStation.id, AUCTION_LISTING_FEE);
   await syncAuctionListingsOnDock(dockedStation);
 });
-document.getElementById('auctionListingsGrid').addEventListener('click', async (e)=>{
+// shared by both #auctionListingsGrid (this station's listings) and
+// #auctionMyListingsGrid (your own listings sitting at other stations) -- BUY
+// only ever appears in the former, CANCEL can appear in either.
+async function handleAuctionGridClick(e){
   if(!docked || !dockedStation) return;
   const buyBtn = e.target.closest('button[data-auction-buy]');
   const cancelBtn = e.target.closest('button[data-auction-cancel]');
   if(buyBtn){
     const id = buyBtn.dataset.auctionBuy;
-    const listing = auctionListingsCache.find(l=>l.id === id);
+    const listing = auctionListingsCache.find(l=>l.id === id) || auctionMyListingsCache.find(l=>l.id === id);
     if(!listing) return;
     if(!supabaseClient || !currentUser){ flashMessage('SIGN IN REQUIRED TO BUY', 'warn'); return; }
     if(listing.seller_id === currentUser.id){ flashMessage('CANNOT BUY YOUR OWN LISTING', 'warn'); return; }
@@ -6995,17 +7042,22 @@ document.getElementById('auctionListingsGrid').addEventListener('click', async (
     await syncAuctionListingsOnDock(dockedStation);
   } else if(cancelBtn){
     const id = cancelBtn.dataset.auctionCancel;
-    const listing = auctionListingsCache.find(l=>l.id === id);
+    const listing = auctionListingsCache.find(l=>l.id === id) || auctionMyListingsCache.find(l=>l.id === id);
     if(!listing || !currentUser || listing.seller_id !== currentUser.id) return;
     try{ await supabaseClient.from('auction_listings').delete().eq('id', listing.id); }
     catch(e){ console.warn('auction cancel exception', e); }
+    // items always return to YOUR ship's cargo hold right now, even if this
+    // listing was posted at a different station than the one you're docked at
+    // -- cargo isn't location-specific, so there's nothing to reconcile
     addToCargo(listing.item_key, listing.qty); // listing fee is NOT refunded
     flashMessage('LISTING CANCELLED — ITEMS RETURNED TO CARGO', 'good');
     logEvent('AUCTION: CANCELLED LISTING — ' + listing.qty + 'x ' + (itemDisplayDef(listing.item_key)||{}).label, 'good');
     updateCargoUI();
     await syncAuctionListingsOnDock(dockedStation);
   }
-});
+}
+document.getElementById('auctionListingsGrid').addEventListener('click', handleAuctionGridClick);
+document.getElementById('auctionMyListingsGrid').addEventListener('click', handleAuctionGridClick);
 
 // ---------- item 11: station FITTING -- the only place weapon/shield/mining-laser
 // tiers can be actively (re-)equipped, since it lives entirely inside the docked-only
@@ -9566,12 +9618,10 @@ document.getElementById('btnThrottleFull').addEventListener('click', ()=>{ setTh
 (function(){
   const versionText = 'v' + GAME_VERSION + ' — last edited ' + GAME_LAST_EDITED;
   const v = document.getElementById('versionRead'); if(v) v.textContent = versionText;
-  // the boot screen carries its own copy of the version line (see #bootCredits)
-  const bv = document.getElementById('bootVersionRead'); if(bv) bv.textContent = versionText;
-  // build date + time, shown below the LAUNCH button specifically (not grouped
-  // with the version line above) -- see #bootBuildStamp
-  const stamp = document.getElementById('bootBuildStamp');
-  if(stamp) stamp.textContent = 'BUILD ' + GAME_LAST_EDITED + ' ' + GAME_BUILD_TIME;
+  // the boot screen carries its own copy, folded into the date + time line at
+  // the bottom of the page (see #bootBuildStamp) rather than the word "BUILD"
+  const bootVersionText = 'v' + GAME_VERSION + ' — ' + GAME_LAST_EDITED + ' ' + GAME_BUILD_TIME;
+  const bv = document.getElementById('bootVersionRead'); if(bv) bv.textContent = bootVersionText;
 })();
 let settingsMenuOpen = false;
 function openSettingsMenu(){
@@ -9661,22 +9711,11 @@ document.getElementById('ambientVolumeSlider').addEventListener('input', (e)=>{ 
 // inside a rock, mid-warp) that no longer exists.
 // Each of the 3 servers (PVE/PVP/HARDCORE -- see the multiplayer module below)
 // keeps its own completely separate save: you can't earn credits on PVP and spend
-// them on PVE, and a HARDCORE death only wipes the HARDCORE slot. One localStorage
-// key per server, derived from the server name (itself a stable, never-renamed
-// identifier per the NAMING STABILITY rule) rather than one shared key.
-const SAVE_STORAGE_KEY = 'voidDriftSave'; // legacy single-slot key from before per-server saves existed -- no longer written to, kept only for the one-time migration below
-function saveStorageKeyFor(server){ return 'voidDriftSave_' + server; }
-// One-time migration: a save under the old flat key predates HARDCORE/PVP even
-// existing, so it can only have been played on what's now called PVE -- copy it
-// into the new PVE-specific slot (never overwriting one that's already there) so
-// existing players don't lose progress when this update lands.
-(function migrateLegacySingleSlotSave(){
-  try{
-    const legacy = localStorage.getItem(SAVE_STORAGE_KEY);
-    const pveKey = saveStorageKeyFor('PVE');
-    if(legacy && !localStorage.getItem(pveKey)) localStorage.setItem(pveKey, legacy);
-  }catch(e){}
-})();
+// them on PVE, and a HARDCORE death only wipes the HARDCORE slot -- one cloud
+// player_saves row per (account, server), never a local file. There is no
+// localStorage save at all any more: playing requires an account (see the
+// startBtn handler), and every save lives entirely server-side, so progress is
+// never stuck on one browser/device.
 const SAVE_FORMAT_VERSION = 1;
 function getPlayerSaveData(){
   return {
@@ -9733,20 +9772,13 @@ function getPlayerSaveData(){
     transportContractsCompleted: transportContractsCompleted,
     transportContractsFailed: transportContractsFailed,
     shipsLostTotal: shipsLostTotal,
-    totalGoldMined: totalGoldMined
+    totalGoldMined: totalGoldMined,
+    // which medals have already been earned -- without this, every login/reload
+    // started earnedAchievements empty and checkAchievements() (which re-runs
+    // every second) immediately treated every medal the loaded stats already
+    // qualify for as brand new, popping "MEDAL EARNED" for all of them again.
+    earnedAchievements: Array.from(earnedAchievements)
   };
-}
-function savePlayerData(){
-  try{
-    localStorage.setItem(saveStorageKeyFor(currentServer), JSON.stringify(getPlayerSaveData()));
-    return true;
-  }catch(e){ return false; }
-}
-function loadPlayerSaveRaw(){
-  try{
-    const raw = localStorage.getItem(saveStorageKeyFor(currentServer));
-    return raw ? JSON.parse(raw) : null;
-  }catch(e){ return null; }
 }
 // Applies a previously-saved object to live game state. Written defensively --
 // every field is optional (checked with typeof / Array.isArray rather than
@@ -9796,6 +9828,18 @@ function applyPlayerSaveData(d){
   if(typeof d.transportContractsFailed === 'number') transportContractsFailed = d.transportContractsFailed;
   if(typeof d.shipsLostTotal === 'number') shipsLostTotal = d.shipsLostTotal;
   if(typeof d.totalGoldMined === 'number') totalGoldMined = d.totalGoldMined;
+
+  // medals already earned -- restored BEFORE checkAchievements() can next run so
+  // it never treats a medal this save already qualifies for as freshly earned.
+  if(Array.isArray(d.earnedAchievements)){
+    earnedAchievements = new Set(d.earnedAchievements);
+  } else {
+    // pre-existing save from before medals were persisted -- silently backfill
+    // whichever achievements the stats just restored above already satisfy,
+    // rather than let checkAchievements() re-announce a wall of medals the
+    // player actually earned a long time ago.
+    ACHIEVEMENTS.forEach(a=>{ try{ if(a.check()) earnedAchievements.add(a.id); }catch(e){} });
+  }
 
   if(typeof d.nextShipInstanceId === 'number') nextShipInstanceId = d.nextShipInstanceId;
   if(d.shipSerialCounters && typeof d.shipSerialCounters === 'object') shipSerialCounters = Object.assign({}, shipSerialCounters, d.shipSerialCounters);
@@ -9857,38 +9901,57 @@ function applyPlayerSaveData(d){
   refreshCmdButtons();
   updateXPUI();
 }
-function hasSavedGame(){
-  return !!loadPlayerSaveRaw();
-}
-
 // ---------- cloud accounts (multiplayer roadmap step 2) ----------
-// Everything here is additive on top of step 1's localStorage save -- a signed-out
-// player (or any copy of this file with SUPABASE_URL/SUPABASE_ANON_KEY left as
-// placeholders) behaves exactly like before. Signed in, the SAME save object from
-// getPlayerSaveData() also gets pushed to a `player_saves` row keyed by the
-// player's auth user id (see the player_saves table + RLS policies set up in
-// Supabase), so LOG IN on a different browser/device pulls it back down.
-let currentUser = null;          // Supabase auth user object, or null while signed out/guest
+// No local save file exists any more -- the object from getPlayerSaveData() is
+// pushed straight to a `player_saves` row keyed by the player's auth user id
+// (see the player_saves table + RLS policies set up in Supabase), and LOG IN on
+// a different browser/device pulls that same row back down. Playing requires
+// signing in (see the startBtn handler) precisely so there's always an account
+// to hang that row off of.
+let currentUser = null;          // Supabase auth user object, or null while signed out
 let pendingCloudSave = null;     // fetched on LOG IN, applied at the next LAUNCH (see startBtn handler)
 let cloudSyncInFlight = false;   // guards against double-clicking LOG IN/REGISTER/SAVE while a request is in flight
 
+// Guest play no longer exists -- an account is required to do anything past the
+// boot screen (see updateBootFlowVisibility(), which keeps #bootServerRow and
+// LAUNCH itself hidden until currentUser is set). If Supabase isn't configured
+// at all, there's no account system to sign in with, so the game plainly can't
+// be played rather than quietly falling back to a local-only guest session.
 function updateAccountUI(){
   const row = document.getElementById('bootAccountRow');
   if(!row) return;
-  if(!supabaseClient){ row.style.display = 'none'; return; }
-  row.style.display = '';
   const statusEl = document.getElementById('bootAccountStatus');
   const loginBtn = document.getElementById('btnOpenAuth');
   const logoutBtn = document.getElementById('btnBootLogout');
+  if(!supabaseClient){
+    if(statusEl) statusEl.textContent = 'ACCOUNT SYSTEM UNAVAILABLE — CANNOT PLAY';
+    if(loginBtn) loginBtn.style.display = 'none';
+    if(logoutBtn) logoutBtn.style.display = 'none';
+    updateBootFlowVisibility();
+    return;
+  }
   if(currentUser){
     if(statusEl) statusEl.textContent = 'SIGNED IN AS ' + currentUser.email.toUpperCase();
     if(loginBtn) loginBtn.style.display = 'none';
     if(logoutBtn) logoutBtn.style.display = '';
   } else {
-    if(statusEl) statusEl.textContent = 'PLAYING AS GUEST';
+    if(statusEl) statusEl.textContent = 'LOG IN TO PLAY';
     if(loginBtn) loginBtn.style.display = '';
     if(logoutBtn) logoutBtn.style.display = 'none';
   }
+  updateBootFlowVisibility();
+}
+// Reveals #bootServerRow only once signed in, and #startBtn (LAUNCH) only once
+// BOTH signed in AND a server has been explicitly picked this boot (see
+// setServerChoice()'s serverChosenThisBoot flag -- a remembered previous choice
+// alone doesn't count, an actual click/tap on a SERVER button is required).
+let serverChosenThisBoot = false;
+function updateBootFlowVisibility(){
+  const serverRow = document.getElementById('bootServerRow');
+  const launchBtn = document.getElementById('startBtn');
+  const loggedIn = !!(supabaseClient && currentUser);
+  if(serverRow) serverRow.style.display = loggedIn ? '' : 'none';
+  if(launchBtn) launchBtn.style.display = (loggedIn && serverChosenThisBoot) ? '' : 'none';
 }
 
 // Pulls this account's cloud save (if any) down into `pendingCloudSave`, ready
@@ -10381,11 +10444,17 @@ function setServerChoice(s){
   currentServer = s;
   try{ localStorage.setItem('voidDriftServerChoice', s); }catch(e){}
   updateServerSelectUI();
-  // each server has its own separate save (see saveStorageKeyFor) -- refresh the
-  // boot screen's "a save was found" note for whichever server is now selected.
-  // pendingCloudSave was fetched (if at all) for whatever server was current at
-  // LOGIN time, so it no longer reflects THIS server -- clear it and, if signed
-  // in, re-fetch scoped to the newly-selected server before showing the note.
+  // an explicit server pick (this function is only ever called from a real
+  // click/tap -- the boot-time restore of the LAST server below sets
+  // currentServer directly instead) is what reveals LAUNCH -- see
+  // updateBootFlowVisibility().
+  serverChosenThisBoot = true;
+  updateBootFlowVisibility();
+  // each server has its own separate cloud save row -- refresh the boot screen's
+  // "a save was found" note for whichever server is now selected. pendingCloudSave
+  // was fetched (if at all) for whatever server was current at LOGIN time, so it
+  // no longer reflects THIS server -- clear it and, if signed in, re-fetch scoped
+  // to the newly-selected server before showing the note.
   pendingCloudSave = null;
   updateSaveFoundNote();
   if(currentUser) fetchCloudSaveIntoPending().then(updateSaveFoundNote);
@@ -10429,20 +10498,19 @@ document.querySelectorAll('.serverBtn').forEach(b=>{
   });
   if(cancelBtn) cancelBtn.addEventListener('click', ()=> panel.classList.remove('show'));
 }
-{
-  // gate on supabaseClient (whether the Realtime library actually loaded and
-  // initialized), not just supabaseConfigured() (whether keys are PRESENT) --
-  // matches updateAccountUI()'s own gate, so a CDN hiccup hides this row too
-  // instead of showing server buttons that would silently do nothing
-  const row = document.getElementById('bootServerRow');
-  if(row) row.style.display = supabaseClient ? '' : 'none';
-}
+// #bootServerRow's actual visibility (signed-in only) and #startBtn's (signed-in
+// AND a server explicitly picked) are both handled by updateBootFlowVisibility(),
+// called from updateAccountUI() (on login/logout) and setServerChoice() (on
+// pick) -- run it once now too so a page load that restores an existing
+// Supabase session (see supabaseClient.auth.getSession() below) starts from the
+// right state instead of a flash of the wrong one.
+updateBootFlowVisibility();
 updateServerSelectUI();
 
 // ---------- multiplayer core (Supabase Realtime) ----------
-// Identity: a signed-in account uses its user id/email; a guest gets a random
-// callsign that's persisted in this browser (separate from the save-data key)
-// so it stays stable across reloads without requiring an account.
+// Identity: always the signed-in account's user id/email -- guest play no
+// longer exists (see resolvePlayerIdentity()), an account is required to do
+// anything past the boot screen.
 let mpEnabled = false;      // true once initMultiplayer() has run for this session
 let mpIdentity = null;      // { id, name }
 let mpChatChannel = null;
@@ -10504,28 +10572,24 @@ function updateMpStatusUI(){
   }
 }
 
+// Guest identities no longer exist -- an account is required to launch at all
+// (see the startBtn handler), so this is always a real signed-in user by the
+// time it's called.
 function resolvePlayerIdentity(){
-  if(currentUser) return { id: currentUser.id, name: getCallsign() || currentUser.email.split('@')[0].toUpperCase() };
-  let guestId = null, guestName = null;
-  try{
-    guestId = localStorage.getItem('voidDriftGuestId');
-    guestName = localStorage.getItem('voidDriftGuestName');
-  }catch(e){}
-  if(!guestId){
-    guestId = 'guest_' + Math.random().toString(36).slice(2,10);
-    guestName = 'GUEST-' + Math.floor(1000 + Math.random()*9000);
-    try{ localStorage.setItem('voidDriftGuestId', guestId); localStorage.setItem('voidDriftGuestName', guestName); }catch(e){}
-  }
-  return { id: guestId, name: guestName };
+  if(!currentUser) return null;
+  return { id: currentUser.id, name: getCallsign() || currentUser.email.split('@')[0].toUpperCase() };
 }
 
 function initMultiplayer(){
-  if(!supabaseClient) return; // no Supabase configured -- pure single-player, nothing to do
+  if(!supabaseClient || !currentUser) return; // no Supabase configured, or (shouldn't happen -- LAUNCH requires it) not signed in
   mpIdentity = resolvePlayerIdentity();
   mpEnabled = true;
   joinChatChannel();
   joinZoneChannel(currentZoneKey());
   joinAccountSessionChannel();
+  // settle any auction sales that came in while this account was offline right
+  // away, rather than making the seller specifically dock somewhere first
+  claimAuctionPayouts();
   updateMpStatusUI();
 }
 function leaveMultiplayer(){
@@ -10590,10 +10654,11 @@ function handleSessionTakenOver(){
   sessionTakenOver = true;
   flashMessage('LOGGED IN ELSEWHERE', 'warn');
   logEvent('=== THIS ACCOUNT WAS LOGGED IN ON ANOTHER DEVICE/TAB -- DISCONNECTING ===', 'warn');
-  // save locally so nothing earned this session is lost, but deliberately do NOT
-  // push a cloud save here -- the other, newer session is now the authoritative
-  // one, and a stale write from this side could clobber its progress
-  try{ savePlayerData(); }catch(e){}
+  // deliberately do NOT push a cloud save here -- the other, newer session is
+  // now the authoritative one, and a stale write from this side could clobber
+  // its progress. There's no local save to fall back to any more either, so
+  // anything earned since the last successful cloud save on THIS side is simply
+  // lost -- an accepted tradeoff of a session actually being taken over elsewhere.
   leaveMultiplayer();
   setTimeout(()=>{ window.location.reload(); }, 2200);
 }
@@ -10880,14 +10945,13 @@ function updateMultiplayer(dt){
 }
 
 // HARDCORE permadeath -- called from damagePlayer's death branch when
-// isHardcoreServer() is true. Wipes both the local save and (if signed in) the
-// cloud row FOR THIS SERVER ONLY, then reloads back to the boot screen. PVE/PVP
-// progress lives under separate save keys/rows (see saveStorageKeyFor) and is
-// untouched. Deliberately final: no escape pod, no continuing the run.
+// isHardcoreServer() is true. Wipes the cloud save row FOR THIS SERVER ONLY,
+// then reloads back to the boot screen. PVE/PVP progress lives under separate
+// rows (keyed by user_id + server) and is untouched. Deliberately final: no
+// escape pod, no continuing the run.
 async function triggerHardcoreWipe(){
   flashMessage('HARDCORE — SAVE WIPED', 'warn');
   logEvent('=== HARDCORE RUN OVER — SAVE DATA PERMANENTLY ERASED ===', 'warn');
-  try{ localStorage.removeItem(saveStorageKeyFor(currentServer)); }catch(e){}
   if(currentUser && supabaseClient){
     try{ await supabaseClient.from('player_saves').delete().eq('user_id', currentUser.id).eq('server', currentServer); }catch(e){}
   }
@@ -10898,16 +10962,13 @@ async function triggerHardcoreWipe(){
 document.getElementById('btnSaveExit').addEventListener('click', async ()=>{
   const btn = document.getElementById('btnSaveExit');
   if(btn) btn.disabled = true;
-  const localOk = savePlayerData();
-  let cloudNote = '';
-  if(currentUser){
-    flashMessage('SAVING…', 'good');
-    const cloudOk = await pushCloudSave();
-    cloudNote = cloudOk ? ' + SYNCED' : ' (CLOUD SYNC FAILED — SAVED LOCALLY)';
-  }
+  // every save is cloud-only now -- playing requires being signed in (see the
+  // startBtn handler), so there's always an account to push to here.
+  flashMessage('SAVING…', 'good');
+  const cloudOk = await pushCloudSave();
   leaveMultiplayer();
-  flashMessage(localOk ? 'GAME SAVED' + cloudNote : 'SAVE FAILED', localOk ? 'good' : 'warn');
-  logEvent(localOk ? 'GAME SAVED' + cloudNote + ' — EXITING' : 'SAVE FAILED — EXITING ANYWAY', localOk ? 'good' : 'warn');
+  flashMessage(cloudOk ? 'GAME SAVED' : 'CLOUD SAVE FAILED', cloudOk ? 'good' : 'warn');
+  logEvent(cloudOk ? 'GAME SAVED TO YOUR ACCOUNT — EXITING' : 'CLOUD SAVE FAILED -- YOUR PROGRESS MAY NOT HAVE SAVED -- EXITING ANYWAY', cloudOk ? 'good' : 'warn');
   setTimeout(()=>{ window.location.reload(); }, 700);
 });
 // managedPanels is populated further down the file (see makePanelManageable calls);
@@ -11341,6 +11402,10 @@ setInterval(updateInGameClock, 1000);
 // has no single dedicated call site -- cheap (just threshold checks) and only ever
 // notifies once per achievement id, so running it every second is harmless
 setInterval(()=>{ if(typeof checkAchievements === 'function') checkAchievements(); }, 1000);
+// periodic safety-net for auction payouts too -- a sale that lands while this
+// player is out flying (not docked anywhere) still gets settled into their
+// account within half a minute, rather than waiting for their next dock.
+setInterval(()=>{ if(typeof claimAuctionPayouts === 'function') claimAuctionPayouts(); }, 30000);
 
 // ---------- loan interest (item 7) ----------
 // NOTE: this is a SEPARATE, independent "in-game hour" pacing concept from the
@@ -13577,15 +13642,18 @@ window.addEventListener('orientationchange', updateOrientationGuard);
 // boot-screen "continue" note -- purely informational (LAUNCH always does the
 // same thing; see applyPlayerSaveData() call below), just lets a returning
 // player know their progress is about to be restored before they click. Re-run
-// after a cloud fetch resolves too (see fetchCloudSaveIntoPending's callers),
-// since logging in can surface a save this browser never had locally.
+// after a cloud fetch resolves too (see fetchCloudSaveIntoPending's callers).
 function updateSaveFoundNote(){
   const note = document.getElementById('bootSaveFoundNote');
-  if(note) note.classList.toggle('show', !!pendingCloudSave || hasSavedGame());
+  if(note) note.classList.toggle('show', !!pendingCloudSave);
 }
 updateSaveFoundNote();
 
 document.getElementById('startBtn').addEventListener('click', async ()=>{
+  // shouldn't be reachable -- LAUNCH stays hidden until signed in (see
+  // updateBootFlowVisibility()) -- but guard anyway rather than let a stray
+  // click drop an unauthenticated session into the belt.
+  if(!currentUser){ flashMessage('LOG IN TO PLAY', 'warn'); return; }
   document.getElementById('bootscreen').style.display = 'none';
   clock.start();
   gameStartTime = performance.now(); // starts the in-game clock (#clockPanel) at LAUNCH
@@ -13616,33 +13684,25 @@ document.getElementById('startBtn').addEventListener('click', async ()=>{
   // click right after switching servers could race ahead of it). Await one final
   // scoped fetch for whichever server is actually selected right now, so this
   // never loads (or overwrites) the wrong server's save.
-  if(currentUser) await fetchCloudSaveIntoPending();
+  await fetchCloudSaveIntoPending();
   // restore a previous save, if any, BEFORE dropping the player into the belt --
   // see applyPlayerSaveData()'s own comments for exactly what is and isn't
   // restored (resumes at the exact position/heading the ship was at on its last
   // SAVE & EXIT, via the saved pos/quat -- no save yet just falls back to the
-  // default station spawn point). A signed-in account's cloud save for THIS
-  // server takes priority over this browser's local save for THIS server --
-  // that's the whole point of an account: whichever device you signed in on
-  // last is the one that's current. A brand-new account with no cloud save yet
-  // just falls through to the local save, if this browser happens to have one
-  // (first-time sync-up). Each server's save is entirely separate (see
-  // saveStorageKeyFor) -- this never touches another server's progress.
-  const savedGame = pendingCloudSave || loadPlayerSaveRaw();
+  // default station spawn point). Cloud-only now: there's no local save to fall
+  // back to, so a brand-new account (or a server it's never played before)
+  // simply starts fresh.
+  const savedGame = pendingCloudSave;
   if(savedGame){
     applyPlayerSaveData(savedGame);
-    logEvent(pendingCloudSave ? 'CLOUD SAVE RESTORED' : 'SAVED PROGRESS RESTORED', 'good');
-    // mirror whichever save just got applied into localStorage too, so guest-
-    // mode fallback (SUPABASE unconfigured, offline, logged out later) always
-    // has an up-to-date local copy rather than a stale pre-login one
-    savePlayerData();
+    logEvent('CLOUD SAVE RESTORED', 'good');
   }
   pendingCloudSave = null;
   // surface a broken cloud-save setup loudly rather than let it silently look like
   // a data reset -- see fetchCloudSaveIntoPending()/cloudSyncSetupSql()
-  if(currentUser && cloudSyncError){
+  if(cloudSyncError){
     flashMessage('CLOUD SYNC UNAVAILABLE -- SEE SETTINGS', 'warn');
-    logEvent('=== CLOUD SAVE SYNC FAILED: ' + cloudSyncError + ' -- progress is only saving to THIS browser until this is fixed. Open SETTINGS and use COPY DB SETUP SQL, then run it in your Supabase project\'s SQL editor. ===', 'warn');
+    logEvent('=== CLOUD SAVE SYNC FAILED: ' + cloudSyncError + ' -- progress is NOT being saved until this is fixed (there is no local fallback). Open SETTINGS and use COPY DB SETUP SQL, then run it in your Supabase project\'s SQL editor. ===', 'warn');
     const btn = document.getElementById('btnCopyDbSetup');
     if(btn) btn.style.display = '';
   }
