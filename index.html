@@ -178,6 +178,10 @@
     top:calc(14px + env(safe-area-inset-top,0px)); left:14px;
     background:var(--panel-bg); border:1px solid var(--panel-border);
     padding:10px 14px; min-width:230px; font-size:15px; line-height:1.55;
+    /* item 13: every non-target HUD box shares this same width (see #overview/
+       #clockPanel/#eventLog/#itemInspector below) -- telemetry used to be the odd one
+       out (content-sized, no explicit width) */
+    width:min(78vw,270px); box-sizing:border-box;
   }
 
   /* top-right real-time clock, sits above the overview panel */
@@ -256,7 +260,11 @@
   /* bottom target/command panel */
   #targetPanel{
     left:50%; bottom:calc(16px + env(safe-area-inset-bottom,0px)); transform:translateX(-50%);
-    width:min(92vw,580px); background:var(--panel-bg); border:1px solid var(--panel-border);
+    /* item 13: TARGET is the one HUD box deliberately wider than the rest (it needs
+       the room for weapon/command controls) -- but shares the same starting
+       min-height as #eventLog/#itemInspector */
+    width:min(92vw,580px); min-height:280px; box-sizing:border-box;
+    background:var(--panel-bg); border:1px solid var(--panel-border);
     padding:10px 16px 14px; display:none;
   }
   #targetPanel.show{display:block;}
@@ -308,7 +316,11 @@
      ONLY flexible row and grows/shrinks to fill whatever space is left, and
      .chatInputRow is a fixed-height row that's always last, flush to the bottom. */
   #eventLog{
-    bottom:calc(14px + env(safe-area-inset-bottom,0px)); left:14px; width:min(70vw,280px);
+    bottom:calc(14px + env(safe-area-inset-bottom,0px)); left:14px; width:min(78vw,270px);
+    /* item 13: Event Log/Target/Inspector share a common starting height (min-height,
+       not a hard height -- each still grows/resizes individually, this just makes
+       their DEFAULT size consistent instead of three different heights) */
+    min-height:280px;
     background:var(--panel-bg); border:1px solid var(--panel-border);
     display:flex; flex-direction:column;
   }
@@ -332,7 +344,9 @@
      on the panel itself is a hard backstop against any residual bleed. */
   #itemInspector{
     bottom:calc(14px + env(safe-area-inset-bottom,0px)); right:14px;
-    width:210px; min-height:246px;
+    /* item 13: same width as every other non-target HUD box, same starting
+       min-height as #eventLog/#targetPanel */
+    width:min(78vw,270px); min-height:280px;
     background:var(--panel-bg); border:1px solid var(--panel-border);
     padding:8px 10px 10px; font-size:12px;
     display:flex; flex-direction:column; overflow:hidden;
@@ -1377,23 +1391,29 @@
   <div id="hullhpbar"><i id="hullHPFill"></i></div>
   <div class="row" style="margin-top:6px;"><span>CARGO</span><span id="cargoWeightRead">0 / 500</span></div>
   <div id="cargoBar"><i id="cargoFill"></i></div>
+  <!-- item 11: EQUIPMENT's dedicated HUD button is gone -- it's now the EQUIPMENT tab
+       inside the DATA PAD (see #btnWalletTabEquipment). btnEquipment itself stays in
+       the DOM (display:none) since refreshEquipmentPanel/toggleEquipmentPanel still
+       exist and are still wired to it internally by the Data Pad tab bridge below. -->
+  <button id="btnEquipment" style="display:none;"></button>
   <div class="row clickable" style="margin-top:6px; gap:4px;">
     <button class="cmdbtn" id="btnInventory" style="flex:1; font-size:11px; padding:5px 2px; min-width:0;">CARGO</button>
-    <button class="cmdbtn" id="btnEquipment" style="flex:1; font-size:11px; padding:5px 2px; min-width:0;">EQUIPMENT</button>
     <button class="cmdbtn" id="btnStarMap" style="flex:1; font-size:11px; padding:5px 2px; min-width:0;">STAR MAP</button>
   </div>
   <div class="row clickable" style="margin-top:4px; gap:4px;">
-    <button class="cmdbtn" id="btnWallet" style="flex:1; font-size:11px; padding:5px 2px; min-width:0;">WALLET</button>
+    <!-- item 11: "Wallet" renamed to "Data Pad" (label only -- ids/vars stay wallet*
+         per naming stability) -->
+    <button class="cmdbtn" id="btnWallet" style="flex:1; font-size:11px; padding:5px 2px; min-width:0;">DATA PAD</button>
     <button class="cmdbtn" id="btnSkills" style="flex:1; font-size:11px; padding:5px 2px; min-width:0;">SKILLS</button>
   </div>
+  <!-- item 10: SETTINGS + SERVER combined into one compact row (each used to be its
+       own full-width row) -- on-screen SETTINGS is the equivalent of the Escape key
+       (exits inspect mode / opens-closes the settings menu, see handleEscapeAction);
+       Mobile/touch has no physical Escape key, so this is the only way a touch-only
+       player can reach either. -->
   <div class="row clickable" style="margin-top:4px; gap:4px;">
-    <!-- on-screen equivalent of the Escape key -- exits inspect mode / opens or closes
-         the settings menu (see handleEscapeAction). Mobile/touch has no physical
-         Escape key, so this is the only way a touch-only player can reach either. -->
-    <button class="cmdbtn" id="btnMenuEsc" style="flex:1; font-size:11px; padding:5px 2px; min-width:0;">SETTINGS</button>
-  </div>
-  <div class="row clickable" style="margin-top:4px; gap:4px;">
-    <button class="cmdbtn" id="btnServer" style="flex:1; font-size:11px; padding:5px 2px; min-width:0;">SERVER</button>
+    <button class="cmdbtn" id="btnMenuEsc" style="flex:1; font-size:10px; padding:4px 2px; min-width:0;">SETTINGS</button>
+    <button class="cmdbtn" id="btnServer" style="flex:1; font-size:10px; padding:4px 2px; min-width:0;">SERVER</button>
   </div>
   <div class="row" style="margin-top:6px;"><span>FLIGHT MODE</span><span id="modeRead">DRIFT</span></div>
   <div class="row" style="margin-top:8px;"><span>THROTTLE CAP</span></div>
@@ -1500,19 +1520,25 @@
 </div>
 
 <div class="hud popupPanel" id="walletPanel">
-  <div class="phdr"><span>WALLET</span><button id="btnCloseWallet">✕</button></div>
+  <!-- item 11: "Wallet" renamed to "Data Pad" -- id stays walletPanel throughout (see
+       naming-stability rule), this is a display-label-only change -->
+  <div class="phdr"><span>DATA PAD</span><button id="btnCloseWallet">✕</button></div>
   <div class="popupBody">
     <!-- (v0.19.2, item 8) BALANCE is shown ONLY while the LEDGER tab is active -- see
          refreshWalletPanel(), which toggles this row's visibility on every tab switch -->
     <div class="prow" id="walletBalanceRow" style="font-size:16px;"><span>BALANCE</span><span id="walletBalanceRead">0 cr</span></div>
-    <!-- item: KNOWLEDGE moved here from the main telemetry HUD -- always visible in
-         the wallet popup header (unlike BALANCE, it's not ledger-tab-gated; Knowledge
-         isn't credits, no reason to hide it behind a tab) -->
+    <!-- item 2: KNOWLEDGE is now ALSO ledger-tab-only, same gating as BALANCE (used to
+         be always visible regardless of tab -- see setWalletTab) -->
     <div class="prow" id="walletKnowledgeRow" style="font-size:14px;"><span>KNOWLEDGE</span><span id="walletKnowledgeRead">0</span></div>
     <div class="walletTabs">
       <button class="clickable" id="btnWalletTabLedger">LEDGER</button>
       <button class="clickable" id="btnWalletTabStats">STATS</button>
       <button class="clickable" id="btnWalletTabMedals">MEDALS</button>
+      <!-- item 11: EQUIPMENT and LOANS are new tabs here -- EQUIPMENT bridges to the
+           existing standalone equipment popup (see btnWalletTabEquipment's handler)
+           rather than fully inlining it, LOANS is a real new tab section below -->
+      <button class="clickable" id="btnWalletTabEquipment">EQUIPMENT</button>
+      <button class="clickable" id="btnWalletTabLoans">LOANS</button>
       <button class="clickable" id="btnWalletTabMail">MAIL</button>
     </div>
     <div class="walletTabSection" id="walletLedgerSection">
@@ -1542,12 +1568,35 @@
       <div class="prow"><span>Distance Traveled</span><span id="statDistance">0 m</span></div>
       <div class="prow"><span>Time Played</span><span id="statTimePlayed">00:00:00</span></div>
       <div class="prow"><span>Times Warped</span><span id="statTimesWarped">0</span></div>
+      <!-- item 11: Books Learned -- count of distinct skill-book levels the player has
+           actually trained past (see updateBooksLearnedStat) -->
+      <div class="prow"><span>Books Learned</span><span id="statBooksLearned">0</span></div>
       <div class="psection">MANUFACTURING PLANS</div>
       <div id="statBlueprints"><div class="prow"><span>NONE KNOWN</span><span></span></div></div>
     </div>
     <div class="walletTabSection" id="walletMedalsSection">
       <div id="fameHeaderRow"></div>
       <div id="medalsList"></div>
+    </div>
+    <!-- item 11: new LOANS tab -- shows the financing system from the FINANCE OFFICE
+         (see FINANCE_GEAR_COST/buyNewShip/shipLoanBalance/renderLoansTab) -->
+    <div class="walletTabSection" id="walletLoansSection">
+      <div class="psection" style="margin-top:0;">SHIP LOAN</div>
+      <div class="prow"><span>Principal Owed</span><span id="loansShipPrincipalRead">0 cr</span></div>
+      <div class="prow"><span>Next Payment Due</span><span id="loansShipDueRead">—</span></div>
+      <div class="prow"><span>Payment Amount</span><span id="loansShipAmountRead">—</span></div>
+      <div class="prow" style="font-size:10px; color:var(--phosphor-dim);"><span id="loansShipFinancedItemRead">No active ship loan.</span><span></span></div>
+      <div class="psection">EQUIPMENT / GEAR LOAN</div>
+      <div class="prow"><span>Principal Owed</span><span id="loansGearPrincipalRead">0 cr</span></div>
+      <div class="prow"><span>Next Payment Due</span><span id="loansGearDueRead">—</span></div>
+      <div class="psection">STATUS</div>
+      <div class="prow"><span>Missed Payments</span><span id="loansMissedRead">0 / 3</span></div>
+      <div class="prow"><span>Bounty Status</span><span id="loansBountyRead">CLEAR</span></div>
+      <div class="prow" style="margin-top:6px;">
+        <input type="number" id="loansPayInput" min="0" placeholder="AMOUNT" style="flex:1;">
+        <button class="cmdbtn" id="btnLoansPay" style="margin-left:6px;">PAY DOWN</button>
+      </div>
+      <div class="prow" style="font-size:10px; color:var(--phosphor-dim); margin-top:4px;"><span>Payments must be made from the LOAN panel at a station's FINANCE OFFICE, or here at any time. Due every in-game WEEK.</span><span></span></div>
     </div>
     <div class="walletTabSection" id="walletMailSection">
       <div class="psection" style="margin-top:0;">COMPOSE</div>
@@ -1652,7 +1701,7 @@
   <div class="psection">DOCKING &amp; STATIONS</div>
   <div class="keys">
     <div><b>DOCK</b> once in range of a station to open its docking bay menu — <b>UNDOCK</b> launches you back out near the local gate</div>
-    <div>While docked: <b>REPAIR HULL</b>, sell cargo/ore, browse the <b>MARKET</b>, list/browse the <b>AUCTION HOUSE</b>, refit gear at <b>FITTING</b>, manage the <b>STORAGE</b> hold, buy/finance ships at the <b>SHIPYARD</b>, take a <b>LOAN</b>, queue <b>MANUFACTURING</b> jobs, craft at the <b>LIBRARY</b>, and take contracts from the <b>GALACTIC NAVY</b>, <b>MINING CORP</b> and <b>TRANSPORTATION GUILD</b> offices</div>
+    <div>While docked: <b>REPAIR HULL</b>, sell cargo/ore, browse the <b>MARKET</b>, list/browse the <b>AUCTION HOUSE</b>, refit gear at <b>FITTING</b>, manage the <b>STORAGE</b> hold, buy/finance ships at the <b>FINANCE OFFICE</b>, take a <b>LOAN</b>, queue <b>MANUFACTURING</b> jobs, craft at the <b>LIBRARY</b>, and take contracts from the <b>GALACTIC NAVY</b>, <b>MINING CORP</b> and <b>TRANSPORTATION GUILD</b> offices</div>
     <div>Every station buys/sells at its own market prices and collects its own small <b>STATION TAX</b> on market trades, auction fees and Library crafting — funding the <b>SECTOR GOVERNMENT</b> panel's tax trust for that station</div>
     <div>STORAGE and crafting output are <b>per-station</b> — items you bank or craft at one station stay there until you fly back or move them yourself</div>
   </div>
@@ -1669,7 +1718,7 @@
     <div><b class="warn">Engage Weapons</b> on a locked hostile — your to-hit % grows slowly as you level combat skills</div>
     <div>Shields regenerate over time once you're clear of fire for a few seconds — hostiles carry none, only hull. Once your own shields collapse, hits start damaging your hull for real</div>
     <div>Kills leave <b>wreckage</b> to <b>SALVAGE</b> for scrap + a black box (or, rarely, a captain's black box) — turn these in to the Galactic Navy office, or sell/auction them like any other stored item</div>
-    <div><b class="warn">Warning:</b> a destroyed hull drops you into a weak, unarmed escape pod at the wreck site — board a stored ship or buy a new one at the SHIPYARD to get back in the fight</div>
+    <div><b class="warn">Warning:</b> a destroyed hull drops you into a weak, unarmed escape pod at the wreck site — board a stored ship or buy a new one at the FINANCE OFFICE to get back in the fight</div>
   </div>
 
   <div class="psection">WARP &amp; AUTOPILOT</div>
@@ -1684,27 +1733,62 @@
   <div class="psection">SKILLS, LIBRARY &amp; KNOWLEDGE</div>
   <div class="keys">
     <div>Skills train automatically over real wall-clock time from the <b>SKILLS</b> panel — training keeps advancing even while docked or offline</div>
-    <div><b>Knowledge</b> (shown in the WALLET popup) accrues from active playtime and from kills/mining/quests/medals — spend it at any station's <b>LIBRARY</b></div>
+    <div><b>Knowledge</b> (shown in the DATA PAD's LEDGER tab) accrues from active playtime and from kills/mining/quests/medals — spend it at any station's <b>LIBRARY</b></div>
     <div>The Library crafts <b>Memory Cubes</b> (banked Knowledge you can later burn to instantly speed up whatever skill is training) and <b>Skill Books</b> (scribe once a skill hits LV.1+, to unlock training the next levels) — both cost Knowledge + credits (plus station tax) and take real time to finish, landing in that station's STORAGE when done</div>
   </div>
 
   <div class="psection">AUCTION HOUSE</div>
   <div class="keys">
     <div>List anything sitting in a station's STORAGE for other players to buy — set your own price, up to 4 active listings per station</div>
-    <div>Listings elsewhere show up under "my listings" until sold or cancelled; sale proceeds (minus station tax) land in your WALLET automatically</div>
+    <div>Listings elsewhere show up under "my listings" until sold or cancelled; sale proceeds (minus station tax) land in your DATA PAD automatically</div>
   </div>
 
-  <div class="psection">WALLET &amp; MAIL</div>
+  <div class="psection">DATA PAD &amp; MAIL</div>
   <div class="keys">
-    <div>The <b>WALLET</b> popup tracks your <b>LEDGER</b> (credit history), lifetime <b>STATS</b>, earned <b>MEDALS</b> (fixed achievements plus infinitely-scaling tiered chains), Knowledge balance, and your <b>MAIL</b></div>
+    <div>The <b>DATA PAD</b> tracks your <b>LEDGER</b> (credit + Knowledge history), lifetime <b>STATS</b>, earned <b>MEDALS</b> (fixed achievements plus infinitely-scaling tiered chains), your <b>EQUIPMENT</b>, any active <b>LOANS</b>, and your <b>MAIL</b></div>
     <div>Type in the event log to broadcast a message to other players sharing your zone</div>
   </div>
 
+  <div class="psection">SHIPS &amp; FINANCING</div>
+  <div class="keys">
+    <div>Ships are items now: an owned-but-not-flown ship sits in a station's STORAGE — click it there (or at the FINANCE OFFICE) to board/equip it, swapping out whatever you're currently flying (which becomes a stored item there in turn)</div>
+    <div>The FINANCE OFFICE finances ships and starter gear — financed items are delivered straight to that station's STORAGE, and a loan balance builds against you (see the DATA PAD's LOANS tab). Only one financed SHIP loan can be open at a time</div>
+    <div>Payments are due every in-game WEEK. Miss enough and a bounty hunter is sent after you — if one kills you, your current Knowledge balance is wiped on top of the usual death penalty</div>
+    <div>A brand-new character starts with no ship at all, just an escape pod — finance your first hull at any FINANCE OFFICE</div>
+  </div>
+
+  <!-- item 1: reachable from Help regardless of earned status, separate from the
+       in-panel MEDALS tab's earned/ongoing-only view -- see openAllMedalsPanel -->
   <div class="dbtns">
+    <button class="cmdbtn" id="btnOpenAllMedals">SHOW ALL MEDALS</button>
     <button class="cmdbtn" id="btnCloseHelp">◀ BACK</button>
   </div>
 </div>
 
+<!-- item 1: full medals/achievements browser -- lists EVERY fixed achievement and
+     every tiered chain's next few tiers regardless of earned/in-progress status, so a
+     curious player can browse the complete list. Separate popup from the MEDALS tab
+     inside the Data Pad (which only shows earned + in-progress, see renderMedals). -->
+<div class="hud popupPanel" id="allMedalsPanel">
+  <div class="phdr"><span>ALL MEDALS</span><button id="btnCloseAllMedals">✕</button></div>
+  <div class="popupBody">
+    <div class="psection" style="margin-top:0;">TIERED MEDALS (ALL CHAINS)</div>
+    <div id="allMedalsTierList"></div>
+    <div class="psection" id="allMedalsFixedHeader">FIXED MEDALS</div>
+    <div id="allMedalsFixedList"></div>
+  </div>
+</div>
+
+<!-- item 4d: brand-new character station picker -- shown once, before the character
+     is ever dropped into the belt, when no save exists yet for this account. See
+     pickStartingStation()/renderNewCharacterStationList(). -->
+<div class="hud popupPanel" id="newCharacterStationPanel">
+  <div class="phdr"><span>CHOOSE YOUR STARTING STATION</span></div>
+  <div class="popupBody">
+    <div class="prow" style="font-size:11px; color:var(--phosphor-dim);"><span>You have no ship yet — just an escape pod. Pick a station to start at; you'll finance your first hull at its FINANCE OFFICE.</span></div>
+    <div id="newCharacterStationList"></div>
+  </div>
+</div>
 <div class="hud" id="spawnAlert"></div>
 <div class="hud" id="zoneAlert"></div>
 <div class="hud" id="lockAlert"></div>
@@ -1767,7 +1851,7 @@
       <button class="cmdbtn" id="btnDockAuctionPanel">AUCTION HOUSE</button>
       <button class="cmdbtn" id="btnDockFittingPanel">FITTING</button>
       <button class="cmdbtn" id="btnDockStoragePanel">STORAGE</button>
-      <button class="cmdbtn" id="btnDockShipyardPanel">SHIPYARD</button>
+      <button class="cmdbtn" id="btnDockShipyardPanel">FINANCE OFFICE</button>
       <button class="cmdbtn" id="btnDockLoanPanel">LOAN</button>
       <button class="cmdbtn" id="btnDockManufacturingPanel">MANUFACTURING</button>
       <button class="cmdbtn" id="btnDockLibraryPanel">LIBRARY</button>
@@ -1920,7 +2004,7 @@
   </div>
 
   <div id="dockShipyardPanel" class="dockSubPanel">
-    <div class="sub" style="color:var(--amber); text-align:left;">SHIPYARD</div>
+    <div class="sub" style="color:var(--amber); text-align:left;">FINANCE OFFICE</div>
     <div class="drow"><span>CURRENT VESSEL</span><span id="shipyardCurrentRead">—</span></div>
     <div class="drow"><span>YOUR CREDITS</span><span id="shipyardCreditsRead">0 cr</span></div>
     <div class="dbtns" style="margin-top:10px;">
@@ -1962,6 +2046,12 @@
     <div id="navyQuestList" style="margin-top:8px;"></div>
     <div class="psection">ACCEPTED CONTRACTS</div>
     <div id="navyActiveQuestList" style="margin-top:8px;"></div>
+    <!-- item 6: individual black-box bounty turn-in -- separate from the contract
+         board above, pays straight out of THIS station's treasury (see
+         renderBlackBoxBountyPanel/turnInBlackBoxes) -->
+    <div class="psection">BLACK BOX BOUNTY (INDIVIDUAL TURN-IN)</div>
+    <div class="drow"><span>STATION TREASURY</span><span id="navyBountyTreasuryRead">0 cr</span></div>
+    <div id="navyBlackBoxBountyList" style="margin-top:8px;"></div>
     <div class="dbtns" style="margin-top:14px;">
       <button class="cmdbtn" id="btnDockNavyBack">◀ BACK</button>
     </div>
@@ -2044,9 +2134,9 @@
 // compatibility depends on it. Add new keys, don't rename old ones.
 
 // ---------- version / build info (shown in the ESC settings menu) ----------
-const GAME_VERSION = "0.19.3";
+const GAME_VERSION = "0.20.0";
 const GAME_LAST_EDITED = "2026-09-24";
-const GAME_BUILD_TIME = "09:17 PT"; // wall-clock time this build was published, not just the date
+const GAME_BUILD_TIME = "11:34 PT"; // wall-clock time this build was published, not just the date
 
 // ---------- update-available banner ----------
 // Periodically re-fetches this very page (same-origin -- works identically whether
@@ -3001,28 +3091,81 @@ function npcKillKnowledgeValue(entry){
 
 // ---------- escape pod / loan / bounty state (see damagePlayer, doWarp, docking UI) ----------
 let inEscapePod = false;
-let loanPrincipal = 0;         // credits owed on a financed ship purchase
-let missedPaymentStreak = 0;   // consecutive missed in-game-hour interest payments
+let loanPrincipal = 0;         // credits owed on financed GEAR (weapon/shield/ammo) -- see shipLoanBalance below for ships specifically
+let missedPaymentStreak = 0;   // consecutive missed weekly interest payments
 let hasBounty = false;         // 3 consecutive missed payments -- bounty hunters start spawning
+// item 4c: SHIP financing gets its own separate balance from gear financing
+// (loanPrincipal above) so "only one financed ship loan at a time" can actually be
+// enforced (buyNewShip refuses to finance a second ship while this is > 0) without
+// touching how gear financing already works (that still stacks freely into
+// loanPrincipal). Both balances accrue interest/trigger missed-payment bounty hunters
+// together -- see processLoanInterestTick.
+let shipLoanBalance = 0;
+// item 4c: mortgage payments are due every in-game WEEK (was a 150-real-second
+// "in-game hour" micro-tick that auto-paid from bountyCredits constantly -- replaced
+// with a real wall-clock due-date, consistent with how manufacturing/library
+// crafting/skill training all use Date.now()-anchored deadlines rather than a
+// per-frame/per-tick timer that only advances while the tab is open). 0 = no loan
+// taken yet / not yet scheduled.
+const LOAN_PAYMENT_INTERVAL_MS = SKILL_REAL_SECONDS_PER_INGAME_DAY * 7 * 1000; // 1 in-game week
+const LOAN_INTEREST_RATE = 0.05;
+let nextLoanPaymentDueMs = 0;
 let playerStunned = 0;         // seconds remaining stunned (bounty-hunter ion blast) -- input/movement locked out while >0
 let playerStunnedEndsAtMs = 0; // (v0.19.2) wall-clock deadline playerStunned is now derived from each tick, so a
                                 // backgrounded tab's stun correctly clears itself on refocus instead of pausing
 
-// ---------- ship ownership (item 41) ----------
+// ---------- ship ownership (item 41, reworked further under item 4) ----------
 // the player's fleet: whichever ship is currently flown (activeShipInstance, null
 // while podded -- a destroyed ship is gone, not returned to storage) plus any ships
-// sitting in station storage (storedShipInstances), each a small {instId,classKey,name}
-// record. Equipment (weapon/shield/mining-laser tiers, ammo) stays a single shared
-// loadout tracked separately (see cargoStacks/equippedWeaponTier/etc) rather than
-// being bound per-ship -- swapping ships keeps whatever's currently equipped, gated
-// by that new hull's own canWeapon/canMining flags (see activateShipInstance).
+// NOT currently flown, which now live as real ITEM STACKS inside that station's own
+// stationStorageStacks bucket (itemType 'ship_wayfarer'/'ship_prospector', see
+// SHIP_ITEM_TYPE_FOR_CLASS below) -- exactly the same storage system every other item
+// (ore, gear, memory cubes...) already uses, so an unequipped ship is now sellable on
+// the MARKET and listable on the AUCTION HOUSE via that same generic code, and shows
+// up (clickable to equip) in the ordinary station storage grid.
+//
+// storedShipInstances (the OLD flat, not-per-station array from before this update)
+// is kept as a save-data field per the naming-stability rule (never remove/rename a
+// persisted field) but is no longer the live source of truth -- it's always written
+// out empty now, and on load, any legacy entries still sitting in it are migrated
+// into the new per-station stack shape (see applyPlayerSaveData's migration, dropped
+// at the player's home station since the old shape didn't record which station a
+// ship was stored at).
+//
+// Equipment (weapon/shield/mining-laser tiers, ammo) stays a single shared loadout
+// tracked separately (see cargoStacks/equippedWeaponTier/etc) rather than being bound
+// per-ship -- DESIGN DECISION (documented in the release notes): the game's gear
+// system tracks unlocked TIERS, not discrete consumable items, so there is no
+// physical "unit of gear" that could be left behind on a specific hull the way ammo
+// or ore can; swapping ships keeps whatever's currently equipped, gated by that new
+// hull's own canWeapon/canMining flags (see activateShipInstance).
 let nextShipInstanceId = 1;
 let activeShipInstance = { instId:0, classKey:'starter', name:'WAYFARER-1' };
-let storedShipInstances = [];
+let storedShipInstances = []; // legacy field, frozen -- see comment above; always empty in new saves
 let shipSerialCounters = { starter:1, mining:0 }; // starter already at 1 -- that's the ship you start with
 function nextShipName(classKey){
   shipSerialCounters[classKey] = (shipSerialCounters[classKey]||0) + 1;
   return SHIP_CLASSES[classKey].baseName + '-' + shipSerialCounters[classKey];
+}
+// item 4: new item types representing ship ownership -- persistent-identifier naming
+// stability applies to these exactly like any other itemType key from here on
+const SHIP_ITEM_TYPE_FOR_CLASS = { starter:'ship_wayfarer', mining:'ship_prospector' };
+const SHIP_CLASS_FOR_ITEM_TYPE = { ship_wayfarer:'starter', ship_prospector:'mining' };
+function isShipItemType(itemType){ return !!SHIP_CLASS_FOR_ITEM_TYPE[itemType]; }
+// pushes a NEW, non-merging stack for this ship instance into the given station's
+// storage -- ships never merge into an existing stack (unlike ore/ammo/etc) since
+// each one is a distinct owned hull, same convention as memory_cube/skill_book stacks
+function addShipToStationStorage(inst, stationId){
+  stationStorage(stationId).push({
+    stackId: nextStorageStackId++, itemType: SHIP_ITEM_TYPE_FOR_CLASS[inst.classKey], qty:1,
+    shipInstId: inst.instId, shipName: inst.name
+  });
+}
+// finds a specific ship stack (by its shipInstId) across a given station's storage,
+// used by the EQUIP/SELL actions in both the FINANCE OFFICE panel and the generic
+// station storage grid
+function findShipStackByInstId(instId, stationId){
+  return stationStorage(stationId).find(s=> isShipItemType(s.itemType) && s.shipInstId === instId);
 }
 
 // two flat stat profiles -- the pod is deliberately much weaker/slower and carries no
@@ -3089,7 +3232,7 @@ function enterEscapePod(opts){
 // the pod's zero-cargo-capacity rule.
 function storeCurrentShipAndPod(){
   if(!docked || inEscapePod || !activeShipInstance) return;
-  storedShipInstances.push({ instId: activeShipInstance.instId, classKey: activeShipInstance.classKey, name: activeShipInstance.name });
+  addShipToStationStorage({ instId: activeShipInstance.instId, classKey: activeShipInstance.classKey, name: activeShipInstance.name }, activeStationEntry().id);
   const storedName = activeShipInstance.name;
   if(cargoStacks.length){
     // guild delivery cargo is NOT warehoused -- stowing the ship forfeits it (the
@@ -3116,6 +3259,7 @@ function storeCurrentShipAndPod(){
   updateCargoUI();
   refreshEquipmentPanel();
   updateXPUI();
+  if(typeof renderDockStorageRows === 'function') renderDockStorageRows();
   flashMessage(storedName.toUpperCase() + ' STORED', 'good');
   logEvent('STORED ' + storedName.toUpperCase() + ' AT ' + activeStationEntry().name.toUpperCase(), 'good');
 }
@@ -3123,10 +3267,19 @@ function storeCurrentShipAndPod(){
 // purchase, or one pulled out of storage) -- rebuilds the mesh fresh from that
 // class's own model builder (see SHIP_CLASSES) and applies that class's flight
 // stats. If a ship is currently being flown (not podded), it's pushed into storage
-// first so the player never ends up owning zero ships without explicitly selling.
+// first (as a real item stack at the CURRENT station, see addShipToStationStorage)
+// so the player never ends up owning zero ships without explicitly selling, and any
+// cargo currently aboard it is dumped into that same station's storage first --
+// item 4a's documented cargo-on-swap rule: a different hull can't carry cargo that
+// was loaded into a DIFFERENT ship's hold, so it can't ride along across the swap.
 function activateShipInstance(inst){
   if(!inEscapePod && activeShipInstance){
-    storedShipInstances.push({ instId: activeShipInstance.instId, classKey: activeShipInstance.classKey, name: activeShipInstance.name });
+    addShipToStationStorage({ instId: activeShipInstance.instId, classKey: activeShipInstance.classKey, name: activeShipInstance.name }, activeStationEntry().id);
+    if(cargoStacks.length){
+      cargoStacks.slice().forEach(s=>{ if(!s.guildQuestId) addToStationStorage(s.itemType, s.qty, activeStationEntry().id); });
+      cargoStacks = [];
+      syncFlatCargoMirrors();
+    }
   }
   activeShipInstance = inst;
   inEscapePod = false;
@@ -3153,37 +3306,63 @@ function activateShipInstance(inst){
   refreshCmdButtons();
   updateXPUI();
 }
+// item 4a: "click the ship item in storage to equip" -- boardStoredShip is now that
+// click handler's target, called from both the FINANCE OFFICE's stored-ships list and
+// the generic station storage grid. Only ever finds a match at the CURRENTLY DOCKED
+// station's own storage (stationStorage() defaults to activeStationEntry()), which is
+// exactly the "must be docked here" gate item 4a calls for -- you can only ever be
+// looking at a station's storage grid while docked at that station.
 function boardStoredShip(instId){
   if(!docked) return;
-  const idx = storedShipInstances.findIndex(s=>s.instId===instId);
-  if(idx < 0) return;
-  const inst = storedShipInstances[idx];
-  storedShipInstances.splice(idx, 1);
+  const stack = findShipStackByInstId(instId, activeStationEntry().id);
+  if(!stack) return;
+  const inst = { instId: stack.shipInstId, classKey: SHIP_CLASS_FOR_ITEM_TYPE[stack.itemType], name: stack.shipName };
+  removeStationStorageStackRef(stack, activeStationEntry().id);
   activateShipInstance(inst);
   flashMessage('BOARDED ' + inst.name.toUpperCase(), 'good');
   logEvent('BOARDED ' + inst.name.toUpperCase() + ' FROM STORAGE', 'good');
   updateDockedPanel();
   if(typeof renderDockShipyardPanel === 'function') renderDockShipyardPanel();
+  if(typeof renderDockStorageRows === 'function') renderDockStorageRows();
 }
+// item 4a: quick-sell for a stored (unequipped) ship, straight from the FINANCE
+// OFFICE panel -- a flat 40% of the class's buy cost, same rate every other
+// sell-to-station price uses (see TIER0_GEAR_SELL_PRICE/itemDisplayDef's own 0.4x
+// convention). The player's OWN currently-equipped ship can never reach this code
+// path -- it isn't a storage stack at all while equipped, so there's nothing to guard
+// against there. Listing on the AUCTION HOUSE instead of quick-selling here works
+// through the ordinary generic storage-item auction flow (see auctionEligibleItemTypes/
+// handleAuctionGridClick) since ship stacks are ordinary storage stacks now.
 function sellStoredShip(instId){
-  const idx = storedShipInstances.findIndex(s=>s.instId===instId);
-  if(idx < 0) return;
-  const inst = storedShipInstances[idx];
-  const cls = SHIP_CLASSES[inst.classKey];
+  if(!docked) return;
+  const stack = findShipStackByInstId(instId, activeStationEntry().id);
+  if(!stack) return;
+  const classKey = SHIP_CLASS_FOR_ITEM_TYPE[stack.itemType];
+  const cls = SHIP_CLASSES[classKey];
   const proceeds = Math.round(cls.cost * 0.4);
-  storedShipInstances.splice(idx, 1);
+  const name = stack.shipName;
+  removeStationStorageStackRef(stack, activeStationEntry().id);
   bountyCredits += proceeds;
-  addLedgerEntry(proceeds, 'Sold ' + inst.name);
-  flashMessage('SOLD ' + inst.name.toUpperCase() + ' — +' + proceeds + ' CR', 'good');
-  logEvent('SOLD ' + inst.name.toUpperCase() + ' — +' + proceeds + ' CR', 'good');
+  addLedgerEntry(proceeds, 'Sold ' + name);
+  flashMessage('SOLD ' + name.toUpperCase() + ' — +' + proceeds + ' CR', 'good');
+  logEvent('SOLD ' + name.toUpperCase() + ' — +' + proceeds + ' CR', 'good');
   updateCargoUI();
   if(typeof renderDockShipyardPanel === 'function') renderDockShipyardPanel();
+  if(typeof renderDockStorageRows === 'function') renderDockStorageRows();
 }
+// item 4c: financing -- delivers the new ship into STATION STORAGE as a real item
+// (see addShipToStationStorage) same as before, but SHIP financing now goes onto its
+// own shipLoanBalance (not the shared loanPrincipal gear balance) so "only one
+// financed ship loan active at a time" can actually be enforced below.
 function buyNewShip(classKey){
   const cls = SHIP_CLASSES[classKey];
   if(!cls) return;
   const cost = cls.cost;
   let financed = 0;
+  if(bountyCredits < cost && shipLoanBalance > 0){
+    flashMessage('ALREADY FINANCING A SHIP — PAY IT OFF FIRST', 'warn');
+    return;
+  }
   if(bountyCredits >= cost){
     bountyCredits -= cost;
     addLedgerEntry(-cost, 'Bought ' + cls.label);
@@ -3191,22 +3370,26 @@ function buyNewShip(classKey){
     financed = cost - bountyCredits;
     if(bountyCredits > 0) addLedgerEntry(-bountyCredits, 'Bought ' + cls.label + ' (partial)');
     bountyCredits = 0;
-    loanPrincipal += financed;
-    logEvent('FINANCED ' + financed + ' CR VIA STATION LOAN — PRINCIPAL NOW ' + Math.round(loanPrincipal) + ' CR', 'warn');
+    shipLoanBalance += financed;
+    if(nextLoanPaymentDueMs === 0) nextLoanPaymentDueMs = Date.now() + LOAN_PAYMENT_INTERVAL_MS;
+    logEvent('FINANCED ' + financed + ' CR VIA STATION LOAN — SHIP LOAN BALANCE NOW ' + Math.round(shipLoanBalance) + ' CR', 'warn');
   }
   const inst = { instId: nextShipInstanceId++, classKey, name: nextShipName(classKey) };
-  storedShipInstances.push(inst);
-  flashMessage('NEW ' + cls.label.toUpperCase() + ' DELIVERED TO STORAGE' + (financed>0?' (FINANCED)':''), 'good');
+  addShipToStationStorage(inst, activeStationEntry().id);
+  // item 4c: explicit delivery notification, exact wording per spec
+  flashMessage('YOUR ' + cls.label.toUpperCase() + ' WAS DELIVERED TO YOUR ON-STATION STORAGE.' + (financed>0?' (FINANCED)':''), 'good');
   logEvent('PURCHASED ' + inst.name.toUpperCase() + ' FOR ' + cost + ' CR' + (financed>0?' (' + financed + ' CR FINANCED)':'') + ' — STORED AT ' + activeStationEntry().name.toUpperCase(), 'good');
   updateCargoUI();
   updateDockedPanel();
   if(typeof renderDockShipyardPanel === 'function') renderDockShipyardPanel();
+  if(typeof renderDockStorageRows === 'function') renderDockStorageRows();
 }
 // financing starter gear always puts the full cost on the station loan (rather than
 // auto-splitting against available credits like buyNewShip) -- these are meant as a
 // quick "get flying again with nothing in the bank" option -- and the gear is
 // delivered to STATION STORAGE, not auto-equipped (item 41: "must be moved over and
-// equipped yourself")
+// equipped yourself"). Gear financing stacks freely (no one-at-a-time restriction,
+// unlike ships -- see item 4c) and stays on the original loanPrincipal balance.
 const FINANCE_GEAR_COST = { weapon:400, shield:400, ammo:150 };
 function financeStarterGear(kind){
   let itemType, qty, cost, label;
@@ -3215,8 +3398,10 @@ function financeStarterGear(kind){
   else if(kind === 'ammo'){ itemType=AMMO_ITEM_TYPE; qty=100; cost=FINANCE_GEAR_COST.ammo; label='Iron Bullets x100'; }
   else return;
   loanPrincipal += cost;
+  if(nextLoanPaymentDueMs === 0) nextLoanPaymentDueMs = Date.now() + LOAN_PAYMENT_INTERVAL_MS;
   addToStationStorage(itemType, qty);
-  flashMessage('FINANCED ' + label.toUpperCase() + ' — ' + cost + ' CR ADDED TO LOAN', 'good');
+  // item 4c: explicit delivery notification, exact wording per spec
+  flashMessage('YOUR ' + label.toUpperCase() + ' WAS DELIVERED TO YOUR ON-STATION STORAGE.', 'good');
   logEvent('FINANCED ' + label.toUpperCase() + ' (' + cost + ' CR) — DELIVERED TO ' + activeStationEntry().name.toUpperCase() + ' STORAGE', 'warn');
   updateCargoUI();
   updateDockedPanel();
@@ -6778,11 +6963,10 @@ function updateDockedScene(dt){
       gl.material.opacity = Math.min(1, 0.5 + pulse*0.4);
     });
   }
-  // item 7: manufacturing queue only advances while docked (animate() short-circuits
-  // to this function entirely while docked, see the top of animate()) -- same
-  // "keeps advancing via the normal per-frame update loop, only while docked" ask as
-  // mining/warp-charge ticks elsewhere in the file
-  updateManufacturingQueue(dt);
+  // item 8: manufacturing is wall-clock-timed now (see manufacturingQueues' rework
+  // comment) and no longer needs a per-frame tick here -- checkManufacturingCompletion()
+  // is called from renderManufacturingPanel/applyPlayerSaveData/its own periodic
+  // safety-net setInterval instead, same convention as library crafting.
 }
 
 // item 10: hull/black-box/scrap-ore/bounty-credits info rows were removed from the
@@ -6866,9 +7050,9 @@ function enterDock(station){
 function exitDock(){
   if(!docked) return;
   docked = false;
-  // item 7: cancel/refund any not-yet-completed manufacturing batch on undock (see the
-  // DESIGN CHOICE comment on manufacturingQueues above) -- it never runs while flying
-  cancelManufacturingQueues();
+  // item 8: manufacturing batches are wall-clock-timed now (see manufacturingQueues'
+  // own rework comment) and deliberately KEEP building after undocking -- no more
+  // cancel/refund here.
   ['telemetry','clockPanel','overview','eventLog','targetPanel','itemInspector','centerReticle','spawnAlert','zoneAlert','lockAlert']
     .forEach(id=>{ const el = document.getElementById(id); if(el) el.style.display = ''; });
   document.getElementById('dockedPanel').classList.remove('show');
@@ -7305,7 +7489,59 @@ async function syncGovTrustOnDock(station){
       .eq('user_id', currentUser.id).eq('day', todayKey()).maybeSingle();
     ubiClaimedHereToday = !!data;
   }catch(e){}
+  // item 7: weekly station treasury income -- checked (and applied, if due) every
+  // time a signed-in player docks anywhere, which is itself proof the server isn't
+  // empty right now (see tryApplyWeeklyStationIncome's own comment for the fuller
+  // presence-guard reasoning)
+  if(typeof tryApplyWeeklyStationIncome === 'function') await tryApplyWeeklyStationIncome(station);
   renderGovPanel();
+}
+// item 7: every in-game WEEK, every station's treasury gets a random 200-500 credit
+// income -- but only while the server isn't empty. Two guards enforce that:
+//   1) this only ever runs from syncGovTrustOnDock, i.e. triggered by a signed-in
+//      player actually docking somewhere -- if nobody's connected, nobody docks, and
+//      this never even gets called, so income structurally cannot accrue with 0
+//      players online.
+//   2) belt-and-suspenders per the spec's explicit "using presence data" ask: also
+//      checks serverRoster (this server/channel's live presence roster, see
+//      rebuildServerRosterFromPresenceState) has at least 1 entry before applying.
+// DOUBLE-APPLY GUARD: last_weekly_income_at (new station_treasury column, see
+// cloudSyncSetupSql) is read fresh from the cloud immediately before writing, and the
+// write only proceeds if that freshly-read timestamp is STILL far enough in the past
+// -- a classic read-then-write race is still technically possible if two players dock
+// at the same station in the same instant, but this is explicitly accepted as
+// best-effort/eventual consistency (per the spec) for what is a low-stakes flavor
+// economy feature, not a hard transactional guarantee.
+const WEEKLY_INCOME_INTERVAL_MS = SKILL_REAL_SECONDS_PER_INGAME_DAY * 7 * 1000; // 1 in-game week, same length as the loan payment cadence
+async function tryApplyWeeklyStationIncome(station){
+  if(!supabaseClient || !currentUser) return;
+  if(Object.keys(serverRoster).length < 1) return; // presence guard -- server/channel is empty
+  try{
+    const { data, error } = await supabaseClient.from('station_treasury')
+      .select('balance,last_weekly_income_at').eq('server', currentServer).eq('station_id', station.id).maybeSingle();
+    if(error) return;
+    const lastTick = (data && data.last_weekly_income_at) ? new Date(data.last_weekly_income_at).getTime() : 0;
+    const now = Date.now();
+    // no row yet, or the column is unset on an old row -- start the clock now rather
+    // than treating "never ticked" as "a week overdue" (which would pay out on this
+    // station's very first-ever dock)
+    if(lastTick === 0){
+      await supabaseClient.from('station_treasury').upsert(
+        { server: currentServer, station_id: station.id, balance: (data && data.balance) || 0, last_weekly_income_at: new Date(now).toISOString() },
+        { onConflict:'server,station_id' }
+      );
+      return;
+    }
+    if(now - lastTick < WEEKLY_INCOME_INTERVAL_MS) return;
+    const income = 200 + Math.floor(Math.random() * 301); // 200-500 inclusive
+    const newBalance = ((data && data.balance) || 0) + income;
+    await supabaseClient.from('station_treasury').upsert(
+      { server: currentServer, station_id: station.id, balance: newBalance, updated_at: new Date().toISOString(), last_weekly_income_at: new Date(now).toISOString() },
+      { onConflict:'server,station_id' }
+    );
+    stationTreasury[station.id] = newBalance;
+    logEvent(station.name.toUpperCase() + ' TREASURY: +' + income + ' CR WEEKLY SECTOR INCOME (NOW ' + Math.floor(newBalance) + ' CR)', 'good');
+  }catch(e){ console.warn('weekly station income exception', e); }
 }
 function renderGovPanel(){
   const el = document.getElementById('govTrustBalanceRead');
@@ -7546,6 +7782,24 @@ function removeFromStationStorage(itemType, qty, stationId){
 function totalInStationStorage(itemType, stationId){
   return stationStorage(stationId).filter(s=>s.itemType===itemType).reduce((sum,s)=> sum + s.qty, 0);
 }
+// item 4a: generic "deposit qty of itemType into station storage" used by the AUCTION
+// HOUSE's buy/cancel-return paths -- special-cased for ship item types, which can
+// never merge into a shared qty stack (each is a distinct hull). A ship bought off the
+// auction, or returned to storage by cancelling a listing, gets a FRESH instId/serial
+// name (the original seller's identity doesn't carry over -- same real-world logic as
+// a car's old title being retired when it changes hands) rather than reusing
+// addToStationStorage's generic qty-merge logic, which would silently corrupt the
+// {shipInstId,shipName} shape ships alone carry.
+function depositItemsToStationStorage(itemType, qty, stationId){
+  if(isShipItemType(itemType)){
+    const classKey = SHIP_CLASS_FOR_ITEM_TYPE[itemType];
+    for(let i=0; i<qty; i++){
+      addShipToStationStorage({ instId: nextShipInstanceId++, classKey, name: nextShipName(classKey) }, stationId);
+    }
+    return;
+  }
+  addToStationStorage(itemType, qty, stationId);
+}
 document.getElementById('btnAuctionList').addEventListener('click', async ()=>{
   if(!docked || !dockedStation) return;
   if(!supabaseClient || !currentUser){ flashMessage('SIGN IN REQUIRED TO LIST ITEMS', 'warn'); return; }
@@ -7633,7 +7887,7 @@ async function handleAuctionGridClick(e){
     const tax = Math.ceil(listing.price * STATION_SALES_TAX);
     const sellerProceeds = listing.price - tax;
     bountyCredits -= listing.price;
-    addToStationStorage(listing.item_key, listing.qty);
+    depositItemsToStationStorage(listing.item_key, listing.qty, dockedStation.id);
     addLedgerEntry(-listing.price, 'Bought ' + (def?def.label:listing.item_key) + ' x' + listing.qty + ' from ' + (listing.seller_name||'UNKNOWN') + ' (auction)');
     try{
       await supabaseClient.from('auction_payouts').upsert(
@@ -7667,7 +7921,7 @@ async function handleAuctionGridClick(e){
     // happens to be docked right now, since this can be cancelled from the "my
     // listings at other stations" list while docked somewhere else entirely. Using the
     // listing's own station keeps the items where they were actually removed from.
-    addToStationStorage(listing.item_key, listing.qty, listing.station_id); // listing fee is NOT refunded
+    depositItemsToStationStorage(listing.item_key, listing.qty, listing.station_id); // listing fee is NOT refunded
     flashMessage('LISTING CANCELLED — ITEMS RETURNED TO STORAGE', 'good');
     logEvent('AUCTION: CANCELLED LISTING — ' + listing.qty + 'x ' + (itemDisplayDef(listing.item_key)||{}).label, 'good');
     if(typeof renderDockStorageRows === 'function') renderDockStorageRows();
@@ -7769,17 +8023,28 @@ document.getElementById('btnDockFittingBack').addEventListener('click', ()=> sho
 // never "run out" partway through from the player spending/losing materials elsewhere
 // after the check; each unit's craft still visibly takes craftSeconds to complete
 // (progress bar), it just doesn't need a fresh affordability check at that point.
-// DESIGN CHOICE (undocking mid-batch): the not-yet-STARTED remainder of a queue is
-// cancelled and refunded (materials + credits) on undock, rather than paused-and-
-// resumed later -- simpler to implement correctly (no need to persist/resume timers
-// across a docked/undocked/redocked cycle) and avoids any chance of a queue silently
-// advancing while the player is out flying. The unit actively mid-craft at the moment
-// of undocking is treated as not-yet-completed and is refunded too (materials in,
-// nothing out) -- see cancelManufacturingQueues, called from exitDock().
-const manufacturingQueues = {}; // { [blueprintType]: { queued, elapsed, total } }
-function getManufacturingQueue(bpType){
-  if(!manufacturingQueues[bpType]) manufacturingQueues[bpType] = { queued: 0, elapsed: 0, total: 0 };
-  return manufacturingQueues[bpType];
+// item 8 REWORK: this used to be a per-frame timer (only ever advanced while
+// DOCKED, via updateManufacturingQueue called from updateDockedScene) that got
+// cancelled-and-refunded on undock -- meaning it never actually ran in the
+// background and never survived a logout, unlike every other timed system in this
+// game (skill training, library crafting). Converted to the SAME wall-clock
+// startedAtMs+durationMs pattern LIBRARY crafting already uses: a batch has a real
+// Date.now() completion schedule that keeps advancing whether the player is docked,
+// flying, or signed out entirely, and is caught up (checkManufacturingCompletion) on
+// load/on next panel view/on a periodic safety-net tick, exactly like
+// checkLibraryCraftCompletion(). Also now keyed PER STATION (manufacturingQueues[stationId]
+// [bpType]) rather than one global bucket -- the old global bucket had its own latent
+// bug where a batch queued at one station would silently complete into whichever
+// DIFFERENT station the player happened to be docked at when the per-frame timer next
+// fired; per-station keying (matching libraryCrafting's own convention) removes that
+// ambiguity entirely, since a wall-clock check now needs to explicitly know which
+// station's storage each batch belongs to.
+let manufacturingQueues = {}; // { [stationId]: { [blueprintType]: { total, completed, startedAtMs, unitMs } } }
+function getManufacturingQueue(bpType, stationId){
+  stationId = stationId || activeStationEntry().id;
+  if(!manufacturingQueues[stationId]) manufacturingQueues[stationId] = {};
+  if(!manufacturingQueues[stationId][bpType]) manufacturingQueues[stationId][bpType] = { total:0, completed:0, startedAtMs:0, unitMs:0 };
+  return manufacturingQueues[stationId][bpType];
 }
 // checks the FULL batch is affordable (iron ore + credits) before deducting anything
 // or queueing anything -- refuses outright rather than silently building a partial
@@ -7788,8 +8053,9 @@ function startManufacturing(bpType, qty){
   const recipe = MANUFACTURING_RECIPES[bpType];
   if(!recipe || !knownBlueprints.has(bpType)) return;
   qty = Math.max(1, Math.min(100, Math.round(qty) || 0));
-  const q = getManufacturingQueue(bpType);
-  if(q.queued > 0){ flashMessage('ALREADY BUILDING A BATCH', 'warn'); return; }
+  const stationId = activeStationEntry().id;
+  const q = getManufacturingQueue(bpType, stationId);
+  if(q.total > 0){ flashMessage('ALREADY BUILDING A BATCH', 'warn'); return; }
   const ironNeeded = recipe.ironPerUnit * qty;
   const creditsNeeded = recipe.creditsPerUnit * qty;
   if(totalOfType('iron') < ironNeeded){ flashMessage('NOT ENOUGH IRON ORE FOR FULL BATCH', 'warn'); return; }
@@ -7797,57 +8063,52 @@ function startManufacturing(bpType, qty){
   removeFromCargo('iron', ironNeeded);
   bountyCredits -= creditsNeeded;
   addLedgerEntry(-creditsNeeded, 'Manufacturing: ' + recipe.label + ' x' + qty);
-  q.queued = qty;
-  q.elapsed = 0;
   q.total = qty;
+  q.completed = 0;
+  q.startedAtMs = Date.now();
+  q.unitMs = recipe.craftSeconds * 1000;
   flashMessage('BUILDING ' + qty + ' — ' + recipe.label.toUpperCase(), 'good');
-  logEvent('MANUFACTURING QUEUED — ' + recipe.label.toUpperCase() + ' x' + qty, 'good');
+  logEvent('MANUFACTURING QUEUED — ' + recipe.label.toUpperCase() + ' x' + qty + ' (CONTINUES IN THE BACKGROUND, EVEN OFFLINE)', 'good');
   updateCargoUI();
   renderManufacturingPanel();
 }
-// advanced every frame while docked, regardless of which docking-bay sub-panel is
-// currently open (see updateDockedScene, called unconditionally while docked) --
-// each unit takes exactly craftSeconds to complete; completed bullets go to STATION
-// STORAGE, not the ship's cargo hold, per the design
-function updateManufacturingQueue(dt){
-  let anyActive = false;
-  for(const bpType in manufacturingQueues){
-    const q = manufacturingQueues[bpType];
-    if(q.queued <= 0) continue;
-    anyActive = true;
-    const recipe = MANUFACTURING_RECIPES[bpType];
-    q.elapsed += dt;
-    if(q.elapsed >= recipe.craftSeconds){
-      q.elapsed -= recipe.craftSeconds;
-      q.queued -= 1;
-      addToStationStorage(recipe.outputType, recipe.outputQtyPerUnit);
-      logEvent('MANUFACTURED +' + recipe.outputQtyPerUnit + ' ' + itemDisplayDef(recipe.outputType).label.toUpperCase() + ' — DEPOSITED TO STORAGE', 'good');
-      if(q.queued <= 0){ q.elapsed = 0; q.total = 0; }
-    }
-  }
-  if(anyActive) renderManufacturingPanel();
-}
-// refunds the not-yet-completed remainder of every queue (see DESIGN CHOICE comment
-// above) -- called from exitDock()
-function cancelManufacturingQueues(){
-  for(const bpType in manufacturingQueues){
-    const q = manufacturingQueues[bpType];
-    if(q.queued <= 0) continue;
-    const recipe = MANUFACTURING_RECIPES[bpType];
-    const refundIron = recipe.ironPerUnit * q.queued;
-    const refundCredits = recipe.creditsPerUnit * q.queued;
-    addToCargo('iron', refundIron);
-    bountyCredits += refundCredits;
-    addLedgerEntry(refundCredits, 'Manufacturing refund: ' + recipe.label);
-    logEvent('MANUFACTURING QUEUE CANCELLED ON UNDOCK — REFUNDED ' + refundIron + ' IRON ORE + ' + refundCredits + ' CR', 'warn');
-    q.queued = 0;
-    q.elapsed = 0;
-    q.total = 0;
+// wall-clock catch-up, exactly like checkLibraryCraftCompletion() -- call this
+// whenever the player might have missed completions (panel open, load, periodic
+// safety net) rather than relying on a per-frame timer that only ran while docked
+function checkManufacturingCompletion(){
+  let anyChange = false;
+  Object.keys(manufacturingQueues).forEach(stationId=>{
+    const bucket = manufacturingQueues[stationId];
+    Object.keys(bucket).forEach(bpType=>{
+      const q = bucket[bpType];
+      if(q.total <= 0) return;
+      const recipe = MANUFACTURING_RECIPES[bpType];
+      if(!recipe) return;
+      const unitsElapsed = Math.floor((Date.now() - q.startedAtMs) / q.unitMs);
+      const newlyDone = Math.max(0, Math.min(unitsElapsed, q.total) - q.completed);
+      if(newlyDone <= 0) return;
+      anyChange = true;
+      q.completed += newlyDone;
+      addToStationStorage(recipe.outputType, recipe.outputQtyPerUnit * newlyDone, stationId);
+      logEvent('MANUFACTURED +' + (recipe.outputQtyPerUnit*newlyDone) + ' ' + itemDisplayDef(recipe.outputType).label.toUpperCase() + ' — DEPOSITED TO ' + stationNameById(stationId).toUpperCase() + ' STORAGE', 'good');
+      if(q.completed >= q.total){ q.total = 0; q.completed = 0; q.startedAtMs = 0; q.unitMs = 0; }
+    });
+  });
+  if(anyChange){
+    if(typeof renderManufacturingPanel === 'function') renderManufacturingPanel();
+    if(typeof renderDockStorageRows === 'function') renderDockStorageRows();
+    updateCargoUI();
   }
 }
+// safety net: catches a completion even if the player never reopens the
+// MANUFACTURING panel at that station again, same convention as claimAuctionPayouts'
+// own periodic poll
+setInterval(()=>{ if(typeof checkManufacturingCompletion === 'function') checkManufacturingCompletion(); }, 30000);
 function renderManufacturingPanel(){
   const wrap = document.getElementById('mfgRecipeList');
   if(!wrap) return;
+  checkManufacturingCompletion();
+  const stationId = activeStationEntry().id;
   const known = Object.keys(MANUFACTURING_RECIPES).filter(k=>knownBlueprints.has(k));
   if(known.length === 0){
     wrap.innerHTML = '<div class="drow"><span>NO MANUFACTURING PLANS KNOWN — LEARN A BLUEPRINT FROM YOUR CARGO HOLD</span></div>';
@@ -7855,17 +8116,19 @@ function renderManufacturingPanel(){
   }
   wrap.innerHTML = known.map(bpType=>{
     const recipe = MANUFACTURING_RECIPES[bpType];
-    const q = getManufacturingQueue(bpType);
+    const q = getManufacturingQueue(bpType, stationId);
     const def = itemDisplayDef(recipe.outputType);
-    const pct = q.queued > 0 ? Math.min(100, (q.elapsed / recipe.craftSeconds) * 100) : 0;
-    const building = q.queued > 0;
+    const elapsedInUnit = q.total > 0 ? (Date.now() - q.startedAtMs) - (q.completed * q.unitMs) : 0;
+    const pct = q.total > 0 ? Math.min(100, (elapsedInUnit / q.unitMs) * 100) : 0;
+    const building = q.total > 0;
     return '<div class="mfgCard">'
       + '<div class="drow"><span>' + recipe.label + '</span><span>' + def.label + '</span></div>'
       + '<div class="drow"><span>COST PER UNIT</span><span>' + recipe.ironPerUnit + ' IRON ORE + ' + recipe.creditsPerUnit + ' CR</span></div>'
       + (building
-        ? '<div class="drow"><span>CRAFTING</span><span>' + (q.total - q.queued + 1) + ' / ' + q.total + '</span></div>'
-        + '<div class="drow"><span>QUEUE REMAINING</span><span>' + q.queued + '</span></div>'
+        ? '<div class="drow"><span>CRAFTING</span><span>' + (q.completed + 1) + ' / ' + q.total + '</span></div>'
+        + '<div class="drow"><span>QUEUE REMAINING</span><span>' + (q.total - q.completed) + '</span></div>'
         + '<div class="mfgBar"><i style="width:' + pct + '%;"></i></div>'
+        + '<div class="drow" style="font-size:10px; color:var(--phosphor-dim);"><span>Keeps building even if you undock or log off</span><span></span></div>'
         : '<div class="dockSubRow">'
           + '<span class="dsName">Quantity</span>'
           + '<input type="number" min="1" max="100" step="1" value="10" data-mfg-qty="' + bpType + '">'
@@ -8288,7 +8551,13 @@ function renderDockStorageRows(){
           const skDef = SKILL_DEFS[stack.bookSkill];
           label = (skDef?skDef.name:stack.bookSkill) + ' Book'; qtyText = 'LV.' + stack.bookLevel;
         }
-        return '<div class="cargoTile" data-stn-stack-id="' + stack.stackId + '">'
+        // item 4a: ship items -- label with their serial name, tag as clickable-to-
+        // equip (the click handler below routes these straight to boardStoredShip()
+        // instead of the generic move/withdraw prompt)
+        const isShip = isShipItemType(stack.itemType);
+        if(isShip){ label = stack.shipName + ' — ' + def.label; qtyText = 'CLICK TO EQUIP'; }
+        return '<div class="cargoTile' + (isShip?' shipStackTile':'') + '" data-stn-stack-id="' + stack.stackId + '"'
+          + (isShip ? ' data-ship-inst-id="' + stack.shipInstId + '"' : '') + '>'
           + '<div class="swatch' + (def.round?' round':'') + '" style="background:' + def.color + ';"></div>'
           + '<div class="tname">' + label + '</div>'
           + '<div class="qty">' + qtyText + '</div>'
@@ -8340,6 +8609,13 @@ document.getElementById('dockStorageShipGrid').addEventListener('click', (e)=>{
 document.getElementById('dockStorageStationGrid').addEventListener('click', (e)=>{
   const tile = e.target.closest('.cargoTile');
   if(!tile || !tile.dataset.stnStackId) return;
+  // item 4a: "click the ship item in storage to equip" -- ship stacks bypass the
+  // generic move/withdraw prompt entirely (a ship can't go into the cargo hold) and
+  // equip straight away, swapping out whatever's currently flown
+  if(tile.dataset.shipInstId){
+    boardStoredShip(parseInt(tile.dataset.shipInstId, 10));
+    return;
+  }
   openStorageMovePrompt('station', parseInt(tile.dataset.stnStackId,10));
 });
 document.getElementById('dsMoveCancel').addEventListener('click', closeStorageMovePrompt);
@@ -8423,16 +8699,20 @@ function renderDockShipyardPanel(){
     + '<div class="peq"><span>Starter Shield Mk1 — ' + FINANCE_GEAR_COST.shield + ' cr (financed)</span><button class="peqBtn" data-finance-gear="shield">FINANCE</button></div>'
     + '<div class="peq"><span>Iron Bullets ×100 — ' + FINANCE_GEAR_COST.ammo + ' cr (financed)</span><button class="peqBtn" data-finance-gear="ammo">FINANCE</button></div>';
 
+  // item 4a: stored ships are now real item stacks at THIS station's storage (see
+  // addShipToStationStorage) instead of the old flat storedShipInstances array
   const stnList = document.getElementById('shipyardStoredShipsList');
-  stnList.innerHTML = storedShipInstances.length === 0
+  const shipStacksHere = stationStorage().filter(s=> isShipItemType(s.itemType));
+  stnList.innerHTML = shipStacksHere.length === 0
     ? '<div class="peq"><span>NO SHIPS IN STORAGE</span><span></span></div>'
-    : storedShipInstances.map(inst=>{
-        const cls = SHIP_CLASSES[inst.classKey];
+    : shipStacksHere.map(stack=>{
+        const classKey = SHIP_CLASS_FOR_ITEM_TYPE[stack.itemType];
+        const cls = SHIP_CLASSES[classKey];
         const sellPrice = Math.round(cls.cost * 0.4);
-        return '<div class="peq"><span>' + inst.name + ' (' + cls.label + ')</span>'
+        return '<div class="peq"><span>' + stack.shipName + ' (' + cls.label + ')</span>'
           + '<span style="display:flex; gap:4px;">'
-          + '<button class="peqBtn" data-board-ship="' + inst.instId + '">BOARD</button>'
-          + '<button class="peqBtn" data-sell-ship="' + inst.instId + '">SELL ' + sellPrice + 'cr</button>'
+          + '<button class="peqBtn" data-board-ship="' + stack.shipInstId + '">BOARD</button>'
+          + '<button class="peqBtn" data-sell-ship="' + stack.shipInstId + '">SELL ' + sellPrice + 'cr</button>'
           + '</span></div>';
       }).join('');
 }
@@ -8467,26 +8747,36 @@ document.getElementById('btnDockMiningPanel').addEventListener('click', ()=> sho
 document.getElementById('btnDockMiningBack').addEventListener('click', ()=> showDockSubPanel('dockMainPanel'));
 document.getElementById('btnDockTransportPanel').addEventListener('click', ()=> showDockSubPanel('dockTransportPanel'));
 document.getElementById('btnDockTransportBack').addEventListener('click', ()=> showDockSubPanel('dockMainPanel'));
+// item 4c: shows the COMBINED balance (ship + gear) here -- the DATA PAD's LOANS tab
+// (see renderLoansTab) breaks the two out individually
 function renderDockLoanPanel(){
-  document.getElementById('loanPrincipalRead').textContent = Math.round(loanPrincipal) + ' cr';
+  const totalOwed = loanPrincipal + shipLoanBalance;
+  document.getElementById('loanPrincipalRead').textContent = Math.round(totalOwed) + ' cr' + (shipLoanBalance>0 ? ' (' + Math.round(shipLoanBalance) + ' CR SHIP / ' + Math.round(loanPrincipal) + ' CR GEAR)' : '');
   document.getElementById('loanMissedRead').textContent = missedPaymentStreak + ' / 3';
   document.getElementById('loanBountyRead').textContent = hasBounty ? 'BOUNTY ACTIVE — HUNTERS INBOUND' : 'CLEAR';
   const payBtn = document.getElementById('btnLoanPay');
-  payBtn.disabled = loanPrincipal <= 0 || bountyCredits <= 0;
+  payBtn.disabled = totalOwed <= 0 || bountyCredits <= 0;
 }
 document.getElementById('btnLoanPay').addEventListener('click', ()=>{
   const input = document.getElementById('loanPayInput');
+  const totalOwed = loanPrincipal + shipLoanBalance;
   let amt = Math.round(parseFloat(input.value) || 0);
-  amt = Math.max(0, Math.min(amt, bountyCredits, Math.ceil(loanPrincipal)));
+  amt = Math.max(0, Math.min(amt, bountyCredits, Math.ceil(totalOwed)));
   if(amt <= 0) return;
   bountyCredits -= amt;
   addLedgerEntry(-amt, 'Loan payment');
-  loanPrincipal = Math.max(0, loanPrincipal - amt);
+  // pays down the ship loan first (the exclusivity-gated one), then any remainder
+  // onto the gear/legacy balance -- same priority as processLoanInterestTick's
+  // compounding order
+  const towardShip = Math.min(amt, shipLoanBalance);
+  shipLoanBalance = Math.max(0, shipLoanBalance - towardShip);
+  loanPrincipal = Math.max(0, loanPrincipal - (amt - towardShip));
   flashMessage('PAID DOWN LOAN — -' + amt + ' CR', 'good');
-  logEvent('LOAN PAYMENT -' + amt + ' CR — BALANCE ' + Math.round(loanPrincipal) + ' CR', 'good');
+  logEvent('LOAN PAYMENT -' + amt + ' CR — SHIP ' + Math.round(shipLoanBalance) + ' CR / GEAR ' + Math.round(loanPrincipal) + ' CR', 'good');
   updateCargoUI();
   updateDockedPanel();
   renderDockLoanPanel();
+  if(typeof renderLoansTab === 'function') renderLoansTab();
 });
 
 // ---------- flight commands ----------
@@ -8753,6 +9043,16 @@ function itemDisplayDef(itemType){
   // TYPE, not the individual stack's cubeKnowledge/bookSkill/bookLevel.
   if(itemType === 'memory_cube') return { key:itemType, label:'Memory Cube', color:'#9dffcf', round:false, sellPrice:null };
   if(itemType === 'skill_book') return { key:itemType, label:'Skill Book', color:'#ffd76d', round:false, sellPrice:null };
+  // item 4a: ships-as-items -- sellPrice here is only used by the generic cargo-hold
+  // MARKET sell flow (which ships can never reach, since they can't enter cargo); the
+  // real sell path for ships is the FINANCE OFFICE's dedicated SELL action
+  // (sellStoredShip) plus the AUCTION HOUSE (which doesn't read sellPrice at all --
+  // see auctionEligibleItemTypes' bugfix comment). Kept non-null anyway for display
+  // consistency (inspector/tooltips that show "worth X cr").
+  if(isShipItemType(itemType)){
+    const cls = SHIP_CLASSES[SHIP_CLASS_FOR_ITEM_TYPE[itemType]];
+    return { key:itemType, label:cls.label.replace('-Class',''), color: itemType==='ship_wayfarer' ? '#6dc8ff' : '#ffb26d', round:false, sellPrice:Math.round(cls.cost*0.4) };
+  }
   return { key:itemType, label:itemType, color:'#888888', round:false, sellPrice:null };
 }
 
@@ -9224,9 +9524,92 @@ function questRowHtml(q, bodyLines, btnHtml){
   return '<div class="dockSubRow" style="flex-direction:column; align-items:flex-start; border:1px solid var(--panel-border); padding:8px; margin-bottom:8px;">'
     + bodyLines + btnHtml + '</div>';
 }
+// ---------- item 6: black box bounty (individual turn-in, paid from station treasury) ----------
+// Reuses QUEST_ITEM_RARITY (the same rarity multiplier already driving Navy contract
+// rewards -- blackBox:4, blackBoxCaptain:11) as the "how valuable is this item" input,
+// scaled into a flat notional loot value (BLACKBOX_BOUNTY_VALUE, documented below)
+// since black boxes have no market sellPrice of their own to reuse directly. Payout is
+// 1% of that value for a common black box, +0.2% per rarity tier above common -- with
+// only two black-box types in the game, that's a flat 1.0% (blackBox) / 1.2%
+// (blackBoxCaptain) of their respective notional values. Capped at the station's
+// CURRENT treasury balance so the treasury (funded by addStationTax -- see its own
+// comment) can never go negative; if it can't afford the full amount, only as many
+// units as it CAN afford are turned in and the player is told plainly.
+const BLACKBOX_BOUNTY_VALUE = { blackBox: (QUEST_ITEM_RARITY.blackBox||4) * 750, blackBoxCaptain: (QUEST_ITEM_RARITY.blackBoxCaptain||11) * 750 };
+const BLACKBOX_BOUNTY_RATE = { blackBox: 0.01, blackBoxCaptain: 0.012 };
+// counts BOTH ship cargo and this station's storage -- same "wherever the player
+// actually has it" convention as consumeMatchingSkillBook
+function ownedBlackBoxCount(itemKey){
+  return totalOfType(itemKey) + totalInStationStorage(itemKey);
+}
+function renderBlackBoxBountyPanel(){
+  const el = document.getElementById('navyBlackBoxBountyList');
+  if(!el) return;
+  const st = activeStationEntry();
+  const treasury = Math.floor(stationTreasury[st.id] || 0);
+  const treasEl = document.getElementById('navyBountyTreasuryRead');
+  if(treasEl) treasEl.textContent = treasury.toLocaleString() + ' cr';
+  el.innerHTML = ['blackBox','blackBoxCaptain'].map(key=>{
+    const count = ownedBlackBoxCount(key);
+    const def = itemDisplayDef(key);
+    const perUnit = Math.round(BLACKBOX_BOUNTY_VALUE[key] * BLACKBOX_BOUNTY_RATE[key]);
+    return '<div class="peq"><span>' + def.label + ' — OWNED ' + count + ' — ' + perUnit + ' cr each (' + (BLACKBOX_BOUNTY_RATE[key]*100).toFixed(1) + '% of ' + BLACKBOX_BOUNTY_VALUE[key].toLocaleString() + ' cr value)</span>'
+      + '<button class="peqBtn" data-turnin-blackbox="' + key + '"' + (count<=0?' disabled':'') + '>TURN IN ALL</button></div>';
+  }).join('');
+}
+async function turnInBlackBoxes(itemKey){
+  if(!docked || !dockedStation) return;
+  const st = dockedStation;
+  const count = ownedBlackBoxCount(itemKey);
+  if(count <= 0) return;
+  const perUnit = BLACKBOX_BOUNTY_VALUE[itemKey] * BLACKBOX_BOUNTY_RATE[itemKey];
+  // read the freshest treasury balance we can (falls back to the local mirror for
+  // guests/offline) so this doesn't pay out against a stale cached number
+  const cloudBalance = await fetchStationTreasuryFromCloud(st.id);
+  let treasury = cloudBalance != null ? cloudBalance : (stationTreasury[st.id] || 0);
+  const affordable = Math.max(0, Math.floor(treasury / perUnit));
+  const turnedIn = Math.min(count, affordable);
+  if(turnedIn <= 0){
+    flashMessage('STATION TREASURY CANNOT AFFORD ANY BOUNTY RIGHT NOW', 'warn');
+    logEvent('BLACK BOX BOUNTY: ' + st.name.toUpperCase() + ' TREASURY (' + Math.floor(treasury) + ' CR) CANNOT AFFORD EVEN ONE ' + itemDisplayDef(itemKey).label.toUpperCase(), 'warn');
+    return;
+  }
+  const paid = Math.round(turnedIn * perUnit);
+  // consume from cargo first, then this station's storage, same order as
+  // consumeMatchingSkillBook
+  let remaining = turnedIn;
+  const inCargo = Math.min(remaining, totalOfType(itemKey));
+  if(inCargo > 0){ removeFromCargo(itemKey, inCargo); remaining -= inCargo; }
+  if(remaining > 0) removeFromStationStorage(itemKey, remaining, st.id);
+  const newBalance = Math.max(0, treasury - paid);
+  stationTreasury[st.id] = newBalance;
+  if(supabaseClient && currentUser){
+    try{
+      await supabaseClient.from('station_treasury').upsert(
+        { server: currentServer, station_id: st.id, balance: newBalance, updated_at: new Date().toISOString() },
+        { onConflict: 'server,station_id' }
+      );
+    }catch(e){ console.warn('black box bounty treasury update exception', e); }
+  }
+  bountyCredits += paid;
+  addLedgerEntry(paid, 'Black box bounty (' + itemDisplayDef(itemKey).label + ' x' + turnedIn + ')');
+  const shortfallNote = turnedIn < count ? ' (' + (count-turnedIn) + ' MORE OWNED — TREASURY COULDN\'T AFFORD THE REST)' : '';
+  flashMessage('TURNED IN ' + turnedIn + 'x ' + itemDisplayDef(itemKey).label.toUpperCase() + ' — +' + paid + ' CR' + shortfallNote, 'good');
+  logEvent('BLACK BOX BOUNTY: TURNED IN ' + turnedIn + 'x ' + itemDisplayDef(itemKey).label.toUpperCase() + ' AT ' + st.name.toUpperCase() + ' — +' + paid + ' CR FROM TREASURY' + shortfallNote, 'good');
+  updateCargoUI();
+  updateDockedPanel();
+  if(typeof renderDockStorageRows === 'function') renderDockStorageRows();
+  renderBlackBoxBountyPanel();
+}
+document.getElementById('navyBlackBoxBountyList').addEventListener('click', (e)=>{
+  const btn = e.target.closest('[data-turnin-blackbox]');
+  if(!btn || btn.disabled) return;
+  turnInBlackBoxes(btn.dataset.turninBlackbox);
+});
 function renderQuestPanel(faction){
   const p = QUEST_PANEL_PREFIX[faction];
   if(!p) return;
+  if(faction === 'navy' && typeof renderBlackBoxBountyPanel === 'function') renderBlackBoxBountyPanel();
   const st = activeStationEntry();
   const stEl = document.getElementById(p + 'StationRead');
   if(stEl) stEl.textContent = st.name.toUpperCase();
@@ -9710,6 +10093,30 @@ function checkTierMedals(){
   if(anyChange && walletTab === 'medals') renderMedals();
   updateFameFromPoints();
 }
+// item 1: medals reorganized into two collapsible sections -- EARNED (fixed
+// achievements already got, plus tier chains that have reached tier 1+) listed
+// ABOVE ONGOING (everything not yet earned). Fixed ACHIEVEMENTS only carry a
+// pass/fail check() function, not a numeric progress signal, so "hide achievements
+// with zero progress" can't be computed for them generically -- DESIGN DECISION:
+// every not-yet-earned fixed achievement is treated as "in progress" (kept visible
+// under ONGOING) rather than risk hiding one a player is legitimately close to.
+// TIER_CHAINS do carry continuous progress and already only ever show the ONE next
+// tier (never "far future locked tiers"), so the zero-progress-hiding requirement is
+// inherently satisfied there by construction.
+let medalsEarnedExpanded = true, medalsOngoingExpanded = true;
+function medalsRowFixed(a, got){
+  return '<div class="prow" style="align-items:flex-start; ' + (got?'':'opacity:0.6;') + '">'
+    + '<span>' + (got?'★ ':'☆ ') + a.name + '<br><span style="font-size:10px; color:var(--phosphor-dim);">' + a.desc + '</span></span>'
+    + '<span style="color:' + (got?'var(--phosphor)':'var(--phosphor-dim)') + '; white-space:nowrap;">' + (got?'EARNED':'IN PROGRESS') + '</span></div>';
+}
+function medalsRowTier(chain){
+  const cur = tierMedalLevels[chain.key] || 0;
+  let val = 0; try{ val = chain.statFn(); }catch(e){ val = 0; }
+  const nextT = tierThreshold(chain, cur+1);
+  return '<div class="prow" style="align-items:flex-start;">'
+    + '<span>' + (cur>0?'★ ':'☆ ') + chain.label + ' — TIER ' + cur + '<br><span style="font-size:10px; color:var(--phosphor-dim);">' + Math.floor(val).toLocaleString() + ' / ' + Math.ceil(nextT).toLocaleString() + ' TO TIER ' + (cur+1) + '</span></span>'
+    + '<span style="color:var(--phosphor-dim); white-space:nowrap;">' + (cur>0?'EARNED':'ONGOING') + '</span></div>';
+}
 function renderMedals(){
   const el = document.getElementById('medalsList');
   if(!el) return;
@@ -9720,24 +10127,45 @@ function renderMedals(){
       + '<span>★ FAME ' + fameLevel + '<br><span style="font-size:10px; color:var(--phosphor-dim);">' + famePoints.toLocaleString() + ' ACHIEVEMENT POINTS</span></span>'
       + '<span style="color:var(--phosphor-dim); white-space:nowrap;">NEXT: ' + nextThresh.toLocaleString() + '</span></div>';
   }
-  const fixedHtml = ACHIEVEMENTS.map(a=>{
-    const got = earnedAchievements.has(a.id);
-    return '<div class="prow" style="align-items:flex-start; ' + (got?'':'opacity:0.45;') + '">'
-      + '<span>' + (got?'★ ':'☆ ') + a.name + '<br><span style="font-size:10px; color:var(--phosphor-dim);">' + a.desc + '</span></span>'
-      + '<span style="color:' + (got?'var(--phosphor)':'var(--phosphor-dim)') + '; white-space:nowrap;">' + (got?'EARNED':'LOCKED') + '</span></div>';
-  }).join('');
-  // tiered chains: each shows its current tier + progress toward the next one, since
-  // (unlike the fixed list above) these never run out -- there's always a "next" row
-  const tierHtml = TIER_CHAINS.map(chain=>{
-    const cur = tierMedalLevels[chain.key] || 0;
-    let val = 0; try{ val = chain.statFn(); }catch(e){ val = 0; }
-    const nextT = tierThreshold(chain, cur+1);
-    return '<div class="prow" style="align-items:flex-start;">'
-      + '<span>' + (cur>0?'★ ':'☆ ') + chain.label + ' — TIER ' + cur + '<br><span style="font-size:10px; color:var(--phosphor-dim);">' + Math.floor(val).toLocaleString() + ' / ' + Math.ceil(nextT).toLocaleString() + ' TO TIER ' + (cur+1) + '</span></span>'
-      + '<span style="color:var(--phosphor-dim); white-space:nowrap;">ONGOING</span></div>';
-  }).join('');
-  el.innerHTML = '<div class="psection">TIERED MEDALS</div>' + tierHtml + '<div class="psection">MEDALS</div>' + fixedHtml;
+  const earnedFixed = ACHIEVEMENTS.filter(a=> earnedAchievements.has(a.id));
+  const ongoingFixed = ACHIEVEMENTS.filter(a=> !earnedAchievements.has(a.id));
+  const earnedTiers = TIER_CHAINS.filter(c=> (tierMedalLevels[c.key]||0) > 0);
+  const ongoingTiers = TIER_CHAINS.filter(c=> !(tierMedalLevels[c.key]||0));
+  const earnedHtml = earnedTiers.map(medalsRowTier).join('') + earnedFixed.map(a=>medalsRowFixed(a,true)).join('');
+  const ongoingHtml = ongoingTiers.map(medalsRowTier).join('') + ongoingFixed.map(a=>medalsRowFixed(a,false)).join('');
+  const earnedCount = earnedTiers.length + earnedFixed.length;
+  const ongoingCount = ongoingTiers.length + ongoingFixed.length;
+  el.innerHTML =
+      '<div class="psection clickable" data-medals-toggle="earned">' + (medalsEarnedExpanded?'▾':'▸') + ' EARNED (' + earnedCount + ')</div>'
+    + (medalsEarnedExpanded ? (earnedHtml || '<div class="prow"><span>NONE YET</span><span></span></div>') : '')
+    + '<div class="psection clickable" data-medals-toggle="ongoing">' + (medalsOngoingExpanded?'▾':'▸') + ' ONGOING (' + ongoingCount + ')</div>'
+    + (medalsOngoingExpanded ? (ongoingHtml || '<div class="prow"><span>NONE</span><span></span></div>') : '');
 }
+document.getElementById('medalsList').addEventListener('click', (e)=>{
+  const hdr = e.target.closest('[data-medals-toggle]');
+  if(!hdr) return;
+  if(hdr.dataset.medalsToggle === 'earned') medalsEarnedExpanded = !medalsEarnedExpanded;
+  else medalsOngoingExpanded = !medalsOngoingExpanded;
+  renderMedals();
+});
+// item 1: Help -> SHOW ALL MEDALS -- lists every fixed achievement and every tier
+// chain's current+next tier regardless of earned status, separate from the in-panel
+// earned/ongoing-only MEDALS tab above
+function renderAllMedalsPanel(){
+  const tierEl = document.getElementById('allMedalsTierList');
+  const fixedEl = document.getElementById('allMedalsFixedList');
+  if(!tierEl || !fixedEl) return;
+  tierEl.innerHTML = TIER_CHAINS.map(medalsRowTier).join('');
+  fixedEl.innerHTML = ACHIEVEMENTS.map(a=> medalsRowFixed(a, earnedAchievements.has(a.id))).join('');
+  const hdr = document.getElementById('allMedalsFixedHeader');
+  if(hdr) hdr.textContent = 'FIXED MEDALS (ALL ' + ACHIEVEMENTS.length + ')';
+}
+function openAllMedalsPanel(){
+  renderAllMedalsPanel();
+  document.getElementById('allMedalsPanel').classList.add('show');
+}
+document.getElementById('btnOpenAllMedals').addEventListener('click', openAllMedalsPanel);
+document.getElementById('btnCloseAllMedals').addEventListener('click', ()=> document.getElementById('allMedalsPanel').classList.remove('show'));
 
 // ---------- equipment popup ----------
 // reads owned equipment straight from cargoStacks (filtering by itemType prefix)
@@ -10290,14 +10718,23 @@ function setWalletTab(tab){
   document.getElementById('btnWalletTabLedger').classList.toggle('active', tab==='ledger');
   document.getElementById('btnWalletTabStats').classList.toggle('active', tab==='stats');
   document.getElementById('btnWalletTabMedals').classList.toggle('active', tab==='medals');
+  document.getElementById('btnWalletTabEquipment').classList.toggle('active', tab==='equipment');
+  document.getElementById('btnWalletTabLoans').classList.toggle('active', tab==='loans');
   document.getElementById('btnWalletTabMail').classList.toggle('active', tab==='mail');
   document.getElementById('walletLedgerSection').classList.toggle('active', tab==='ledger');
   document.getElementById('walletStatsSection').classList.toggle('active', tab==='stats');
   document.getElementById('walletMedalsSection').classList.toggle('active', tab==='medals');
+  document.getElementById('walletLoansSection').classList.toggle('active', tab==='loans');
   document.getElementById('walletMailSection').classList.toggle('active', tab==='mail');
   // (v0.19.2, item 8) BALANCE row is LEDGER-only
   const balRow = document.getElementById('walletBalanceRow');
   if(balRow) balRow.style.display = (tab==='ledger') ? '' : 'none';
+  // item 2: KNOWLEDGE is now ALSO ledger-tab-only (it used to be always visible in
+  // the Data Pad header regardless of which tab was open -- tightened to match how
+  // BALANCE already behaves, same reasoning: it's account info, not chrome that
+  // belongs on every tab)
+  const knowRow = document.getElementById('walletKnowledgeRow');
+  if(knowRow) knowRow.style.display = (tab==='ledger') ? '' : 'none';
   refreshWalletPanel();
 }
 document.getElementById('btnWalletTabMail').addEventListener('click', ()=> setWalletTab('mail'));
@@ -10347,8 +10784,16 @@ function refreshWalletPanel(){
     document.getElementById('statMineSpeed').textContent = (1/currentMiningInterval()).toFixed(2) + ' ticks/s';
     document.getElementById('statOreMined').textContent = Math.round(totalOreMinedTotal);
     document.getElementById('statDistance').textContent = Math.round(distanceTraveledTotal) + ' m';
-    document.getElementById('statTimePlayed').textContent = fmtDuration(totalTimePlayedSeconds());
+    // item 3: cumulative across ALL sessions ever (persistedPlaySecondsAtLoad, restored
+    // from save, plus however long THIS session has been running) -- used to just be
+    // totalTimePlayedSeconds() alone, which reset to 0 every relaunch
+    document.getElementById('statTimePlayed').textContent = fmtDuration(persistedPlaySecondsAtLoad + totalTimePlayedSeconds());
     document.getElementById('statTimesWarped').textContent = timesWarpedTotal;
+    // item 11: Books Learned -- every skill level from 2 up requires a matching Skill
+    // Book to train past (see consumeMatchingSkillBook), so the count of book-gated
+    // levels a player has actually reached IS the count of books they've learned from
+    const booksEl = document.getElementById('statBooksLearned');
+    if(booksEl) booksEl.textContent = SKILL_ORDER.reduce((sum,k)=> sum + Math.max(0, (skillLevels[k]||0) - 1), 0);
     // item 6: manufacturing plans known -- generic over MANUFACTURING_RECIPES so a
     // future second recipe shows up here automatically
     const bpEl = document.getElementById('statBlueprints');
@@ -10360,6 +10805,7 @@ function refreshWalletPanel(){
     }
   }
   if(walletTab === 'medals') renderMedals();
+  if(walletTab === 'loans') renderLoansTab();
   if(walletTab === 'mail') renderMailInbox();
 }
 document.getElementById('btnWallet').addEventListener('click', ()=> toggleWalletPanel());
@@ -10367,6 +10813,61 @@ document.getElementById('btnCloseWallet').addEventListener('click', ()=> toggleW
 document.getElementById('btnWalletTabLedger').addEventListener('click', ()=> setWalletTab('ledger'));
 document.getElementById('btnWalletTabStats').addEventListener('click', ()=> setWalletTab('stats'));
 document.getElementById('btnWalletTabMedals').addEventListener('click', ()=> setWalletTab('medals'));
+// item 11: EQUIPMENT tab is a bridge -- rather than a risky full re-parenting of the
+// standalone equipment popup's DOM/logic into a walletTabSection, clicking this tab
+// closes the Data Pad and opens the (still fully independent) EQUIPMENT popup, which
+// satisfies "Equipment is reached via the Data Pad, not its own HUD button" (its old
+// dedicated HUD button is gone, see #btnEquipment's display:none wrapper above)
+// without touching the equip system's internals.
+document.getElementById('btnWalletTabEquipment').addEventListener('click', ()=>{
+  toggleWalletPanel(false);
+  toggleEquipmentPanel(true);
+});
+document.getElementById('btnWalletTabLoans').addEventListener('click', ()=> setWalletTab('loans'));
+// item 11: LOANS tab -- reads the financing state from item 4 (loanPrincipal is the
+// legacy/gear balance, shipLoanBalance is the new ship-specific balance -- see their
+// declarations near activeShipInstance)
+function renderLoansTab(){
+  const shipPEl = document.getElementById('loansShipPrincipalRead');
+  if(!shipPEl) return;
+  shipPEl.textContent = Math.round(shipLoanBalance) + ' cr';
+  document.getElementById('loansShipDueRead').textContent = (shipLoanBalance > 0 && nextLoanPaymentDueMs > 0)
+    ? new Date(nextLoanPaymentDueMs).toLocaleString() : '—';
+  document.getElementById('loansShipAmountRead').textContent = shipLoanBalance > 0
+    ? Math.round((loanPrincipal + shipLoanBalance) * LOAN_INTEREST_RATE) + ' cr (interest)' : '—';
+  document.getElementById('loansShipFinancedItemRead').textContent = shipLoanBalance > 0
+    ? 'Financed ship loan outstanding — cannot finance another ship until this is paid off.'
+    : 'No active ship loan.';
+  document.getElementById('loansGearPrincipalRead').textContent = Math.round(loanPrincipal) + ' cr';
+  document.getElementById('loansGearDueRead').textContent = (loanPrincipal > 0 && nextLoanPaymentDueMs > 0)
+    ? new Date(nextLoanPaymentDueMs).toLocaleString() : '—';
+  document.getElementById('loansMissedRead').textContent = missedPaymentStreak + ' / 3';
+  document.getElementById('loansBountyRead').textContent = hasBounty ? 'BOUNTY ACTIVE — HUNTERS INBOUND' : 'CLEAR';
+  const payBtn = document.getElementById('btnLoansPay');
+  if(payBtn) payBtn.disabled = (loanPrincipal + shipLoanBalance) <= 0 || bountyCredits <= 0;
+}
+document.getElementById('btnLoansPay').addEventListener('click', ()=>{
+  const input = document.getElementById('loansPayInput');
+  let amt = Math.round(parseFloat(input.value) || 0);
+  const totalOwed = loanPrincipal + shipLoanBalance;
+  amt = Math.max(0, Math.min(amt, bountyCredits, Math.ceil(totalOwed)));
+  if(amt <= 0) return;
+  bountyCredits -= amt;
+  addLedgerEntry(-amt, 'Loan payment');
+  // pay down the ship loan first (it's the exclusivity-gated one), then any remainder
+  // onto the gear/legacy balance
+  const towardShip = Math.min(amt, shipLoanBalance);
+  shipLoanBalance = Math.max(0, shipLoanBalance - towardShip);
+  const towardGear = amt - towardShip;
+  loanPrincipal = Math.max(0, loanPrincipal - towardGear);
+  flashMessage('PAID DOWN LOAN — -' + amt + ' CR', 'good');
+  logEvent('LOAN PAYMENT -' + amt + ' CR — SHIP BAL ' + Math.round(shipLoanBalance) + ' CR / GEAR BAL ' + Math.round(loanPrincipal) + ' CR', 'good');
+  input.value = '';
+  updateCargoUI();
+  updateDockedPanel();
+  renderLoansTab();
+  if(typeof renderDockLoanPanel === 'function') renderDockLoanPanel();
+});
 setWalletTab('ledger');
 // (v0.10.0) only lists the zones of the galaxy the player is currently in -- the
 // star map is an intra-galaxy drive; reaching another galaxy still means physically
@@ -10516,7 +11017,12 @@ function updateStarMapCharge(dt){
     updateWarpStatusHudLabel('WARPING — ' + zone.label.toUpperCase() + '…');
   }
 }
-document.getElementById('btnStarMap').addEventListener('click', ()=> toggleStarMapPanel());
+// item 12: the HUD STAR MAP button used to open the small "local areas" list panel
+// first (#starMapPanel, with its own OPEN UNIVERSE MAP button inside) -- now it jumps
+// straight to the full universe map. #starMapPanel itself is left in the DOM/code
+// (still reachable from inside the universe map's own UI if anything still links to
+// it) but is no longer the HUD button's destination.
+document.getElementById('btnStarMap').addEventListener('click', ()=> toggleUniverseMapPanel(true));
 document.getElementById('btnCloseStarMap').addEventListener('click', ()=> toggleStarMapPanel(false));
 
 // ---------- universe map (full galaxy-graph view) + autopilot ----------
@@ -11558,8 +12064,15 @@ function getPlayerSaveData(){
     loanPrincipal: loanPrincipal,
     missedPaymentStreak: missedPaymentStreak,
     hasBounty: hasBounty,
+    // item 4c: new fields -- ship financing's own balance + the wall-clock weekly
+    // due-date (see their declarations near activeShipInstance)
+    shipLoanBalance: shipLoanBalance,
+    nextLoanPaymentDueMs: nextLoanPaymentDueMs,
     activeShipInstance: activeShipInstance ? { instId: activeShipInstance.instId, classKey: activeShipInstance.classKey, name: activeShipInstance.name } : null,
-    storedShipInstances: storedShipInstances.map(s=> ({ instId: s.instId, classKey: s.classKey, name: s.name })),
+    // legacy field, frozen -- always saved empty now that ships live in
+    // stationStorageStacks (see the ship-ownership block near activeShipInstance's
+    // declaration); kept in the shape so an old client reading a new save doesn't choke
+    storedShipInstances: [],
     nextShipInstanceId: nextShipInstanceId,
     shipSerialCounters: Object.assign({}, shipSerialCounters),
     equippedWeaponTier: equippedWeaponTier,
@@ -11581,11 +12094,22 @@ function getPlayerSaveData(){
     // Memory Cube/Skill Book craft, keyed by stationId (see LIBRARY section).
     knowledge: knowledge,
     libraryCrafting: JSON.parse(JSON.stringify(libraryCrafting)),
+    // item 8: manufacturing is now wall-clock-timed the same way -- must be
+    // persisted for a batch to actually survive a logout (it never was saved before
+    // this update, since the old per-frame version was refunded/reset on every
+    // undock and never needed to survive one)
+    manufacturingQueues: JSON.parse(JSON.stringify(manufacturingQueues)),
     knownBlueprints: Array.from(knownBlueprints),
     activeQuests: activeQuests.map(q=> Object.assign({}, q)),
     stationReputation: JSON.parse(JSON.stringify(stationReputation)),
     // lifetime stats -- also drive the MEDALS/achievements tab, which recomputes
     // itself live from these counters (nothing achievement-specific to save)
+    // item 3: cumulative play time across ALL sessions ever -- baseline restored from
+    // the previous save (persistedPlaySecondsAtLoad) plus however long THIS session
+    // has been running (totalTimePlayedSeconds(), a per-session-only counter). This
+    // computed-not-incremented approach means saving twice in one session never
+    // double-counts that session's time.
+    totalPlaySeconds: persistedPlaySecondsAtLoad + totalTimePlayedSeconds(),
     piratesKilled: piratesKilled,
     totalHullDamageTaken: totalHullDamageTaken,
     distanceTraveledTotal: distanceTraveledTotal,
@@ -11648,6 +12172,7 @@ function applyPlayerSaveData(d){
   if(typeof d.scrapCount === 'number') scrapCount = d.scrapCount;
   if(typeof d.blackBoxCount === 'number') blackBoxCount = d.blackBoxCount;
   if(typeof d.lifetimeCreditsEarned === 'number') lifetimeCreditsEarned = d.lifetimeCreditsEarned;
+  if(typeof d.totalPlaySeconds === 'number') persistedPlaySecondsAtLoad = d.totalPlaySeconds;
   if(typeof d.loanPrincipal === 'number') loanPrincipal = d.loanPrincipal;
   if(typeof d.missedPaymentStreak === 'number') missedPaymentStreak = d.missedPaymentStreak;
   if(typeof d.hasBounty === 'boolean') hasBounty = d.hasBounty;
@@ -11681,6 +12206,11 @@ function applyPlayerSaveData(d){
     // catch up any craft(s) that finished while this player was signed out --
     // library crafts run off wall-clock time so they never actually paused
     if(typeof checkLibraryCraftCompletion === 'function') checkLibraryCraftCompletion();
+  }
+  // item 8: manufacturing, same wall-clock catch-up on load
+  if(d.manufacturingQueues && typeof d.manufacturingQueues === 'object'){
+    manufacturingQueues = JSON.parse(JSON.stringify(d.manufacturingQueues));
+    if(typeof checkManufacturingCompletion === 'function') checkManufacturingCompletion();
   }
   if(typeof updateKnowledgeUI === 'function') updateKnowledgeUI();
   if(Array.isArray(d.knownBlueprints)) knownBlueprints = new Set(d.knownBlueprints);
@@ -11752,12 +12282,42 @@ function applyPlayerSaveData(d){
 
   if(typeof d.nextShipInstanceId === 'number') nextShipInstanceId = d.nextShipInstanceId;
   if(d.shipSerialCounters && typeof d.shipSerialCounters === 'object') shipSerialCounters = Object.assign({}, shipSerialCounters, d.shipSerialCounters);
-  if(Array.isArray(d.storedShipInstances)) storedShipInstances = d.storedShipInstances.map(s=> ({ instId: s.instId, classKey: s.classKey, name: s.name }));
+  // item 4a MIGRATION: storedShipInstances is the OLD flat (not-per-station) array --
+  // it's frozen going forward (always saved empty, see getPlayerSaveData) but an
+  // existing save may still have ships sitting in it. Old saves also never recorded
+  // WHICH station a stored ship was at (the bug this migration fixes), so there's no
+  // correct origin to restore them to -- they're dropped into 'station_home'
+  // (Meridian Station), the same fallback bucket the stationStorageStacks flat-array
+  // migration above already uses for exactly the same "pre-per-station" data.
+  if(Array.isArray(d.storedShipInstances) && d.storedShipInstances.length){
+    d.storedShipInstances.forEach(s=>{
+      if(s && SHIP_CLASSES[s.classKey]) addShipToStationStorage({ instId:s.instId, classKey:s.classKey, name:s.name }, 'station_home');
+    });
+  }
+  if(typeof d.shipLoanBalance === 'number') shipLoanBalance = d.shipLoanBalance;
+  if(typeof d.nextLoanPaymentDueMs === 'number') nextLoanPaymentDueMs = d.nextLoanPaymentDueMs;
 
   // ship/pod restore last, since it depends on equippedShieldTier (shield regen)
   // already being set above, and it's the one part of loading that touches the
   // live scene graph rather than just plain data
-  if(d.inEscapePod && d.activeShipInstance === null){
+  //
+  // item 4d MIGRATION: instId:0 is a marker that ONLY the very first, never-replaced
+  // free starter ship ever carries (every purchased/financed ship gets a fresh
+  // nextShipInstanceId++ starting at 1 -- see buyNewShip/nextShipName) -- so a saved
+  // activeShipInstance with instId===0 means this player is STILL flying the exact
+  // ship they started with, untouched, regardless of playtime. Per the explicit
+  // instruction ("all players that were already in a Wayfarer at the start should
+  // have it removed"), that specific ship is repossessed on load into an escape pod,
+  // same as the new no-starting-ship flow below. A player who financed/earned a
+  // Wayfarer through normal play has instId>=1 and is NOT affected -- this heuristic
+  // is deliberately based on the ship's own identity marker, not on a fuzzy playtime
+  // guess, so it can never mistakenly catch a legitimately-acquired Wayfarer.
+  const isUntouchedStarterShip = d.activeShipInstance && d.activeShipInstance.instId === 0;
+  if(isUntouchedStarterShip){
+    enterEscapePod({ resetPosition:true });
+    logEvent('=== YOUR STARTER WAYFARER HAS BEEN REPOSSESSED — VISIT THE FINANCE OFFICE ===', 'warn');
+    flashMessage('STARTER WAYFARER REPOSSESSED — FINANCE A NEW SHIP', 'warn');
+  } else if(d.inEscapePod && d.activeShipInstance === null){
     enterEscapePod({ resetPosition:true });
   } else if(d.activeShipInstance && SHIP_CLASSES[d.activeShipInstance.classKey]){
     const inst = { instId: d.activeShipInstance.instId, classKey: d.activeShipInstance.classKey, name: d.activeShipInstance.name };
@@ -12113,6 +12673,8 @@ function cloudSyncSetupSql(){
     ");",
     "alter table station_treasury add column if not exists balance int not null default 0;",
     "alter table station_treasury add column if not exists updated_at timestamptz not null default now();",
+    // item 7: weekly station income anchor -- see tryApplyWeeklyStationIncome()
+    "alter table station_treasury add column if not exists last_weekly_income_at timestamptz;",
     "alter table station_treasury enable row level security;",
     "drop policy if exists \"station treasury is publicly readable\" on station_treasury;",
     "create policy \"station treasury is publicly readable\" on station_treasury for select using (true);",
@@ -13699,6 +14261,12 @@ const IN_GAME_MONTH_NAMES = ['JAN','FEB','MAR','APR','MAY','JUN','JUL','AUG','SE
 const GAME_EPOCH_MS = Date.UTC(2026, 0, 1, 0, 0, 0);
 function inGameElapsedRealSeconds(){ return Math.max(0, (Date.now() - GAME_EPOCH_MS) / 1000); }
 let gameStartTime = null; // per-SESSION marker only now (this session's own play-time stat/mobile-hint gating) -- NOT the universe clock above; set on LAUNCH click (see startBtn handler below); null = not launched yet
+// item 3: cumulative play time across every PAST session, restored from the save
+// (see applyPlayerSaveData) -- this session's own elapsed time is layered on top via
+// totalTimePlayedSeconds() wherever "Time Played" is shown/saved, rather than ticking
+// this value up incrementally (which would need careful once-per-save bookkeeping to
+// avoid double counting)
+let persistedPlaySecondsAtLoad = 0;
 let mpJoinedAtMs = null; // (v0.19.2, item 10) Date.now() at LAUNCH -- a wall-clock twin of gameStartTime (which uses performance.now()) for broadcasting "how long online" to other players via presence; see trackServerRosterPresence
 function inGameIsLeapYear(y){ return (y%4===0 && y%100!==0) || (y%400===0); }
 function inGameDaysInMonth(y, m){ // m is 0-11
@@ -13746,46 +14314,66 @@ setInterval(()=>{ if(typeof checkAchievements === 'function') checkAchievements(
 // account within half a minute, rather than waiting for their next dock.
 setInterval(()=>{ if(typeof claimAuctionPayouts === 'function') claimAuctionPayouts(); }, 30000);
 
-// ---------- loan interest (item 7) ----------
+// ---------- loan interest (item 7, reworked under item 4c) ----------
 // NOTE: this is a SEPARATE, independent "in-game hour" pacing concept from the
 // #clockPanel fictional calendar above (10 real seconds = 1 displayed in-game hour)
 // -- the two are unrelated and intentionally run on different timescales; renaming
-// or merging them is out of scope. This one exists purely for loan-interest pacing:
-// 150 real seconds = 1 "in-game hour" for interest purposes. That's fast enough
-// to matter within a single play session (a few missed payments can snowball inside
-// ~10 minutes) without being spammy every few seconds. Runs on its own setInterval,
-// independent of both the real-world clock display and the animate()/docked pause
-// state, so interest keeps accruing even while docked.
+// or merging them is out of scope. It used to ALSO drive the mortgage payment cadence
+// itself (a 150-real-second "in-game hour" micro-tick that auto-paid from
+// bountyCredits) -- that part is now wall-clock/due-date based (see
+// nextLoanPaymentDueMs, LOAN_PAYMENT_INTERVAL_MS = 1 in-game WEEK, item 4c), so a
+// payment is genuinely due weekly and the due date survives being logged out, exactly
+// like manufacturing/library crafting/skill training already work. This interval is
+// now just how often the game CHECKS whether that due date has passed (cheap: mostly
+// just a Date.now() comparison) and rolls the bounty-hunter-pursuit dice.
 const INGAME_HOUR_MS = 150000;
 function processLoanInterestTick(){
   // item 7: while a bounty is active (3+ consecutive missed loan payments), every
-  // tick of this SAME in-game-hour timer has a 25% chance of a bounty hunter showing
-  // up near the player -- moved here from a warp-completion roll so it's purely
-  // time-based instead, and kept independent of loanPrincipal (a placed bounty
-  // doesn't go away just because the loan itself happens to get paid off, so this
-  // check runs before the loanPrincipal<=0 early-return below).
+  // tick of this SAME timer has a 25% chance of a bounty hunter showing up near the
+  // player -- kept independent of the loan balance itself (a placed bounty doesn't go
+  // away just because the loan happens to get paid off elsewhere -- only paying THAT
+  // loan down via the LOAN panel/DATA PAD clears hasBounty, see below).
   if(hasBounty && Math.random() < 0.25){
     spawnBountyHunter(shipState.pos.clone());
   }
-  if(loanPrincipal <= 0) return;
-  const interestDue = loanPrincipal * 0.05;
-  if(bountyCredits >= interestDue){
-    bountyCredits -= interestDue;
-    addLedgerEntry(-Math.round(interestDue), 'Loan interest');
-    missedPaymentStreak = 0;
-    logEvent('LOAN INTEREST PAID — -' + Math.round(interestDue) + ' CR (BALANCE ' + Math.round(loanPrincipal) + ' CR)', 'good');
-    updateCargoUI();
-  } else {
-    loanPrincipal += interestDue * 2;
-    missedPaymentStreak++;
-    logEvent('MISSED LOAN PAYMENT — INTEREST COMPOUNDED — BALANCE NOW ' + Math.round(loanPrincipal) + ' CR', 'warn');
-    flashMessage('MISSED LOAN PAYMENT — DEBT COMPOUNDING', 'warn');
-    if(missedPaymentStreak >= 3 && !hasBounty){
-      hasBounty = true;
+  const totalDebt = loanPrincipal + shipLoanBalance;
+  if(totalDebt <= 0){ nextLoanPaymentDueMs = 0; return; }
+  if(nextLoanPaymentDueMs === 0) nextLoanPaymentDueMs = Date.now() + LOAN_PAYMENT_INTERVAL_MS;
+  if(Date.now() < nextLoanPaymentDueMs) return; // not due yet
+  // item 4c: weekly due date -- catch up any whole week(s) worth of wall-clock time
+  // that actually passed (covers a long logout) the same way skill training/library
+  // crafting catch up on load, capped so a very long absence can't spiral forever in
+  // one tick
+  let cycles = 0;
+  while(Date.now() >= nextLoanPaymentDueMs && cycles < 8){
+    const debtNow = loanPrincipal + shipLoanBalance;
+    if(debtNow <= 0) break;
+    const interestDue = debtNow * LOAN_INTEREST_RATE;
+    if(bountyCredits >= interestDue){
+      bountyCredits -= interestDue;
+      addLedgerEntry(-Math.round(interestDue), 'Loan payment (weekly)');
       missedPaymentStreak = 0;
-      logEvent('=== A BOUNTY HAS BEEN PLACED ON YOUR HEAD ===', 'warn');
-      zoneMessage('⚠ A BOUNTY HAS BEEN PLACED ON YOUR HEAD', 'warn');
+      logEvent('LOAN PAYMENT -' + Math.round(interestDue) + ' CR (SHIP ' + Math.round(shipLoanBalance) + ' CR / GEAR ' + Math.round(loanPrincipal) + ' CR)', 'good');
+      updateCargoUI();
+    } else {
+      // compound onto the ship balance first (it's the exclusivity-gated, "more
+      // serious" one), then any remainder onto the gear balance
+      const compound = interestDue * 2;
+      const toShip = shipLoanBalance > 0 ? compound : 0;
+      shipLoanBalance += toShip;
+      loanPrincipal += (compound - toShip);
+      missedPaymentStreak++;
+      logEvent('MISSED WEEKLY LOAN PAYMENT — INTEREST COMPOUNDED — SHIP ' + Math.round(shipLoanBalance) + ' CR / GEAR ' + Math.round(loanPrincipal) + ' CR', 'warn');
+      flashMessage('MISSED LOAN PAYMENT — DEBT COMPOUNDING', 'warn');
+      if(missedPaymentStreak >= 3 && !hasBounty){
+        hasBounty = true;
+        missedPaymentStreak = 0;
+        logEvent('=== A BOUNTY HAS BEEN PLACED ON YOUR HEAD ===', 'warn');
+        zoneMessage('⚠ A BOUNTY HAS BEEN PLACED ON YOUR HEAD', 'warn');
+      }
     }
+    nextLoanPaymentDueMs += LOAN_PAYMENT_INTERVAL_MS;
+    cycles++;
   }
 }
 setInterval(processLoanInterestTick, INGAME_HOUR_MS);
@@ -14582,11 +15170,13 @@ function repossessNormalShip(hunterEntry){
   shipState.vel.set(0,0,0);
   setCommand('idle');
   weaponsFree = false;
-  if(loanPrincipal > 0){
-    logEvent('LOAN PRINCIPAL WIPED (' + Math.round(loanPrincipal) + ' CR) — COLLATERAL SEIZED', 'warn');
+  if(loanPrincipal > 0 || shipLoanBalance > 0){
+    logEvent('LOAN PRINCIPAL WIPED (' + Math.round(loanPrincipal + shipLoanBalance) + ' CR) — COLLATERAL SEIZED', 'warn');
   }
   loanPrincipal = 0;
+  shipLoanBalance = 0;
   missedPaymentStreak = 0;
+  nextLoanPaymentDueMs = 0;
   removeBountyHunter(hunterEntry);
   setTimeout(()=>{ enterEscapePod({ resetPosition:false }); }, 1200);
 }
@@ -14599,11 +15189,21 @@ function destroyEscapePod(hunterEntry){
   audio.explosion();
   triggerPlayerExplosionEffect(shipState.pos.clone());
   logEvent('ESCAPE POD DESTROYED', 'warn');
-  if(loanPrincipal > 0){
+  if(loanPrincipal > 0 || shipLoanBalance > 0){
     logEvent('OUTSTANDING LOAN WIPED', 'warn');
   }
   loanPrincipal = 0;
+  shipLoanBalance = 0;
   missedPaymentStreak = 0;
+  nextLoanPaymentDueMs = 0;
+  // item 4c: a bounty hunter KILL (not just repossession) wipes the player's current
+  // Knowledge balance on top of the usual death handling -- this is the one place
+  // that happens; ordinary pirate/PvP deaths never touch Knowledge.
+  if(knowledge > 0){
+    logEvent('BOUNTY HUNTER KILL — KNOWLEDGE WIPED (WAS ' + Math.floor(knowledge) + ')', 'warn');
+  }
+  knowledge = 0;
+  if(typeof updateKnowledgeUI === 'function') updateKnowledgeUI();
   removeBountyHunter(hunterEntry);
   zoneMessage('ESCAPE POD DESTROYED — RESPAWNING AT ' + stationEntry.name.toUpperCase(), 'warn');
   enterEscapePod(); // resets position back to the station spawn point + full pod health
@@ -16043,6 +16643,36 @@ function updateSaveFoundNote(){
 }
 updateSaveFoundNote();
 
+// item 4d: one-time starting-station picker for a brand-new character -- resolves
+// with the chosen STATIONS entry once the player picks one. Modal (no close/cancel
+// button): a new character can't proceed without picking somewhere to start.
+function renderNewCharacterStationList(){
+  const list = document.getElementById('newCharacterStationList');
+  if(!list) return;
+  list.innerHTML = STATIONS.map((st,i)=>
+    '<div class="peq"><span>' + st.name + ' <span style="color:var(--phosphor-dim); font-size:10px;">(GALAXY ' + st.galaxy + ')</span></span>'
+    + '<button class="peqBtn" data-start-station="' + i + '">START HERE</button></div>'
+  ).join('');
+}
+function pickStartingStation(){
+  return new Promise(resolve=>{
+    renderNewCharacterStationList();
+    const panel = document.getElementById('newCharacterStationPanel');
+    panel.classList.add('show');
+    const list = document.getElementById('newCharacterStationList');
+    function onClick(e){
+      const btn = e.target.closest('[data-start-station]');
+      if(!btn) return;
+      const st = STATIONS[parseInt(btn.dataset.startStation, 10)];
+      if(!st) return;
+      list.removeEventListener('click', onClick);
+      panel.classList.remove('show');
+      resolve(st);
+    }
+    list.addEventListener('click', onClick);
+  });
+}
+
 document.getElementById('startBtn').addEventListener('click', async ()=>{
   // shouldn't be reachable -- LAUNCH stays hidden until signed in (see
   // updateBootFlowVisibility()) -- but guard anyway rather than let a stray
@@ -16096,6 +16726,36 @@ document.getElementById('startBtn').addEventListener('click', async ()=>{
   if(savedGame){
     applyPlayerSaveData(savedGame);
     logEvent('CLOUD SAVE RESTORED', 'good');
+  } else {
+    // item 4d: brand-new character -- no save at all means no ship either, just the
+    // escape pod (reusing ESCAPE_POD_STATS exactly like post-death handling does),
+    // and a one-time station choice before ever appearing in the belt. Every field
+    // this touches (activeShipInstance/inEscapePod/shipState.pos) is the SAME state
+    // an existing player's death/pod flow already uses -- this is deliberately just
+    // "start the new character already in that same, familiar reduced state."
+    activeShipInstance = null;
+    inEscapePod = true;
+    applyEscapePodStats();
+    const chosenStation = await pickStartingStation();
+    scene.remove(ship);
+    ship = escapePodMesh;
+    normalShipMesh.visible = false;
+    escapePodMesh.visible = true;
+    // offsets the chosen station's own mesh position by the same relative offset
+    // STATION_SPAWN_POS already uses for the home station, so every station gets an
+    // equivalently-placed "just outside the docking bay" spawn point
+    const spawnOffset = STATION_SPAWN_POS.clone().sub(stationEntry.mesh.position);
+    shipState.pos.copy(chosenStation.mesh.position.clone().add(spawnOffset));
+    shipState.vel.set(0,0,0);
+    ship.position.copy(shipState.pos);
+    ship.quaternion.identity();
+    scene.add(ship);
+    const nameEl = document.getElementById('shipNameRead');
+    if(nameEl) nameEl.textContent = 'ESCAPE POD-1';
+    // item 4d: exact one-time welcome message, per spec
+    const welcomeMsg = 'welcome to ' + chosenStation.name + " i don't know how you got here but you should finance a ship if you want to operate in this sector.";
+    logEvent('=== ' + welcomeMsg.toUpperCase() + ' ===', 'good');
+    zoneMessage(welcomeMsg, 'good');
   }
   pendingCloudSave = null;
   // surface a broken cloud-save setup loudly rather than let it silently look like
