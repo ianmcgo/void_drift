@@ -1310,6 +1310,9 @@
   </div>
   <div class="row clickable" style="margin-top:4px; gap:4px;">
     <button class="cmdbtn" id="btnWallet" style="flex:1; font-size:11px; padding:5px 2px; min-width:0;">WALLET</button>
+    <button class="cmdbtn" id="btnSkills" style="flex:1; font-size:11px; padding:5px 2px; min-width:0;">SKILLS</button>
+  </div>
+  <div class="row clickable" style="margin-top:4px; gap:4px;">
     <!-- on-screen equivalent of the Escape key -- exits inspect mode / opens or closes
          the settings menu (see handleEscapeAction). Mobile/touch has no physical
          Escape key, so this is the only way a touch-only player can reach either. -->
@@ -1428,10 +1431,8 @@
         <button class="cmdbtn" id="btnCallsignChange" style="flex:1; font-size:12px; padding:5px 4px;">CHANGE (1000 CR)</button>
       </div>
       <div class="psection">COMBAT</div>
-      <div class="prow"><span>Fighting Level</span><span id="statFightLevel">1</span></div>
-      <div class="prow"><span id="statFightXpLabel">0 / 120 XP</span><span></span></div>
-      <div class="pbar" id="statFightXpBar"><i id="statFightXpFill"></i></div>
-      <div class="prow" style="margin-top:6px;"><span>To-Hit %</span><span id="statToHit">42%</span></div>
+      <div class="prow"><span>To-Hit %</span><span id="statToHit">42%</span></div>
+      <div class="prow" style="font-size:10px; color:var(--phosphor-dim);"><span>Combat &amp; mining levels moved to SKILLS</span><span></span></div>
       <div class="prow"><span>Pirates Killed</span><span id="statPiratesKilled">0</span></div>
       <div class="prow"><span>Hull Damage Taken</span><span id="statHullDamage">0</span></div>
       <div class="psection" id="statRepHeader">REPUTATION</div>
@@ -1441,10 +1442,7 @@
       <div class="psection">REPUTATION — ALL STATIONS (NAVY / MINING / GUILD)</div>
       <div id="statRepByStation"></div>
       <div class="psection">MINING</div>
-      <div class="prow"><span>Mining Level</span><span id="statMineLevel">1</span></div>
-      <div class="prow"><span id="statMineXpLabel">0 / 90 XP</span><span></span></div>
-      <div class="pbar" id="statMineXpBar"><i id="statMineXpFill"></i></div>
-      <div class="prow" style="margin-top:6px;"><span>Mining Speed</span><span id="statMineSpeed">1.0 / s</span></div>
+      <div class="prow"><span>Mining Speed</span><span id="statMineSpeed">1.0 / s</span></div>
       <div class="prow"><span>Total Ore Mined</span><span id="statOreMined">0</span></div>
       <div class="psection">FLIGHT</div>
       <div class="prow"><span>Distance Traveled</span><span id="statDistance">0 m</span></div>
@@ -1456,6 +1454,17 @@
     <div class="walletTabSection" id="walletMedalsSection">
       <div id="medalsList"></div>
     </div>
+  </div>
+</div>
+
+<div class="hud popupPanel" id="skillsPanel">
+  <div class="phdr"><span>SKILLS</span><button id="btnCloseSkills">✕</button></div>
+  <div class="popupBody">
+    <div class="psection" style="margin-top:0;">BASIC SKILLS</div>
+    <div id="skillsBasicList"></div>
+    <div class="psection">ADVANCED SKILLS</div>
+    <div id="skillsAdvancedList"></div>
+    <div class="prow" style="font-size:10px; color:var(--phosphor-dim); margin-top:8px;"><span>Book making (needed for LV.2+) is a future update.</span><span></span></div>
   </div>
 </div>
 
@@ -1491,6 +1500,10 @@
   <div class="settingsRow">
     <label>AMBIENT VOLUME</label>
     <input type="range" id="ambientVolumeSlider" min="0" max="100" value="10">
+  </div>
+  <div class="settingsRow">
+    <label>AFK AUTO-LOGOUT (<span id="afkTimeoutReadout">10</span> MIN)</label>
+    <input type="range" id="afkTimeoutSlider" min="10" max="30" step="1" value="10">
   </div>
   <div class="dbtns">
     <button class="cmdbtn" id="btnOpenHelp">HELP</button>
@@ -1851,9 +1864,9 @@
 // compatibility depends on it. Add new keys, don't rename old ones.
 
 // ---------- version / build info (shown in the ESC settings menu) ----------
-const GAME_VERSION = "0.17.1";
+const GAME_VERSION = "0.18.1";
 const GAME_LAST_EDITED = "2026-09-23";
-const GAME_BUILD_TIME = "17:43 PT"; // wall-clock time this build was published, not just the date
+const GAME_BUILD_TIME = "21:03 PT"; // wall-clock time this build was published, not just the date
 
 // ---------- update-available banner ----------
 // Periodically re-fetches this very page (same-origin -- works identically whether
@@ -2618,10 +2631,130 @@ const shipState = {
   maxHull: 100,              // hull does NOT regenerate -- damage here is real and persistent
   invuln: 0
 };
+// item: playerLevel/playerXP are LEGACY save-data fields only, kept purely so
+// old save files still round-trip through save/load without losing data (see
+// the naming-stability rule -- persistent save fields are never removed, only
+// superseded). They are no longer incremented by anything and no longer drive
+// any gameplay math -- see the SKILLS system below (skillLevels.gunnery etc.)
+// for what replaced combat/mining progression.
 let playerLevel = 1;
 let playerXP = 0;
 function xpToNext(level){ return Math.round(120 * Math.pow(level, 1.4)); }
 function hitChanceForLevel(level){ return Math.round(Math.min(78, 42 + (level-1)*2.5)); }
+
+// ---------- SKILLS (time-trained, replaces the old combat/mining XP-and-level
+// system entirely -- see gunneryHitChance()/mining section/flight code below for
+// where each skill actually plugs into gameplay). Basic skills need no
+// prerequisite; advanced skills need a matching level in their prerequisite
+// skill to START training that same level (e.g. Mining level 3 needs Targeting
+// level 3 already completed). Level 1 of any skill trains from nothing in 3
+// in-game hours; level 2+ needs a training book (book crafting is a future
+// update, so for now level 2+ is shown but locked -- see SKILL_DEFS.locked2Plus
+// and renderSkillsPanel()). Training runs off real wall-clock time (Date.now()),
+// NOT the animate() loop or any session timer, so -- like the persistent
+// universe clock above -- it keeps advancing even if the player closes the tab
+// or every player logs off; stopping a skill just banks its progress in
+// skillProgressMs rather than losing it (see stopSkillTraining()).
+const SKILL_DEFS = {
+  piloting:  { name:'Piloting',  tier:'basic', requires:null, desc:'Faster acceleration and sharper turning.' },
+  gunnery:   { name:'Gunnery',   tier:'basic', requires:null, desc:'Higher hit chance with all weapons.' },
+  systems:   { name:'Systems',   tier:'basic', requires:null, desc:'Faster shield recharge and warp spin-up.' },
+  targeting: { name:'Targeting', tier:'basic', requires:null, desc:'Longer identify range, faster target lock.' },
+  mining:          { name:'Mining',          tier:'advanced', requires:'targeting',       desc:'Faster, higher-yield mining.' },
+  shield_upgrades: { name:'Shield Upgrades', tier:'advanced', requires:'systems',          desc:'Lets you equip higher-level shields.' },
+  weapon_upgrades: { name:'Weapon Upgrades', tier:'advanced', requires:'gunnery',          desc:'Lets you equip higher-level weapons.' }
+};
+const SKILL_ORDER = ['piloting','gunnery','systems','targeting','mining','shield_upgrades','weapon_upgrades'];
+const SKILL_MAX_LEVEL = 4; // higher levels are a future update (per book-making note above)
+// real-world MS to train each level, independent of IN_GAME_SECONDS_PER_HOUR's
+// declaration order (that const lives further down the file) but numerically
+// identical to it: 1 in-game hour = 600 real sec, so 1 in-game day = 14400 real
+// sec. Level 1 = 3 in-game hours, level 2 = 1 in-game day, level 3 = 1 in-game
+// week, level 4 = 1 in-game month (30 in-game days), exactly as specified.
+const SKILL_REAL_SECONDS_PER_INGAME_HOUR = 600;
+const SKILL_REAL_SECONDS_PER_INGAME_DAY = SKILL_REAL_SECONDS_PER_INGAME_HOUR * 24;
+const SKILL_LEVEL_DURATION_MS = {
+  1: SKILL_REAL_SECONDS_PER_INGAME_HOUR * 3 * 1000,
+  2: SKILL_REAL_SECONDS_PER_INGAME_DAY * 1 * 1000,
+  3: SKILL_REAL_SECONDS_PER_INGAME_DAY * 7 * 1000,
+  4: SKILL_REAL_SECONDS_PER_INGAME_DAY * 30 * 1000
+};
+let skillLevels = { piloting:0, gunnery:0, systems:0, targeting:0, mining:0, shield_upgrades:0, weapon_upgrades:0 };
+let skillProgressMs = { piloting:0, gunnery:0, systems:0, targeting:0, mining:0, shield_upgrades:0, weapon_upgrades:0 }; // banked progress toward the NEXT level
+let activeTraining = null; // { key, startedAtMs } or null -- only one skill actively training at a time
+function skillTargetLevel(key){ return (skillLevels[key]||0) + 1; }
+function skillPrereqMet(key){
+  const def = SKILL_DEFS[key];
+  if(!def.requires) return true;
+  return (skillLevels[def.requires]||0) >= skillTargetLevel(key);
+}
+// total banked+live progress (ms) toward this skill's next level
+function skillProgressNowMs(key){
+  let ms = skillProgressMs[key] || 0;
+  if(activeTraining && activeTraining.key === key) ms += (Date.now() - activeTraining.startedAtMs);
+  return ms;
+}
+function skillDurationForTarget(key){ return SKILL_LEVEL_DURATION_MS[Math.min(SKILL_MAX_LEVEL, skillTargetLevel(key))] || SKILL_LEVEL_DURATION_MS[SKILL_MAX_LEVEL]; }
+// banks whatever's currently accruing (if anything) into skillProgressMs and clears activeTraining
+function pauseActiveTraining(){
+  if(!activeTraining) return;
+  const key = activeTraining.key;
+  skillProgressMs[key] = (skillProgressMs[key]||0) + (Date.now() - activeTraining.startedAtMs);
+  activeTraining = null;
+}
+function startSkillTraining(key){
+  const def = SKILL_DEFS[key];
+  if(!def) return;
+  const target = skillTargetLevel(key);
+  if(target > SKILL_MAX_LEVEL){ flashMessage('MAX LEVEL FOR NOW', 'warn'); return; }
+  if(target >= 2){ flashMessage('REQUIRES A TRAINING BOOK — COMING IN A FUTURE UPDATE', 'warn'); return; }
+  if(!skillPrereqMet(key)){
+    const req = SKILL_DEFS[def.requires];
+    flashMessage('NEEDS ' + req.name.toUpperCase() + ' LV.' + target + ' FIRST', 'warn');
+    return;
+  }
+  if(activeTraining && activeTraining.key === key) return; // already training this one
+  pauseActiveTraining(); // switching skills auto-pauses whatever was running, progress preserved
+  activeTraining = { key, startedAtMs: Date.now() };
+  logEvent('SKILL TRAINING STARTED — ' + def.name.toUpperCase() + ' LV.' + target, 'good');
+  renderSkillsPanel();
+}
+function stopSkillTraining(key){
+  if(!activeTraining || activeTraining.key !== key) return;
+  pauseActiveTraining();
+  logEvent('SKILL TRAINING PAUSED — ' + SKILL_DEFS[key].name.toUpperCase() + ' (PROGRESS KEPT)', 'good');
+  renderSkillsPanel();
+}
+// checks the actively-training skill for completion -- called periodically (see
+// setInterval below) and also once right after LAUNCH, so a level that finished
+// while the player was offline (or in a different tab) is applied immediately
+// rather than silently waiting for the panel to be opened.
+function checkSkillTrainingCompletion(){
+  if(!activeTraining) return;
+  const key = activeTraining.key;
+  const target = skillTargetLevel(key);
+  const need = skillDurationForTarget(key);
+  if(skillProgressNowMs(key) >= need){
+    skillLevels[key] = target;
+    skillProgressMs[key] = 0;
+    activeTraining = null;
+    logEvent('SKILL TRAINED — ' + SKILL_DEFS[key].name.toUpperCase() + ' LV.' + target, 'good');
+    flashMessage(SKILL_DEFS[key].name.toUpperCase() + ' TRAINED TO LV.' + target, 'good');
+    renderSkillsPanel();
+    if(typeof refreshWalletPanel === 'function') refreshWalletPanel();
+  }
+}
+setInterval(checkSkillTrainingCompletion, 5000);
+// ---------- skill effect helpers -- every other system (combat/mining/flight/
+// shields/warp/targeting/fitting) reads through these rather than touching
+// skillLevels directly, so the actual tuning numbers live in one place ----------
+function gunneryHitChance(){ return Math.round(Math.min(90, 42 + (skillLevels.gunnery||0)*6)); }
+function pilotingAccelMultiplier(){ return 1 + (skillLevels.piloting||0)*0.12; }
+function pilotingTurnMultiplier(){ return 1 + (skillLevels.piloting||0)*0.12; }
+function systemsShieldRegenMultiplier(){ return 1 + (skillLevels.systems||0)*0.15; }
+function systemsWarpTimeMultiplier(){ return Math.max(0.5, 1 - (skillLevels.systems||0)*0.1); }
+function targetingIdentifyRangeMultiplier(){ return 1 + (skillLevels.targeting||0)*0.25; }
+function targetingLockTimeMultiplier(){ return Math.max(0.3, 1 - (skillLevels.targeting||0)*0.15); }
 
 // ---------- escape pod / loan / bounty state (see damagePlayer, doWarp, docking UI) ----------
 let inEscapePod = false;
@@ -6308,10 +6441,12 @@ function toggleInventoryPanel(show){
   const smPanel = document.getElementById('starMapPanel');
   const wPanel = document.getElementById('walletPanel');
   const svPanel = document.getElementById('serverPanel');
+  const skPanel = document.getElementById('skillsPanel');
   if(eqPanel) eqPanel.classList.remove('show');
   if(smPanel) smPanel.classList.remove('show');
   if(wPanel) wPanel.classList.remove('show');
   if(svPanel) svPanel.classList.remove('show');
+  if(skPanel) skPanel.classList.remove('show');
   const willShow = show !== undefined ? show : !panel.classList.contains('show');
   panel.classList.toggle('show', willShow);
   if(!willShow){ closeCargoActionPrompt(); }
@@ -6975,6 +7110,18 @@ document.getElementById('btnWithdrawUbi').addEventListener('click', async ()=>{
   }
 });
 
+// Builds a fuller diagnostic string from a Supabase/Postgrest error (message +
+// code/details/hint when present) so a real cause -- like a missing table or an
+// RLS policy rejection -- shows up in the event log instead of just "failed".
+function describeSupabaseError(e){
+  if(!e) return 'unknown error';
+  const parts = [];
+  if(e.message) parts.push(e.message);
+  if(e.code) parts.push('code ' + e.code);
+  if(e.details) parts.push(e.details);
+  if(e.hint) parts.push('hint: ' + e.hint);
+  return parts.length ? parts.join(' — ') : (e.toString ? e.toString() : 'unknown error');
+}
 // ---------- AUCTION HOUSE (signed-in players only) ----------
 // Player-to-player listings, one row per listing in a shared auction_listings table
 // (unlike station_market/quest_boards, this can't be one blob per station -- many
@@ -7141,7 +7288,7 @@ document.getElementById('btnAuctionList').addEventListener('click', async ()=>{
   if(insertError){
     console.warn('auction list failed', insertError);
     flashMessage('LISTING FAILED — ITEM NOT REMOVED', 'warn');
-    logEvent('AUCTION: LISTING FAILED (' + (insertError.message || 'unknown error') + ') — CARGO UNCHANGED', 'warn');
+    logEvent('AUCTION: LISTING FAILED (' + describeSupabaseError(insertError) + ') — CARGO UNCHANGED', 'warn');
     return;
   }
   removeFromCargo(itemType, qty);
@@ -7181,7 +7328,7 @@ async function handleAuctionGridClick(e){
     if(deleteError){
       console.warn('auction buy delete failed', deleteError);
       flashMessage('PURCHASE FAILED — TRY AGAIN', 'warn');
-      logEvent('AUCTION: PURCHASE FAILED (' + (deleteError.message || 'unknown error') + ')', 'warn');
+      logEvent('AUCTION: PURCHASE FAILED (' + describeSupabaseError(deleteError) + ')', 'warn');
       await syncAuctionListingsOnDock(dockedStation);
       return;
     }
@@ -7213,7 +7360,7 @@ async function handleAuctionGridClick(e){
     if(cancelError){
       console.warn('auction cancel failed', cancelError);
       flashMessage('CANCEL FAILED — TRY AGAIN', 'warn');
-      logEvent('AUCTION: CANCEL FAILED (' + (cancelError.message || 'unknown error') + ')', 'warn');
+      logEvent('AUCTION: CANCEL FAILED (' + describeSupabaseError(cancelError) + ')', 'warn');
       await syncAuctionListingsOnDock(dockedStation);
       return;
     }
@@ -7265,9 +7412,14 @@ function renderFittingPanel(){
       const tier = parseInt(stack.itemType.slice('weaponTier'.length), 10);
       const eq = tier === equippedWeaponTier;
       const target = eq ? -1 : tier;
-      const label = eq ? 'UNEQUIP' : 'EQUIP';
-      return '<div class="peq"><span>WEAPON MK'+(tier+1)+' — dmg '+WEAPON_TIER_STATS[tier].damage+', rng '+WEAPON_TIER_STATS[tier].range+'m</span>'
-        + '<button class="peqBtn'+(eq?' equipped':'')+'" data-weapon-tier="'+target+'">'+label+'</button></div>';
+      // tier 0 is the starter weapon -- equippable with no skill at all. Tier 1+
+      // needs a matching Weapon Upgrades skill level (see SKILLS) to EQUIP -- it can
+      // still be bought/carried at any time, just not mounted until trained.
+      const locked = !eq && tier > 0 && (skillLevels.weapon_upgrades||0) < tier;
+      const label = eq ? 'UNEQUIP' : (locked ? 'LOCKED' : 'EQUIP');
+      return '<div class="peq"><span>WEAPON LV.'+tier+' — dmg '+WEAPON_TIER_STATS[tier].damage+', rng '+WEAPON_TIER_STATS[tier].range+'m'
+        + (locked ? '<br><span style="font-size:10px; color:var(--danger);">NEEDS WEAPON UPGRADES LV.'+tier+'</span>' : '') + '</span>'
+        + '<button class="peqBtn'+(eq?' equipped':'')+'"'+(locked?' disabled style="opacity:0.4;"':'')+' data-weapon-tier="'+target+'">'+label+'</button></div>';
     }).join('');
   }
   const ownedShieldStacks = cargoStacks.filter(s=>s.itemType.indexOf('shieldTier')===0 && !s.guildQuestId)
@@ -7278,16 +7430,21 @@ function renderFittingPanel(){
     const tier = parseInt(stack.itemType.slice('shieldTier'.length), 10);
     const eq = tier === equippedShieldTier;
     const target = eq ? -1 : tier;
-    const label = eq ? 'UNEQUIP' : 'EQUIP';
-    return '<div class="peq"><span>SHIELD MK'+(tier+1)+' — '+SHIELD_TIER_STATS[tier].maxShield+' cap</span>'
-      + '<button class="peqBtn'+(eq?' equipped':'')+'" data-shield-tier="'+target+'">'+label+'</button></div>';
+    // same level-gating as weapons above, via the Shield Upgrades skill
+    const locked = !eq && tier > 0 && (skillLevels.shield_upgrades||0) < tier;
+    const label = eq ? 'UNEQUIP' : (locked ? 'LOCKED' : 'EQUIP');
+    return '<div class="peq"><span>SHIELD LV.'+tier+' — '+SHIELD_TIER_STATS[tier].maxShield+' cap'
+      + (locked ? '<br><span style="font-size:10px; color:var(--danger);">NEEDS SHIELD UPGRADES LV.'+tier+'</span>' : '') + '</span>'
+      + '<button class="peqBtn'+(eq?' equipped':'')+'"'+(locked?' disabled style="opacity:0.4;"':'')+' data-shield-tier="'+target+'">'+label+'</button></div>';
   }).join('');
   if(!cls.canMining){
     mList.innerHTML = '<div class="peq"><span style="color:var(--danger);">THIS VESSEL CANNOT MOUNT A MINING LASER</span><span></span></div>';
   } else {
+    // the mining laser has always been a single, un-tiered item -- LV.0, no skill
+    // needed to equip it (Mining skill only affects yield/speed once it's running)
     mList.innerHTML = !hasMiningLaser
       ? '<div class="peq"><span>NOT OWNED</span><span></span></div>'
-      : '<div class="peq"><span>MINING LASER</span><button class="peqBtn'+(miningLaserEquipped?' equipped':'')+'" id="btnFitMining">'+(miningLaserEquipped?'UNEQUIP':'EQUIP')+'</button></div>';
+      : '<div class="peq"><span>MINING LASER LV.0</span><button class="peqBtn'+(miningLaserEquipped?' equipped':'')+'" id="btnFitMining">'+(miningLaserEquipped?'UNEQUIP':'EQUIP')+'</button></div>';
   }
 }
 document.getElementById('fitWeaponList').addEventListener('click', (e)=>{
@@ -7762,9 +7919,15 @@ function equipWeaponTier(tier, force){
     return;
   }
   if(ownedWeaponTiers.indexOf(tier) === -1) return;
+  // tier 0 needs no skill; tier 1+ needs a matching Weapon Upgrades level (see
+  // SKILLS/renderFittingPanel) -- owning it is not enough to mount it
+  if(tier > 0 && (skillLevels.weapon_upgrades||0) < tier){
+    flashMessage('NEEDS WEAPON UPGRADES LV.' + tier + ' TO EQUIP', 'warn');
+    return;
+  }
   equippedWeaponTier = tier;
-  flashMessage('WEAPON MK' + (tier+1) + ' EQUIPPED', 'good');
-  logEvent('EQUIPPED WEAPON MK' + (tier+1), 'good');
+  flashMessage('WEAPON LV.' + tier + ' EQUIPPED', 'good');
+  logEvent('EQUIPPED WEAPON LV.' + tier, 'good');
   refreshEquipmentPanel();
 }
 
@@ -7801,14 +7964,20 @@ function equipShieldTier(tier, force){
     return;
   }
   if(ownedShieldTiers.indexOf(tier) === -1) return;
+  // tier 0 needs no skill; tier 1+ needs a matching Shield Upgrades level (see
+  // SKILLS/renderFittingPanel) -- owning it is not enough to mount it
+  if(tier > 0 && (skillLevels.shield_upgrades||0) < tier){
+    flashMessage('NEEDS SHIELD UPGRADES LV.' + tier + ' TO EQUIP', 'warn');
+    return;
+  }
   equippedShieldTier = tier;
   const stats = SHIELD_TIER_STATS[tier];
   const delta = stats.maxShield - shipState.maxShield;
   shipState.maxShield = stats.maxShield;
   shipState.shieldRegenRate = stats.regen;
   shipState.shield = Math.min(shipState.maxShield, Math.max(0, shipState.shield + delta));
-  flashMessage('SHIELD MK' + (tier+1) + ' EQUIPPED', 'good');
-  logEvent('EQUIPPED SHIELD MK' + (tier+1), 'good');
+  flashMessage('SHIELD LV.' + tier + ' EQUIPPED', 'good');
+  logEvent('EQUIPPED SHIELD LV.' + tier, 'good');
   refreshEquipmentPanel();
 }
 
@@ -7837,39 +8006,26 @@ const MINING_LASER_COST = 600;
 initMarketStock(); // deferred call -- see the NOTE by initMarketStock's definition above
 let oreCargo = { iron:0, copper:0, silver:0, gold:0 };
 
-// ---------- mining skill (separate progression track from combat pilot level) ----------
-// gains 1 XP per unit of ore actually extracted; higher mining level increases both
-// EFFICIENCY (more ore per tick) and SPEED (shorter tick interval), read through
-// currentMiningYieldPerTick()/currentMiningInterval() rather than the flat constants
-// directly -- same pattern as currentWeaponDamage()/currentFireInterval() for combat.
+// ---------- mining skill -- legacy vars kept for old save-data compatibility
+// only (see the naming-stability comment by playerLevel/playerXP above); mining
+// speed/yield are now driven entirely by skillLevels.mining (the Mining
+// advanced skill, trained from the SKILLS panel) instead of XP-from-mining. ----------
 let miningLevel = 1;
 let miningXP = 0;
 function miningXpToNext(level){ return Math.round(90 * Math.pow(level, 1.35)); }
-// +1 ore/tick every 2 mining levels, interval shrinks 0.04s/level down to a 0.6s floor
-function currentMiningYieldPerTick(){ return MINING_YIELD_PER_TICK + Math.floor((miningLevel-1) / 2); }
-function currentMiningInterval(){ return Math.max(0.6, MINING_INTERVAL - (miningLevel-1)*0.04); }
+// +1 ore/tick every 2 Mining skill levels, interval shrinks 0.08s/level down to a 0.6s floor
+function currentMiningYieldPerTick(){ return MINING_YIELD_PER_TICK + Math.floor((skillLevels.mining||0) / 2); }
+function currentMiningInterval(){ return Math.max(0.6, MINING_INTERVAL - (skillLevels.mining||0)*0.08); }
+// ore mined still counts toward the lifetime wallet stat and quest/achievement
+// tracking -- it just no longer grants mining XP or levels (see SKILLS above)
 function gainMiningXP(amount){
-  totalOreMinedTotal += amount; // wallet stat (item 3b) -- 1 XP is awarded per unit mined, so this tracks 1:1
-  miningXP += amount;
-  let leveled = false;
-  while(miningXP >= miningXpToNext(miningLevel)){
-    miningXP -= miningXpToNext(miningLevel);
-    miningLevel++;
-    leveled = true;
-  }
-  updateMiningXPUI();
-  if(leveled){
-    logEvent('MINING LEVEL UP — LV.' + miningLevel, 'good');
-    setTimeout(()=>flashMessage('MINING LEVEL UP — LV.'+miningLevel+' (FASTER, HIGHER-YIELD MINING)', 'good'), 900);
-  }
-}
-function updateMiningXPUI(){
-  const lvlEl = document.getElementById('miningLevelRead');
-  const xpEl = document.getElementById('miningXpRead');
-  if(lvlEl) lvlEl.textContent = 'MINING LV.' + miningLevel;
-  if(xpEl) xpEl.textContent = miningXP + ' / ' + miningXpToNext(miningLevel) + ' XP';
+  totalOreMinedTotal += amount;
   if(typeof refreshWalletPanel === 'function') refreshWalletPanel();
 }
+// no-op stub kept so old call sites (elsewhere in the file) that still exist
+// from before the skills rework don't throw -- mining stats now live on the
+// SKILLS panel via renderSkillsPanel(), not a dedicated mining XP UI
+function updateMiningXPUI(){ if(typeof refreshWalletPanel === 'function') refreshWalletPanel(); }
 const ORE_PRICES = { iron:2, copper:5, silver:12, gold:30 };
 const SCRAP_PRICE = 1; // separate from the black-box bounty payout -- scrap sells at a flat rate
 
@@ -7907,12 +8063,12 @@ function itemDisplayDef(itemType){
     // the player can sell/store away entirely -- flat nominal sell price since there's
     // no purchase cost to scale off of (see TIER0_GEAR_SELL_PRICE)
     const sell = t === 0 ? TIER0_GEAR_SELL_PRICE : Math.max(1, Math.round(WEAPON_TIER_COST[t]*0.4));
-    return { key:itemType, label:'Weapon Mk'+(t+1), color:'#ffb020', round:false, sellPrice:sell };
+    return { key:itemType, label:'Weapon LV.'+t, color:'#ffb020', round:false, sellPrice:sell };
   }
   if(itemType.indexOf('shieldTier') === 0){
     const t = parseInt(itemType.slice('shieldTier'.length), 10);
     const sell = t === 0 ? TIER0_GEAR_SELL_PRICE : Math.max(1, Math.round(SHIELD_TIER_COST[t]*0.4));
-    return { key:itemType, label:'Shield Mk'+(t+1), color:'#5cc9ff', round:false, sellPrice:sell };
+    return { key:itemType, label:'Shield LV.'+t, color:'#5cc9ff', round:false, sellPrice:sell };
   }
   if(itemType === 'miningLaser') return { key:itemType, label:'Mining Laser', color:'#6dffc2', round:false, sellPrice:Math.round(MINING_LASER_COST*0.4) };
   if(itemType === AMMO_ITEM_TYPE) return { key:itemType, label:'Iron Bullets', color:'#c9a227', round:false, sellPrice:AMMO_SELL_UNIT_PRICE };
@@ -8723,12 +8879,12 @@ const ACHIEVEMENTS = [
   { id:'pirate_scourge', name:'Scourge of the Belt', desc:'Destroy 100 pirates.', check:()=> piratesKilled >= 100 },
   { id:'captain_slayer', name:'Captain Slayer', desc:'Destroy a rare pirate captain.', check:()=> captainsKilled >= 1 },
   { id:'captain_nemesis', name:'Captain’s Nemesis', desc:'Destroy 10 pirate captains.', check:()=> captainsKilled >= 10 },
-  { id:'ace_pilot', name:'Ace Pilot', desc:'Reach Fighting Level 10.', check:()=> playerLevel >= 10 },
-  { id:'veteran_pilot', name:'Veteran Pilot', desc:'Reach Fighting Level 20.', check:()=> playerLevel >= 20 },
+  { id:'ace_pilot', name:'Ace Pilot', desc:'Train Gunnery to Level 2.', check:()=> (skillLevels.gunnery||0) >= 2 },
+  { id:'veteran_pilot', name:'Veteran Pilot', desc:'Train Gunnery to Level 4.', check:()=> (skillLevels.gunnery||0) >= 4 },
   { id:'first_ore', name:'First Haul', desc:'Mine your first ore.', check:()=> totalOreMinedTotal >= 1 },
   { id:'prospector', name:'Prospector', desc:'Mine 500 total ore.', check:()=> totalOreMinedTotal >= 500 },
   { id:'ore_baron', name:'Ore Baron', desc:'Mine 5,000 total ore.', check:()=> totalOreMinedTotal >= 5000 },
-  { id:'master_miner', name:'Master Miner', desc:'Reach Mining Level 10.', check:()=> miningLevel >= 10 },
+  { id:'master_miner', name:'Master Miner', desc:'Train Mining to Level 4.', check:()=> (skillLevels.mining||0) >= 4 },
   { id:'gold_rush', name:'Gold Rush', desc:'Mine gold ore for the first time.', check:()=> totalGoldMined >= 1 },
   { id:'wanderer', name:'Wanderer', desc:'Travel 100,000 m.', check:()=> distanceTraveledTotal >= 100000 },
   { id:'explorer', name:'Explorer', desc:'Travel 500,000 m.', check:()=> distanceTraveledTotal >= 500000 },
@@ -8796,8 +8952,8 @@ function refreshEquipmentPanel(){
       '<div class="peq"><span>NO EQUIPMENT SLOTS — IN ESCAPE POD</span><span></span></div>';
     return;
   }
-  wList.innerHTML = '<div class="peq"><span>'+(equippedWeaponTier===-1?'NONE MOUNTED':'WEAPON MK'+(equippedWeaponTier+1))+'</span><span></span></div>';
-  sList.innerHTML = '<div class="peq"><span>'+(equippedShieldTier===-1?'NONE MOUNTED':'SHIELD MK'+(equippedShieldTier+1))+'</span><span></span></div>';
+  wList.innerHTML = '<div class="peq"><span>'+(equippedWeaponTier===-1?'NONE MOUNTED':'WEAPON LV.'+equippedWeaponTier)+'</span><span></span></div>';
+  sList.innerHTML = '<div class="peq"><span>'+(equippedShieldTier===-1?'NONE MOUNTED':'SHIELD LV.'+equippedShieldTier)+'</span><span></span></div>';
   mList.innerHTML = !hasMiningLaser
     ? '<div class="peq"><span>NOT OWNED</span><span></span></div>'
     : '<div class="peq"><span>MINING LASER — ' + (miningLaserEquipped?'EQUIPPED':'STOWED') + '</span><span></span></div>';
@@ -8823,10 +8979,12 @@ function toggleEquipmentPanel(show){
   const smPanel = document.getElementById('starMapPanel');
   const wPanel = document.getElementById('walletPanel');
   const svPanel = document.getElementById('serverPanel');
+  const skPanel = document.getElementById('skillsPanel');
   if(invPanel) invPanel.classList.remove('show');
   if(smPanel) smPanel.classList.remove('show');
   if(wPanel) wPanel.classList.remove('show');
   if(svPanel) svPanel.classList.remove('show');
+  if(skPanel) skPanel.classList.remove('show');
   const willShow = show !== undefined ? show : !panel.classList.contains('show');
   panel.classList.toggle('show', willShow);
   if(willShow) refreshEquipmentPanel();
@@ -8876,7 +9034,9 @@ function doWarp(gateEntry){
 // under approach_target, then a scripted "jump" beat (FOV punch, streaking stars, a
 // white hyperspace flash) before the existing doWarp() teleport actually fires.
 let warpSequence = null; // { phase: 'approach'|'jump', timer, gate }
-const WARP_SEQ_APPROACH_TIME = 1.0;
+const WARP_SEQ_APPROACH_TIME_BASE = 1.0;
+// Systems skill (see SKILLS) shortens how long the warp drive takes to spin up
+function effectiveWarpApproachTime(){ return WARP_SEQ_APPROACH_TIME_BASE * systemsWarpTimeMultiplier(); }
 const WARP_SEQ_JUMP_TIME = 1.1; // total sequence ~2.1s
 const CAMERA_BASE_FOV = 50;
 function startWarpSequence(gate){
@@ -8896,7 +9056,7 @@ function updateWarpSequence(dt){
   if(seq.phase === 'approach'){
     // updateShip(dt) (driven from animate()) is already flying/turning the ship
     // toward the gate under the approach_target command set above
-    if(seq.timer >= WARP_SEQ_APPROACH_TIME){
+    if(seq.timer >= effectiveWarpApproachTime()){
       seq.phase = 'jump';
       seq.timer = 0;
     }
@@ -8959,7 +9119,9 @@ function autoAcquireNearest(excludeId){
 // (skipping 'approach', since there's no physical gate nearby to fly toward for a
 // long-range jump) -- and lands the player exactly where the local warp would: 200m
 // off the paired return gate in the destination zone, via the same doWarp() call.
-const STAR_MAP_WARP_TIME = 15; // seconds
+const STAR_MAP_WARP_TIME_BASE = 15; // seconds
+// Systems skill (see SKILLS) shortens the long-range warp drive charge-up time
+function effectiveStarMapWarpTime(){ return STAR_MAP_WARP_TIME_BASE * systemsWarpTimeMultiplier(); }
 // virtual (non-physical, never added to the scene/structures) arrival points for the
 // two zones that no longer have a local flyable gate -- YELLOW (belt) and RED (The
 // Maelstrom) are reachable ONLY through the star map now (see the gate-naming NOTE
@@ -9056,10 +9218,12 @@ function toggleStarMapPanel(show){
   const eqPanel = document.getElementById('equipmentPanel');
   const wPanel = document.getElementById('walletPanel');
   const svPanel = document.getElementById('serverPanel');
+  const skPanel = document.getElementById('skillsPanel');
   if(invPanel) invPanel.classList.remove('show');
   if(eqPanel) eqPanel.classList.remove('show');
   if(wPanel) wPanel.classList.remove('show');
   if(svPanel) svPanel.classList.remove('show');
+  if(skPanel) skPanel.classList.remove('show');
   const willShow = show !== undefined ? show : !panel.classList.contains('show');
   panel.classList.toggle('show', willShow);
   if(willShow) renderStarMap();
@@ -9073,14 +9237,99 @@ function toggleWalletPanel(show){
   const eqPanel = document.getElementById('equipmentPanel');
   const smPanel = document.getElementById('starMapPanel');
   const svPanel = document.getElementById('serverPanel');
+  const skPanel = document.getElementById('skillsPanel');
   if(invPanel) invPanel.classList.remove('show');
   if(eqPanel) eqPanel.classList.remove('show');
   if(smPanel) smPanel.classList.remove('show');
   if(svPanel) svPanel.classList.remove('show');
+  if(skPanel) skPanel.classList.remove('show');
   const willShow = show !== undefined ? show : !panel.classList.contains('show');
   panel.classList.toggle('show', willShow);
   if(willShow) refreshWalletPanel();
 }
+// ---------- SKILLS popup (see SKILL_DEFS/skillLevels/activeTraining above) ----------
+function toggleSkillsPanel(show){
+  const panel = document.getElementById('skillsPanel');
+  if(!panel) return;
+  const invPanel = document.getElementById('inventoryPanel');
+  const eqPanel = document.getElementById('equipmentPanel');
+  const smPanel = document.getElementById('starMapPanel');
+  const wPanel = document.getElementById('walletPanel');
+  const svPanel = document.getElementById('serverPanel');
+  if(invPanel) invPanel.classList.remove('show');
+  if(eqPanel) eqPanel.classList.remove('show');
+  if(smPanel) smPanel.classList.remove('show');
+  if(wPanel) wPanel.classList.remove('show');
+  if(svPanel) svPanel.classList.remove('show');
+  const willShow = show !== undefined ? show : !panel.classList.contains('show');
+  panel.classList.toggle('show', willShow);
+  if(willShow) renderSkillsPanel();
+}
+function fmtSkillDuration(ms){
+  const totalMin = Math.ceil(ms / 60000);
+  if(totalMin < 60) return totalMin + 'm';
+  const totalHr = totalMin / 60;
+  if(totalHr < 48) return totalHr.toFixed(1) + 'h';
+  return (totalHr / 24).toFixed(1) + 'd';
+}
+function renderSkillRow(key){
+  const def = SKILL_DEFS[key];
+  const level = skillLevels[key] || 0;
+  const target = skillTargetLevel(key);
+  const isTraining = activeTraining && activeTraining.key === key;
+  const maxed = target > SKILL_MAX_LEVEL;
+  const prereqOk = skillPrereqMet(key);
+  const need = maxed ? 0 : skillDurationForTarget(key);
+  const now = maxed ? 0 : skillProgressNowMs(key);
+  const pct = maxed ? 100 : Math.min(100, (now / need) * 100);
+  let statusLine;
+  if(maxed){
+    statusLine = 'MAX LEVEL (FOR NOW)';
+  } else if(target >= 2){
+    statusLine = 'LV.' + target + ' NEEDS A TRAINING BOOK — COMING IN A FUTURE UPDATE';
+  } else if(!prereqOk){
+    const req = SKILL_DEFS[def.requires];
+    statusLine = 'NEEDS ' + req.name.toUpperCase() + ' LV.' + target + ' FIRST';
+  } else if(isTraining){
+    statusLine = 'TRAINING LV.' + target + ' — ' + fmtSkillDuration(Math.max(0, need - now)) + ' LEFT';
+  } else if(now > 0){
+    statusLine = 'PAUSED — LV.' + target + ' — ' + fmtSkillDuration(Math.max(0, need - now)) + ' LEFT';
+  } else {
+    statusLine = 'LV.' + target + ' TAKES ' + fmtSkillDuration(need);
+  }
+  const canStart = !maxed && target < 2 && prereqOk && !isTraining;
+  const btnHtml = maxed ? ''
+    : isTraining
+      ? '<button class="cmdbtn peqBtn equipped" data-skill-stop="' + key + '">PAUSE</button>'
+      : '<button class="cmdbtn peqBtn" data-skill-start="' + key + '"' + (canStart ? '' : ' disabled style="opacity:0.4;"') + '>START</button>';
+  return '<div class="peq">'
+    + '<span>' + def.name + ' — LV.' + level + '<br><span style="font-size:10px; color:var(--phosphor-dim);">' + def.desc + '</span>'
+    + '<br><span style="font-size:10px; color:' + (isTraining ? 'var(--phosphor)' : 'var(--phosphor-dim)') + ';">' + statusLine + '</span>'
+    + (maxed ? '' : '<div class="pbar' + (isTraining?'':' full') + '" style="margin-top:3px;"><i style="width:' + pct.toFixed(1) + '%;"></i></div>')
+    + '</span>' + btnHtml
+    + '</div>';
+}
+function renderSkillsPanel(){
+  const panel = document.getElementById('skillsPanel');
+  if(!panel || !panel.classList.contains('show')) return;
+  const basicEl = document.getElementById('skillsBasicList');
+  const advEl = document.getElementById('skillsAdvancedList');
+  if(basicEl) basicEl.innerHTML = SKILL_ORDER.filter(k=> SKILL_DEFS[k].tier==='basic').map(renderSkillRow).join('');
+  if(advEl) advEl.innerHTML = SKILL_ORDER.filter(k=> SKILL_DEFS[k].tier==='advanced').map(renderSkillRow).join('');
+}
+document.getElementById('btnSkills').addEventListener('click', ()=> toggleSkillsPanel());
+document.getElementById('btnCloseSkills').addEventListener('click', ()=> toggleSkillsPanel(false));
+document.getElementById('skillsBasicList').addEventListener('click', handleSkillsPanelClick);
+document.getElementById('skillsAdvancedList').addEventListener('click', handleSkillsPanelClick);
+function handleSkillsPanelClick(e){
+  const startBtn = e.target.closest('button[data-skill-start]');
+  const stopBtn = e.target.closest('button[data-skill-stop]');
+  if(startBtn && !startBtn.disabled) startSkillTraining(startBtn.dataset.skillStart);
+  else if(stopBtn) stopSkillTraining(stopBtn.dataset.skillStop);
+}
+// keeps the panel's countdown text/progress bars live while it's open, same
+// cadence as the completion check itself
+setInterval(renderSkillsPanel, 1000);
 // ---------- SERVER popup: who's online, profile viewer, daily kill leaderboard ----------
 let serverTab = 'online';
 function toggleServerPanel(show){
@@ -9090,10 +9339,12 @@ function toggleServerPanel(show){
   const eqPanel = document.getElementById('equipmentPanel');
   const smPanel = document.getElementById('starMapPanel');
   const wPanel = document.getElementById('walletPanel');
+  const skPanel = document.getElementById('skillsPanel');
   if(invPanel) invPanel.classList.remove('show');
   if(eqPanel) eqPanel.classList.remove('show');
   if(smPanel) smPanel.classList.remove('show');
   if(wPanel) wPanel.classList.remove('show');
+  if(skPanel) skPanel.classList.remove('show');
   const willShow = show !== undefined ? show : !panel.classList.contains('show');
   panel.classList.toggle('show', willShow);
   if(willShow) refreshServerPanel();
@@ -9208,11 +9459,7 @@ function refreshWalletPanel(){
         }).join('');
   } else {
     updateCallsignStatRow();
-    document.getElementById('statFightLevel').textContent = playerLevel;
-    const need = xpToNext(playerLevel);
-    document.getElementById('statFightXpLabel').textContent = playerXP + ' / ' + need + ' XP';
-    document.getElementById('statFightXpFill').style.width = Math.min(100, playerXP/need*100) + '%';
-    document.getElementById('statToHit').textContent = hitChanceForLevel(playerLevel) + '%';
+    document.getElementById('statToHit').textContent = gunneryHitChance() + '%';
     document.getElementById('statPiratesKilled').textContent = piratesKilled;
     document.getElementById('statHullDamage').textContent = Math.round(totalHullDamageTaken);
     // (v0.11.0) reputation is per station: the top rows show the LOCAL station's
@@ -9231,10 +9478,6 @@ function refreshWalletPanel(){
         return '<div class="prow"><span>' + st.name + '</span><span>' + cell('navy') + ' / ' + cell('mining') + ' / ' + cell('transport') + '</span></div>';
       }).join('');
     }
-    document.getElementById('statMineLevel').textContent = miningLevel;
-    const mNeed = miningXpToNext(miningLevel);
-    document.getElementById('statMineXpLabel').textContent = miningXP + ' / ' + mNeed + ' XP';
-    document.getElementById('statMineXpFill').style.width = Math.min(100, miningXP/mNeed*100) + '%';
     document.getElementById('statMineSpeed').textContent = (1/currentMiningInterval()).toFixed(2) + ' ticks/s';
     document.getElementById('statOreMined').textContent = Math.round(totalOreMinedTotal);
     document.getElementById('statDistance').textContent = Math.round(distanceTraveledTotal) + ' m';
@@ -9327,14 +9570,18 @@ function beginStarMapWarp(zone){
   if(starMapCharge || inputLocked()) return;
   // (v0.10.0) long-range warp never crosses galaxies -- only physical gates do
   if(zone && zone.galaxy && zone.galaxy !== currentGalaxyKey()) return;
-  starMapCharge = { timer:0, zone };
+  // Systems skill locks in the effective total charge time for THIS charge-up
+  // right now, so it can't shorten mid-charge if training happens to complete
+  // while it's running
+  const totalTime = effectiveStarMapWarpTime();
+  starMapCharge = { timer:0, zone, totalTime };
   createWarpChargeGlow();
   const bannerEl = document.getElementById('starMapCharge');
   const labelEl = document.getElementById('starMapChargeLabel');
-  if(labelEl) labelEl.textContent = 'WARP CHARGING — ' + zone.label.toUpperCase() + ' — ' + STAR_MAP_WARP_TIME + 's';
+  if(labelEl) labelEl.textContent = 'WARP CHARGING — ' + zone.label.toUpperCase() + ' — ' + Math.ceil(totalTime) + 's';
   if(bannerEl) bannerEl.classList.add('show');
   logEvent('LONG-RANGE WARP CHARGING — DESTINATION: ' + zone.label.toUpperCase(), 'good');
-  zoneMessage('WARP DRIVE CHARGING — ' + STAR_MAP_WARP_TIME + 's TO ' + zone.label.toUpperCase(), 'good');
+  zoneMessage('WARP DRIVE CHARGING — ' + Math.ceil(totalTime) + 's TO ' + zone.label.toUpperCase(), 'good');
   renderStarMap();
   // item: close the STAR MAP popup the instant the WARP button is pressed (charge
   // starts) rather than waiting for the jump to actually fire -- so the player can
@@ -9358,10 +9605,10 @@ function updateStarMapCharge(dt){
   if(!starMapCharge) return;
   starMapCharge.timer += dt;
   updateWarpChargeGlow();
-  const remain = Math.max(0, STAR_MAP_WARP_TIME - starMapCharge.timer);
+  const remain = Math.max(0, starMapCharge.totalTime - starMapCharge.timer);
   const labelEl = document.getElementById('starMapChargeLabel');
   if(labelEl) labelEl.textContent = 'WARP CHARGING — ' + starMapCharge.zone.label.toUpperCase() + ' — ' + Math.ceil(remain) + 's';
-  if(starMapCharge.timer >= STAR_MAP_WARP_TIME){
+  if(starMapCharge.timer >= starMapCharge.totalTime){
     const zone = starMapCharge.zone;
     starMapCharge = null;
     disposeWarpChargeGlow();
@@ -9739,12 +9986,14 @@ window.addEventListener('resize', ()=>{
 // buildPirates/the respawn branch in updatePirates for where it resets to false on a
 // fresh spawn), so moving back out of range afterward no longer re-hides its name.
 const IDENTIFY_RANGE = 5000;
+// Targeting skill (see SKILLS) extends how far out an unidentified contact can be identified from
+function effectiveIdentifyRange(){ return IDENTIFY_RANGE * targetingIdentifyRangeMultiplier(); }
 function displayNameFor(entry){
   if(!entry) return '';
   if(entry.hostile){
     if(entry.identified) return entry.name;
     const d = shipState.pos.distanceTo(entry.mesh.position);
-    if(d > IDENTIFY_RANGE) return 'Unidentified Ship';
+    if(d > effectiveIdentifyRange()) return 'Unidentified Ship';
     entry.identified = true;
   }
   return entry.name;
@@ -10231,6 +10480,54 @@ document.addEventListener('fullscreenchange', updateFullscreenBtnLabel);
 document.addEventListener('webkitfullscreenchange', updateFullscreenBtnLabel);
 document.getElementById('sfxVolumeSlider').addEventListener('input', (e)=>{ audio.setSfxVolume(parseFloat(e.target.value)/100); });
 document.getElementById('ambientVolumeSlider').addEventListener('input', (e)=>{ audio.setAmbientVolume(parseFloat(e.target.value)/100); });
+
+// ---------- AFK auto-logout -- kicks an idle signed-in player (no mouse/keyboard/
+// touch activity) back to the boot screen after N real-world minutes, same as
+// clicking SAVE & EXIT (saves first, doesn't just drop them). Default 10 min,
+// raisable up to 30 in SETTINGS. Persisted in localStorage so the choice survives
+// a reload. Tracked independent of animate()/docked state via a plain setInterval
+// so it keeps counting whether the player is flying, docked, or in a menu. ----------
+const AFK_TIMEOUT_MIN_DEFAULT = 10, AFK_TIMEOUT_MIN_MAX = 30, AFK_TIMEOUT_MIN_MIN = 10;
+function loadAfkTimeoutMinutes(){
+  try{
+    const raw = localStorage.getItem('voidDriftAfkTimeoutMin');
+    const n = raw ? parseInt(raw, 10) : NaN;
+    if(Number.isFinite(n)) return Math.max(AFK_TIMEOUT_MIN_MIN, Math.min(AFK_TIMEOUT_MIN_MAX, n));
+  }catch(e){}
+  return AFK_TIMEOUT_MIN_DEFAULT;
+}
+let afkTimeoutMinutes = loadAfkTimeoutMinutes();
+let lastActivityAt = Date.now();
+let afkLoggingOut = false;
+function markActivity(){ lastActivityAt = Date.now(); }
+['mousemove','mousedown','keydown','wheel','touchstart','pointerdown'].forEach(evt=>{
+  window.addEventListener(evt, markActivity, { passive:true });
+});
+const afkSlider = document.getElementById('afkTimeoutSlider');
+const afkReadout = document.getElementById('afkTimeoutReadout');
+if(afkSlider){
+  afkSlider.value = String(afkTimeoutMinutes);
+  if(afkReadout) afkReadout.textContent = String(afkTimeoutMinutes);
+  afkSlider.addEventListener('input', (e)=>{
+    afkTimeoutMinutes = Math.max(AFK_TIMEOUT_MIN_MIN, Math.min(AFK_TIMEOUT_MIN_MAX, parseInt(e.target.value, 10) || AFK_TIMEOUT_MIN_DEFAULT));
+    if(afkReadout) afkReadout.textContent = String(afkTimeoutMinutes);
+    try{ localStorage.setItem('voidDriftAfkTimeoutMin', String(afkTimeoutMinutes)); }catch(err){}
+  });
+}
+async function afkAutoLogout(){
+  if(afkLoggingOut) return;
+  afkLoggingOut = true;
+  flashMessage('AFK — SAVING AND SIGNING OUT', 'warn');
+  logEvent('=== AUTO-LOGGED OUT AFTER ' + afkTimeoutMinutes + ' MINUTES AFK ===', 'warn');
+  try{ await pushCloudSave(); }catch(e){}
+  try{ leaveMultiplayer(); }catch(e){}
+  try{ if(supabaseClient && currentUser) await supabaseClient.auth.signOut(); }catch(e){}
+  setTimeout(()=>{ window.location.reload(); }, 700);
+}
+setInterval(()=>{
+  if(!gameLaunched || afkLoggingOut || !currentUser) return;
+  if(Date.now() - lastActivityAt >= afkTimeoutMinutes * 60000) afkAutoLogout();
+}, 5000);
 // ---------- save / load (multiplayer roadmap step 1 -- see top-of-file NAMING
 // STABILITY note, which this whole system inherits: every key below is a
 // persistent identifier the moment a real player saves with it, so once shipped
@@ -10272,10 +10569,13 @@ function getPlayerSaveData(){
     quat: { x: ship.quaternion.x, y: ship.quaternion.y, z: ship.quaternion.z, w: ship.quaternion.w },
     hull: shipState.hull,
     shield: shipState.shield,
-    playerLevel: playerLevel,
-    playerXP: playerXP,
-    miningLevel: miningLevel,
-    miningXP: miningXP,
+    playerLevel: playerLevel,     // legacy field, frozen -- see the naming-stability comment near its declaration
+    playerXP: playerXP,           // legacy field, frozen
+    miningLevel: miningLevel,     // legacy field, frozen
+    miningXP: miningXP,           // legacy field, frozen
+    skillLevels: Object.assign({}, skillLevels),
+    skillProgressMs: Object.assign({}, skillProgressMs),
+    activeTraining: activeTraining ? { key: activeTraining.key, startedAtMs: activeTraining.startedAtMs } : null,
     bountyCredits: bountyCredits,
     scrapCount: scrapCount,
     blackBoxCount: blackBoxCount,
@@ -10330,6 +10630,20 @@ function applyPlayerSaveData(d){
   if(typeof d.playerXP === 'number') playerXP = d.playerXP;
   if(typeof d.miningLevel === 'number') miningLevel = d.miningLevel;
   if(typeof d.miningXP === 'number') miningXP = d.miningXP;
+  if(d.skillLevels && typeof d.skillLevels === 'object'){
+    SKILL_ORDER.forEach(k=>{ if(typeof d.skillLevels[k] === 'number') skillLevels[k] = d.skillLevels[k]; });
+  }
+  if(d.skillProgressMs && typeof d.skillProgressMs === 'object'){
+    SKILL_ORDER.forEach(k=>{ if(typeof d.skillProgressMs[k] === 'number') skillProgressMs[k] = d.skillProgressMs[k]; });
+  }
+  if(d.activeTraining && typeof d.activeTraining === 'object' && SKILL_DEFS[d.activeTraining.key] && typeof d.activeTraining.startedAtMs === 'number'){
+    activeTraining = { key: d.activeTraining.key, startedAtMs: d.activeTraining.startedAtMs };
+    // catch up any level(s) that finished while this player was signed out --
+    // training runs off wall-clock time so it never actually paused
+    checkSkillTrainingCompletion();
+  } else {
+    activeTraining = null;
+  }
   if(typeof d.bountyCredits === 'number') bountyCredits = d.bountyCredits;
   if(typeof d.scrapCount === 'number') scrapCount = d.scrapCount;
   if(typeof d.blackBoxCount === 'number') blackBoxCount = d.blackBoxCount;
@@ -10451,6 +10765,7 @@ function applyPlayerSaveData(d){
 let currentUser = null;          // Supabase auth user object, or null while signed out
 let pendingCloudSave = null;     // fetched on LOG IN, applied at the next LAUNCH (see startBtn handler)
 let cloudSyncInFlight = false;   // guards against double-clicking LOG IN/REGISTER/SAVE while a request is in flight
+let gameLaunched = false;        // true once past LAUNCH and animate() is running -- gates AFK auto-logout (see afkWatch below)
 
 // Guest play no longer exists -- an account is required to do anything past the
 // boot screen (see updateBootFlowVisibility(), which keeps #bootServerRow and
@@ -10668,6 +10983,9 @@ function cloudSyncSetupSql(){
     "drop policy if exists \"signed-in players can list items\" on auction_listings;",
     "create policy \"signed-in players can list items\" on auction_listings",
     "  for insert with check (auth.uid() = seller_id);",
+    "drop policy if exists \"sellers can update their own listings\" on auction_listings;",
+    "create policy \"sellers can update their own listings\" on auction_listings",
+    "  for update using (auth.uid() = seller_id) with check (auth.uid() = seller_id);",
     "drop policy if exists \"signed-in players can buy/cancel listings\" on auction_listings;",
     "create policy \"signed-in players can buy/cancel listings\" on auction_listings",
     "  for delete using (auth.uid() is not null);",
@@ -10691,6 +11009,9 @@ function cloudSyncSetupSql(){
     "drop policy if exists \"any signed-in buyer can queue a payout for a seller\" on auction_payouts;",
     "create policy \"any signed-in buyer can queue a payout for a seller\" on auction_payouts",
     "  for insert with check (auth.uid() is not null);",
+    "drop policy if exists \"signed-in players can update pending payouts\" on auction_payouts;",
+    "create policy \"signed-in players can update pending payouts\" on auction_payouts",
+    "  for update using (auth.uid() is not null) with check (auth.uid() is not null);",
     "drop policy if exists \"players can claim (delete) only their own payouts\" on auction_payouts;",
     "create policy \"players can claim (delete) only their own payouts\" on auction_payouts",
     "  for delete using (auth.uid() = user_id);",
@@ -11262,7 +11583,10 @@ function trackServerRosterPresence(){
     mpChatChannel.track({
       name: mpIdentity.name,
       classKey: activeShipInstance ? activeShipInstance.classKey : 'starter',
-      level: playerLevel,
+      // total trained skill levels (out of a max of 28 across all 7 skills at LV.4
+      // each) -- replaces the old combat-XP level as the "LV" shown to other
+      // players now that combat/mining no longer use XP/levels (see SKILLS)
+      level: SKILL_ORDER.reduce((sum,k)=> sum + (skillLevels[k]||0), 0),
       credits: bountyCredits,
       kills: piratesKilled,
       navyRep: maxStationRep('navy'),
@@ -11729,32 +12053,21 @@ function logEvent(text, type){
   while(list.children.length > EVENT_LOG_MAX) list.removeChild(list.lastChild);
 }
 
-// ---------- RPG progression ----------
-function gainXP(amount){
-  playerXP += amount;
-  logEvent('+' + amount + ' XP');
-  let leveled = false;
-  while(playerXP >= xpToNext(playerLevel)){
-    playerXP -= xpToNext(playerLevel);
-    playerLevel++;
-    leveled = true;
-  }
-  updateXPUI();
-  if(leveled){
-    logEvent('LEVEL UP — LV.' + playerLevel, 'good');
-    setTimeout(()=>flashMessage('LEVEL UP — LV.'+playerLevel+' ('+hitChanceForLevel(playerLevel)+'% TO-HIT)', 'good'), 900);
-  }
-}
+// ---------- RPG progression -- combat/mining XP-and-levels removed; kills no
+// longer grant XP or levels (see SKILLS above for what replaced it). gainXP()
+// is kept as a no-op stub purely so its existing call sites (kill rewards
+// elsewhere in the file) don't need to be hunted down one by one; it does
+// nothing now except keep the UI in sync. ----------
+function gainXP(amount){ updateXPUI(); }
 function updateXPUI(){
+  // item 6: TO-HIT/XP/XP-bar were removed from the telemetry HUD box long ago --
+  // these guarded lookups are legacy no-ops (the elements no longer exist in the
+  // telemetry markup); real combat/mining stats now live on the SKILLS panel
+  // (renderSkillsPanel()) and the WALLET stats tab (refreshWalletPanel()).
   const lvlEl = document.getElementById('levelRead'); if(lvlEl) lvlEl.textContent = 'LV.'+playerLevel;
-  // item 6: TO-HIT/XP/XP-bar were removed from the telemetry HUD box -- these now
-  // live on the WALLET stats tab only (see refreshWalletPanel); guarded since the
-  // elements no longer exist in the telemetry markup
-  const hcEl = document.getElementById('hitChanceRead'); if(hcEl) hcEl.textContent = hitChanceForLevel(playerLevel)+'%';
-  const need = xpToNext(playerLevel);
-  const xpFillEl = document.getElementById('xpFill'); if(xpFillEl) xpFillEl.style.width = Math.min(100, playerXP/need*100)+'%';
-  const xpReadEl = document.getElementById('xpRead'); if(xpReadEl) xpReadEl.textContent = playerXP+' / '+need+' XP';
+  const hcEl = document.getElementById('hitChanceRead'); if(hcEl) hcEl.textContent = gunneryHitChance()+'%';
   if(typeof refreshWalletPanel === 'function') refreshWalletPanel();
+  if(typeof renderSkillsPanel === 'function') renderSkillsPanel();
 }
 updateXPUI();
 updateMiningXPUI();
@@ -11926,21 +12239,31 @@ function updateZoneLabel(){
   if(el.style.color !== z.color) el.style.color = z.color;
 }
 
-// top-right IN-GAME fictional clock -- NOT wall-clock time. Starts at 0100 (military
-// time), 01 JAN 3200 the moment the player hits LAUNCH, and runs on its own fast
-// timescale: 1 in-game hour = 10 real MINUTES (so 1 real hour = 6 in-game hours,
-// 1 real day = 144 in-game hours = 6 in-game days) -- deliberately a fast, living
-// sci-fi calendar rather than a real-time readout, per the exact pacing requested.
-// Ticks independently of the game loop (setInterval, like the real-time clock it
-// replaces), driven off performance.now() rather than the Three.js `clock` (that's
-// declared much further down the file and wouldn't exist yet at this point in
-// top-level script execution -- calling it here would throw). Purely a display --
-// nothing else in the file reads #clockRead/#dateRead's contents, so this replaces
-// the old real-world clock with no other logic depending on it.
+// top-right IN-GAME fictional clock -- NOT wall-clock time, but ALSO no longer a
+// per-session timer that resets to 0100/01 JAN 3200 every time someone hits
+// LAUNCH. It's a single persistent universe clock, shared by every player and
+// every session, and it never stops -- not on logout, not when the server has
+// zero players connected. This is what SKILL_LEVEL_DURATION_MS (see SKILLS
+// above) is built out of: 1 in-game hour = 10 real MINUTES (so 1 real hour = 6
+// in-game hours, 1 real day = 144 in-game hours = 6 in-game days) -- a fast,
+// living sci-fi calendar rather than a real-time readout, per the exact pacing
+// originally requested, just anchored to a fixed real-world moment (GAME_EPOCH_MS)
+// instead of "whenever I personally clicked LAUNCH". Made "always ticking" for
+// free, with no server process or polling required: it's pure math off
+// Date.now() (wall-clock, NOT performance.now() -- that resets every page load
+// and would recreate the old per-session bug), so it advances identically for
+// every client all the time, logged in or not. Ticks independently of the game
+// loop (setInterval, like before). Purely a display -- nothing else in the file
+// reads #clockRead/#dateRead's contents.
 const IN_GAME_SECONDS_PER_HOUR = 600; // 10 real minutes = 600 real seconds = 1 in-game hour
 const IN_GAME_BASE_YEAR = 3200;
 const IN_GAME_MONTH_NAMES = ['JAN','FEB','MAR','APR','MAY','JUN','JUL','AUG','SEP','OCT','NOV','DEC'];
-let gameStartTime = null; // set on LAUNCH click (see startBtn handler below); null = not launched yet
+// fixed real-world UTC anchor: the universe clock reads 0100, 01 JAN 3200 at this
+// exact moment, and has been (and always will be) advancing every real second
+// since -- change this only to re-anchor the ENTIRE timeline, never to "reset" it
+const GAME_EPOCH_MS = Date.UTC(2026, 0, 1, 0, 0, 0);
+function inGameElapsedRealSeconds(){ return Math.max(0, (Date.now() - GAME_EPOCH_MS) / 1000); }
+let gameStartTime = null; // per-SESSION marker only now (this session's own play-time stat/mobile-hint gating) -- NOT the universe clock above; set on LAUNCH click (see startBtn handler below); null = not launched yet
 function inGameIsLeapYear(y){ return (y%4===0 && y%100!==0) || (y%400===0); }
 function inGameDaysInMonth(y, m){ // m is 0-11
   const lengths = [31, inGameIsLeapYear(y)?29:28, 31,30,31,30,31,31,30,31,30,31];
@@ -11964,7 +12287,7 @@ function inGameDateFromDayOffset(dayOffset){
 function updateInGameClock(){
   const clockEl = document.getElementById('clockRead');
   const dateEl = document.getElementById('dateRead');
-  const elapsedReal = gameStartTime === null ? 0 : (performance.now() - gameStartTime) / 1000;
+  const elapsedReal = inGameElapsedRealSeconds();
   const inGameHoursElapsed = elapsedReal / IN_GAME_SECONDS_PER_HOUR;
   const totalHoursSinceMidnight = 1 + inGameHoursElapsed; // clock starts at 0100 on day 1
   const dayOffset = Math.floor(totalHoursSinceMidnight / 24);
@@ -12304,11 +12627,10 @@ function damagePirate(entry, dmg){
     const deathPos = entry.mesh.position.clone();
     const deathName = entry.name;
     audio.explosion();
-    // item: pirate captain rare spawns drop a Captain Black Box + bonus XP on death
-    const xpAward = entry.isCaptain ? XP_PER_KILL*3 : XP_PER_KILL;
-    flashMessage(deathName.toUpperCase() + ' DESTROYED  +' + xpAward + ' XP', 'good');
+    // item: pirate captain rare spawns drop a Captain Black Box on death. XP_PER_KILL
+    // is legacy (no longer awarded -- see SKILLS, combat no longer uses XP/levels)
+    flashMessage(deathName.toUpperCase() + ' DESTROYED', 'good');
     logEvent(deathName.toUpperCase() + ' DESTROYED', 'good');
-    gainXP(xpAward);
     piratesKilled++; // wallet stat (item 3b)
     recordKillForLeaderboard();
     recordPirateKillForQuests();
@@ -12371,14 +12693,9 @@ function damagePlayer(dmg, source){
       return;
     }
 
-    // item 1: losing a hull no longer wipes the whole level -- only the XP progress
-    // made toward the NEXT level is lost. The level itself (combat AND mining, for
-    // consistency -- see the architecture note) is never taken away.
-    playerXP = 0;
-    miningXP = 0;
-    updateXPUI();
-    updateMiningXPUI();
-    logEvent('SHIP DESTROYED — XP progress lost, level retained (LV.' + playerLevel + ' / MINING LV.' + miningLevel + ')', 'warn');
+    // item 1 (superseded): combat/mining no longer use XP or levels at all (see
+    // SKILLS) -- ship destruction carries no skill penalty; training (if any is
+    // active) keeps ticking exactly as it would if nothing had happened.
 
     // item 2: each cargo stack independently has a 50% chance to survive the blast
     // into a salvageable debris pile named after the player's ship; the rest is lost
@@ -12449,7 +12766,8 @@ function damagePlayer(dmg, source){
 function updateShield(dt){
   shipState.timeSinceHit += dt;
   if(shipState.timeSinceHit >= shipState.shieldRegenDelay && shipState.shield < shipState.maxShield){
-    shipState.shield = Math.min(shipState.maxShield, shipState.shield + shipState.shieldRegenRate*dt);
+    // Systems skill (see SKILLS) speeds up shield recharge
+    shipState.shield = Math.min(shipState.maxShield, shipState.shield + shipState.shieldRegenRate*systemsShieldRegenMultiplier()*dt);
   }
 }
 
@@ -12805,9 +13123,8 @@ function damageBountyHunter(entry, dmg){
     entry.mesh.visible = false;
     const deathPos = entry.mesh.position.clone();
     audio.explosion();
-    flashMessage(entry.name.toUpperCase() + ' DESTROYED  +' + (XP_PER_KILL*3) + ' XP', 'good');
+    flashMessage(entry.name.toUpperCase() + ' DESTROYED', 'good');
     logEvent(entry.name.toUpperCase() + ' DESTROYED', 'good');
-    gainXP(XP_PER_KILL*3);
     piratesKilled++; // wallet stat (item 3b) -- counts hostile-ship kills generally
     recordKillForLeaderboard();
     recordPirateKillForQuests();
@@ -12835,16 +13152,14 @@ function repossessNormalShip(hunterEntry){
   setTimeout(()=>{ enterEscapePod({ resetPosition:false }); }, 1200);
 }
 // the bounty hunter caught the player already flying the escape pod and finished the
-// job -- this IS lethal, and per the design this is the one narratively-justified
-// exception to "never delevel": the player loses exactly one level (never below 1)
+// job -- this IS lethal. The old "lose exactly one combat level" penalty is gone
+// along with the combat level system itself (see SKILLS); this is now purely a
+// financial hit (loan wiped, see below) with no skill-training penalty.
 function destroyEscapePod(hunterEntry){
   logEvent('BOUNTY HUNTER: Sorry, bank says you have to die if you have no ship to repossess.', 'warn');
   audio.explosion();
   triggerPlayerExplosionEffect(shipState.pos.clone());
-  playerLevel = Math.max(1, playerLevel - 1);
-  playerXP = 0;
-  updateXPUI();
-  logEvent('ESCAPE POD DESTROYED — LOST A LEVEL (NOW LV.' + playerLevel + ')', 'warn');
+  logEvent('ESCAPE POD DESTROYED', 'warn');
   if(loanPrincipal > 0){
     logEvent('OUTSTANDING LOAN WIPED', 'warn');
   }
@@ -13031,7 +13346,7 @@ function updatePlayerWeapons(dt){
   // one juking at full PIRATE_MAX_SPEED is a much harder one
   const targetSpeedRatio = selected.vel ? selected.vel.length()/PIRATE_MAX_SPEED : 0;
   const chance = Math.max(0.05, Math.min(0.95,
-    (hitChanceForLevel(playerLevel) / 100) * speedAccuracyFactor(targetSpeedRatio) * rangeAccuracyFactor(dist, weaponRange)));
+    (gunneryHitChance() / 100) * speedAccuracyFactor(targetSpeedRatio) * rangeAccuracyFactor(dist, weaponRange)));
   for(let i=0; i<availableShots; i++){
     const tip = tips[i];
     const origin = new THREE.Vector3();
@@ -13146,7 +13461,9 @@ function updateShip(dt){
   }
 
   const diff = _tmpV2.copy(desiredVel).sub(shipState.vel);
-  const maxDelta = shipState.accel * dt;
+  // Piloting skill (see SKILLS) speeds up both how fast the ship changes velocity
+  // (accel) and how fast it turns to face that new heading (slerp factor below)
+  const maxDelta = shipState.accel * pilotingAccelMultiplier() * dt;
   if(diff.length() > maxDelta) diff.setLength(maxDelta);
   shipState.vel.add(diff);
   shipState.pos.addScaledVector(shipState.vel, dt);
@@ -13157,7 +13474,7 @@ function updateShip(dt){
   if(speed > 4){
     const dir = shipState.vel.clone().normalize();
     const targetQuat = new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0,0,-1), dir);
-    ship.quaternion.slerp(targetQuat, Math.min(1, dt*3.2));
+    ship.quaternion.slerp(targetQuat, Math.min(1, dt*3.2*pilotingTurnMultiplier()));
   }
   ship.position.copy(shipState.pos);
 
@@ -13382,7 +13699,8 @@ function updateLocking(dt){
     if(tpNameEl && tpNameEl.textContent !== label) tpNameEl.textContent = label;
   }
   if(selected && lockProgress>0 && lockProgress<1){
-    lockProgress = Math.min(1, lockProgress + dt/LOCK_TIME);
+    // Targeting skill (see SKILLS) speeds up lock-on
+    lockProgress = Math.min(1, lockProgress + dt/(LOCK_TIME*targetingLockTimeMultiplier()));
     document.getElementById('lockFill').style.width = (lockProgress*100).toFixed(0)+'%';
     if(lockProgress >= 1){
       lockedId = selected.id;
@@ -13992,6 +14310,7 @@ makePanelManageable(document.getElementById('inventoryPanel'),  { title:'CARGO H
 makePanelManageable(document.getElementById('equipmentPanel'),  { title:'EQUIPMENT',   minW:230, minH:340 });
 makePanelManageable(document.getElementById('starMapPanel'),    { title:'STAR MAP',    minW:230, minH:220 });
 makePanelManageable(document.getElementById('walletPanel'),     { title:'WALLET',      minW:230, minH:320 });
+makePanelManageable(document.getElementById('skillsPanel'),     { title:'SKILLS',      minW:250, minH:340 });
 
 // ---------- H: hide/show all managed HUD panels at once ----------
 // toggles a top-level visibility flag over every managed panel (and the hudDock
@@ -14313,6 +14632,7 @@ document.getElementById('startBtn').addEventListener('click', async ()=>{
   // cap and lock the nearest contact
   setCommand('forward');
   autoAcquireNearest();
+  gameLaunched = true;
   animate();
 });
 
