@@ -1442,11 +1442,14 @@
 <div class="hud popupPanel" id="walletPanel">
   <div class="phdr"><span>WALLET</span><button id="btnCloseWallet">✕</button></div>
   <div class="popupBody">
-    <div class="prow" style="font-size:16px;"><span>BALANCE</span><span id="walletBalanceRead">0 cr</span></div>
+    <!-- (v0.19.2, item 8) BALANCE is shown ONLY while the LEDGER tab is active -- see
+         refreshWalletPanel(), which toggles this row's visibility on every tab switch -->
+    <div class="prow" id="walletBalanceRow" style="font-size:16px;"><span>BALANCE</span><span id="walletBalanceRead">0 cr</span></div>
     <div class="walletTabs">
       <button class="clickable" id="btnWalletTabLedger">LEDGER</button>
       <button class="clickable" id="btnWalletTabStats">STATS</button>
       <button class="clickable" id="btnWalletTabMedals">MEDALS</button>
+      <button class="clickable" id="btnWalletTabMail">MAIL</button>
     </div>
     <div class="walletTabSection" id="walletLedgerSection">
       <div id="walletLedgerList"></div>
@@ -1479,7 +1482,18 @@
       <div id="statBlueprints"><div class="prow"><span>NONE KNOWN</span><span></span></div></div>
     </div>
     <div class="walletTabSection" id="walletMedalsSection">
+      <div id="fameHeaderRow"></div>
       <div id="medalsList"></div>
+    </div>
+    <div class="walletTabSection" id="walletMailSection">
+      <div class="psection" style="margin-top:0;">COMPOSE</div>
+      <div class="prow"><span>To (callsign)</span><span></span></div>
+      <input type="text" id="mailToInput" placeholder="RECIPIENT CALLSIGN" style="width:100%; box-sizing:border-box; margin-bottom:6px;" maxlength="24">
+      <input type="text" id="mailSubjectInput" placeholder="SUBJECT" style="width:100%; box-sizing:border-box; margin-bottom:6px;" maxlength="80">
+      <textarea id="mailBodyInput" placeholder="MESSAGE" rows="3" style="width:100%; box-sizing:border-box; margin-bottom:6px; resize:vertical; font-family:inherit;" maxlength="2000"></textarea>
+      <button class="cmdbtn" id="btnSendMail" style="width:100%;">SEND</button>
+      <div class="psection">INBOX</div>
+      <div id="mailInboxList"><div class="ledgerEmpty">LOADING…</div></div>
     </div>
   </div>
 </div>
@@ -1907,9 +1921,9 @@
 // compatibility depends on it. Add new keys, don't rename old ones.
 
 // ---------- version / build info (shown in the ESC settings menu) ----------
-const GAME_VERSION = "0.19.1";
+const GAME_VERSION = "0.19.2";
 const GAME_LAST_EDITED = "2026-09-24";
-const GAME_BUILD_TIME = "06:41 PT"; // wall-clock time this build was published, not just the date
+const GAME_BUILD_TIME = "07:42 PT"; // wall-clock time this build was published, not just the date
 
 // ---------- update-available banner ----------
 // Periodically re-fetches this very page (same-origin -- works identically whether
@@ -2867,6 +2881,8 @@ let loanPrincipal = 0;         // credits owed on a financed ship purchase
 let missedPaymentStreak = 0;   // consecutive missed in-game-hour interest payments
 let hasBounty = false;         // 3 consecutive missed payments -- bounty hunters start spawning
 let playerStunned = 0;         // seconds remaining stunned (bounty-hunter ion blast) -- input/movement locked out while >0
+let playerStunnedEndsAtMs = 0; // (v0.19.2) wall-clock deadline playerStunned is now derived from each tick, so a
+                                // backgrounded tab's stun correctly clears itself on refocus instead of pausing
 
 // ---------- ship ownership (item 41) ----------
 // the player's fleet: whichever ship is currently flown (activeShipInstance, null
@@ -7756,15 +7772,17 @@ let libraryCrafting = {};
 // (before the Academics multiplier) -- 1 in-game hour = SKILL_REAL_SECONDS_PER_INGAME_HOUR
 // real seconds (see SKILLS above), so 10 in-game minutes = that / 6.
 const LIBRARY_CUBE_MS_PER_KNOWLEDGE = (SKILL_REAL_SECONDS_PER_INGAME_HOUR / 6) * 1000;
-// design choice: credits cost scales linearly with the knowledge invested, same shape
-// as the Knowledge cost itself (both just scale with cube size)
-function libraryCubeCreditsCost(knowledgeAmt){ return Math.round(Math.max(1, knowledgeAmt) * 25); }
+// (v0.19.2 economy rebalance) flat rate: 100 credits per 1 Knowledge crafted into the cube
+function libraryCubeCreditsCost(knowledgeAmt){ return Math.round(Math.max(1, knowledgeAmt) * 100); }
 function libraryCubeDurationMs(knowledgeAmt){ return Math.round(Math.max(1, knowledgeAmt) * LIBRARY_CUBE_MS_PER_KNOWLEDGE * academicsCraftTimeMultiplier()); }
-// design choice: book Knowledge/credit cost grows with the book's LEVEL (2..4) since
-// higher-level books are scribed from a higher-level skill and skip a bigger chunk of
-// training time -- level2 books are comparatively cheap, level4 books are a serious investment
-function libraryBookKnowledgeCost(level){ return level * 8; }
-function libraryBookCreditsCost(level){ return Math.round(300 * level * level); }
+// (v0.19.2 economy rebalance) hardcoded table, doubling every book level: the LV.2 book
+// (first scribable tier, unlocks skill level 2) = 5 Knowledge + 1000 credits, LV.3 = 10
+// Knowledge + 2000 credits, LV.4 = 20 Knowledge + 4000 credits. Formula generalizes the
+// same x2-per-level pattern to any future book level beyond SKILL_MAX_LEVEL's current 4
+// (LV.5 would be 40 Knowledge + 8000 credits, etc.) so raising SKILL_MAX_LEVEL later
+// needs no further change here.
+function libraryBookKnowledgeCost(level){ return 5 * Math.pow(2, Math.max(2,level) - 2); }
+function libraryBookCreditsCost(level){ return 1000 * Math.pow(2, Math.max(2,level) - 2); }
 // scribing time = 1/6 of that LEVEL's own full training duration (SKILL_LEVEL_DURATION_MS),
 // modified by Academics -- e.g. a Level-2 book (1 in-game day to TRAIN) takes 1/6 of an
 // in-game day of real wall-clock time to SCRIBE
@@ -9432,16 +9450,131 @@ function checkAchievements(){
       if(walletTab === 'medals') renderMedals();
     }
   });
+  checkTierMedals();
+}
+
+// ---------- FAME (v0.19.2) ----------
+// Every earned medal -- both the fixed ACHIEVEMENTS above (keyed off .rarity, 1-5) and
+// the infinitely-scaling TIER_CHAINS below (keyed off the tier number itself) -- awards
+// "achievement points". Formula (documented, simple, tuneable in one place):
+//   fixed medal:  points = rarity * 25            (rarity1=25 .. rarity5=125)
+//   tier medal:   points = tierNumber * 25        (same per-point rate, just using the
+//                                                    tier number in place of rarity, so
+//                                                    it keeps scaling forever)
+// Accumulated points drive FAME, a standing that levels up without a hard cap. The
+// cumulative points needed to REACH Fame level n is
+//   fameThreshold(n) = round(100 * n * 1.12^n)
+// -- roughly quadratic-ish for the first handful of levels (Fame 1 = 112pts, Fame 2 =
+// 251pts, Fame 3 = 421pts...) so early levels are reachable from a normal early-game
+// medal haul, then the 1.12^n term takes over and later levels become a real grind
+// (Fame 10 ≈ 3,100pts, Fame 20 ≈ 19,300pts, Fame 30 ≈ 111,000pts, and so on forever).
+// NAMING STABILITY: fameLevel/famePoints/tierMedalLevels are new persistent save-data
+// field names introduced here -- chosen carefully, saved as-is from now on.
+function achievementPointsForRarity(r){ return Math.max(1, r||1) * 25; }
+function tierPointsForTier(n){ return Math.max(1, n) * 25; }
+function tierKnowledgeForTier(n){ return Math.max(1, n); } // Knowledge awarded = tier number itself
+function fameThresholdForLevel(n){ return Math.round(100 * n * Math.pow(1.12, n)); }
+function fameLevelForPoints(points){
+  let n = 0;
+  // TIER_CHAINS' exponential thresholds keep n bounded to a small number of
+  // iterations even at very high point totals, so a plain loop is fine here
+  while(fameThresholdForLevel(n+1) <= points && n < 100000) n++;
+  return n;
+}
+let fameLevel = 0;
+let famePoints = 0;
+function totalAchievementPoints(){
+  let pts = 0;
+  ACHIEVEMENTS.forEach(a=>{ if(earnedAchievements.has(a.id)) pts += achievementPointsForRarity(a.rarity); });
+  TIER_CHAINS.forEach(chain=>{
+    const cur = tierMedalLevels[chain.key] || 0;
+    for(let n=1; n<=cur; n++) pts += tierPointsForTier(n);
+  });
+  return pts;
+}
+function updateFameFromPoints(){
+  famePoints = totalAchievementPoints();
+  const newLevel = fameLevelForPoints(famePoints);
+  if(newLevel > fameLevel){
+    fameLevel = newLevel;
+    flashMessage('FAME LEVEL UP — FAME ' + fameLevel, 'good');
+    logEvent('=== FAME LEVEL UP — NOW FAME ' + fameLevel + ' ===', 'good');
+    if(walletTab === 'medals') renderMedals();
+  } else {
+    fameLevel = newLevel;
+  }
+}
+
+// ---------- infinitely-scaling tiered medal chains ----------
+// Reuses ONLY existing tracked counters (per the spec: no new stat-tracking invented
+// here) so each chain's statFn() just reads a lifetime stat the game already keeps.
+// threshold(n) = base * ratio^(n-1) -- a clean exponential growth curve per chain,
+// tuned per-chain so tier 1 is an early-game milestone and each following tier is a
+// meaningfully bigger step. "Play Time" is the one PER-SITTING (current session,
+// resets to 0 on every fresh LAUNCH) chain per the spec's own worked example (10min /
+// 30min / 90min / ...); every other chain reads a cumulative lifetime counter.
+// reuses totalTimePlayedSeconds()/gameStartTime (set precisely at LAUNCH, see the
+// startBtn handler) rather than a script-load timestamp, so "this session" means
+// "since LAUNCH", not "since the boot screen loaded"
+const TIER_CHAINS = [
+  { key:'playtime', label:'Play Time', statFn:()=> totalTimePlayedSeconds()/60, base:10, ratio:3 },
+  { key:'kills',     label:'Pirates Killed', statFn:()=> piratesKilled, base:25, ratio:2.5 },
+  { key:'ore',       label:'Ore Mined', statFn:()=> totalOreMinedTotal, base:500, ratio:2.5 },
+  { key:'credits',   label:'Credits Earned', statFn:()=> lifetimeCreditsEarned, base:50000, ratio:2.5 },
+  { key:'distance',  label:'Distance Traveled', statFn:()=> distanceTraveledTotal, base:100000, ratio:2.5 },
+  { key:'contracts', label:'Contracts Completed', statFn:()=> navyContractsCompleted + miningContractsCompleted + transportContractsCompleted, base:10, ratio:2.5 },
+  { key:'skills',    label:'Skill Levels Trained', statFn:()=> SKILL_ORDER.reduce((s,k)=> s + (skillLevels[k]||0), 0), base:4, ratio:1.6 },
+  { key:'warps',     label:'Warp Jumps', statFn:()=> timesWarpedTotal, base:10, ratio:2.5 }
+];
+function tierThreshold(chain, n){ return chain.base * Math.pow(chain.ratio, n-1); }
+let tierMedalLevels = {}; // { [chainKey]: currentTierNumber (0 = none earned yet) }
+function checkTierMedals(){
+  let anyChange = false;
+  TIER_CHAINS.forEach(chain=>{
+    let cur = tierMedalLevels[chain.key] || 0;
+    let val = 0;
+    try{ val = chain.statFn(); }catch(e){ val = 0; }
+    let guard = 0; // catches up multiple crossed tiers at once (e.g. a big offline gain) without looping forever
+    while(val >= tierThreshold(chain, cur+1) && guard < 500){
+      cur++; guard++; anyChange = true;
+      tierMedalLevels[chain.key] = cur;
+      const label = chain.label.toUpperCase() + ' — TIER ' + cur;
+      flashMessage('MEDAL EARNED: ' + label, 'good');
+      logEvent('=== MEDAL EARNED: ' + label + ' ===', 'good');
+      if(typeof awardKnowledge === 'function') awardKnowledge(tierKnowledgeForTier(cur), 'tier medal');
+      if(mpZoneChannel && mpIdentity) mpZoneChannel.send({ type:'broadcast', event:'achievement', payload:{ name: mpIdentity.name, medal: label } });
+    }
+  });
+  if(anyChange && walletTab === 'medals') renderMedals();
+  updateFameFromPoints();
 }
 function renderMedals(){
   const el = document.getElementById('medalsList');
   if(!el) return;
-  el.innerHTML = ACHIEVEMENTS.map(a=>{
+  const fameEl = document.getElementById('fameHeaderRow');
+  if(fameEl){
+    const nextThresh = fameThresholdForLevel(fameLevel+1);
+    fameEl.innerHTML = '<div class="prow" style="align-items:flex-start;">'
+      + '<span>★ FAME ' + fameLevel + '<br><span style="font-size:10px; color:var(--phosphor-dim);">' + famePoints.toLocaleString() + ' ACHIEVEMENT POINTS</span></span>'
+      + '<span style="color:var(--phosphor-dim); white-space:nowrap;">NEXT: ' + nextThresh.toLocaleString() + '</span></div>';
+  }
+  const fixedHtml = ACHIEVEMENTS.map(a=>{
     const got = earnedAchievements.has(a.id);
     return '<div class="prow" style="align-items:flex-start; ' + (got?'':'opacity:0.45;') + '">'
       + '<span>' + (got?'★ ':'☆ ') + a.name + '<br><span style="font-size:10px; color:var(--phosphor-dim);">' + a.desc + '</span></span>'
       + '<span style="color:' + (got?'var(--phosphor)':'var(--phosphor-dim)') + '; white-space:nowrap;">' + (got?'EARNED':'LOCKED') + '</span></div>';
   }).join('');
+  // tiered chains: each shows its current tier + progress toward the next one, since
+  // (unlike the fixed list above) these never run out -- there's always a "next" row
+  const tierHtml = TIER_CHAINS.map(chain=>{
+    const cur = tierMedalLevels[chain.key] || 0;
+    let val = 0; try{ val = chain.statFn(); }catch(e){ val = 0; }
+    const nextT = tierThreshold(chain, cur+1);
+    return '<div class="prow" style="align-items:flex-start;">'
+      + '<span>' + (cur>0?'★ ':'☆ ') + chain.label + ' — TIER ' + cur + '<br><span style="font-size:10px; color:var(--phosphor-dim);">' + Math.floor(val).toLocaleString() + ' / ' + Math.ceil(nextT).toLocaleString() + ' TO TIER ' + (cur+1) + '</span></span>'
+      + '<span style="color:var(--phosphor-dim); white-space:nowrap;">ONGOING</span></div>';
+  }).join('');
+  el.innerHTML = '<div class="psection">TIERED MEDALS</div>' + tierHtml + '<div class="psection">MEDALS</div>' + fixedHtml;
 }
 
 // ---------- equipment popup ----------
@@ -9554,7 +9687,13 @@ const WARP_SEQ_JUMP_TIME = 1.1; // total sequence ~2.1s
 const CAMERA_BASE_FOV = 50;
 function startWarpSequence(gate){
   if(dockingSequence || warpSequence || docked) return;
-  warpSequence = { phase:'approach', timer:0, gate };
+  // (v0.19.2) phase deadlines are wall-clock-anchored (Date.now()-based), not derived
+  // from accumulated rAF frame-delta, so a backgrounded tab (where rAF is throttled/
+  // suspended but real time keeps passing) doesn't pause the charge-up -- on refocus
+  // the phase is correctly already-complete/caught-up instead of picking up right
+  // where a frozen dt-counter left off. seq.timer is kept only for the cosmetic
+  // in-jump visual punch math below, which only ever matters while the tab is visible.
+  warpSequence = { phase:'approach', timer:0, gate, approachEndsAtMs: Date.now() + effectiveWarpApproachTime()*1000 };
   weaponsFree = false;
   audio.warp();
   setCommand('approach_target', { target: gate });
@@ -9569,9 +9708,10 @@ function updateWarpSequence(dt){
   if(seq.phase === 'approach'){
     // updateShip(dt) (driven from animate()) is already flying/turning the ship
     // toward the gate under the approach_target command set above
-    if(seq.timer >= effectiveWarpApproachTime()){
+    if(Date.now() >= seq.approachEndsAtMs){
       seq.phase = 'jump';
       seq.timer = 0;
+      seq.jumpEndsAtMs = Date.now() + WARP_SEQ_JUMP_TIME*1000;
     }
   } else if(seq.phase === 'jump'){
     const t = Math.min(1, seq.timer / WARP_SEQ_JUMP_TIME);
@@ -9588,7 +9728,7 @@ function updateWarpSequence(dt){
     if(starField1) starField1.material.size = 0.65 + punch*16;
     if(starField2) starField2.material.size = 0.95 + punch*16;
     if(flashEl) flashEl.style.opacity = String(punch*0.9);
-    if(seq.timer >= WARP_SEQ_JUMP_TIME){
+    if(Date.now() >= seq.jumpEndsAtMs){
       camera.fov = CAMERA_BASE_FOV;
       camera.updateProjectionMatrix();
       if(starField1) starField1.material.size = 0.65;
@@ -9902,8 +10042,14 @@ function refreshServerPanel(){
       list.innerHTML = ids.map(id=>{
         const p = serverRoster[id];
         const isSelf = id === selfId;
+        // (v0.19.2, item 10) "ONLINE Xm · FAME N" replaces the old skill-level "LV"
+        // readout -- Xm is real elapsed time since that player's own LAUNCH
+        // (p.joinedAtMs, wall-clock, so it's correct even if their tab was
+        // backgrounded a while), N is their Fame standing (see the FAME system)
+        const onlineMin = (typeof p.joinedAtMs === 'number') ? Math.max(0, Math.floor((Date.now() - p.joinedAtMs)/60000)) : null;
+        const onlineText = onlineMin === null ? 'ONLINE —' : 'ONLINE ' + onlineMin + 'm';
         return '<div class="prow' + (isSelf ? '' : ' clickable') + '" data-roster-id="' + id + '"' + (isSelf ? '' : ' style="cursor:pointer;"') +
-          '><span>' + (p.name || '???') + (isSelf ? ' <span style="color:var(--phosphor-dim);">(YOU)</span>' : '') + '</span><span>LV ' + (p.level||1) + '</span></div>';
+          '><span>' + (p.name || '???') + (isSelf ? ' <span style="color:var(--phosphor-dim);">(YOU)</span>' : '') + '</span><span>' + onlineText + ' · FAME ' + (p.fameLevel||0) + '</span></div>';
       }).join('');
       list.querySelectorAll('[data-roster-id]').forEach(row=>{
         const id = row.getAttribute('data-roster-id');
@@ -9958,11 +10104,17 @@ function setWalletTab(tab){
   document.getElementById('btnWalletTabLedger').classList.toggle('active', tab==='ledger');
   document.getElementById('btnWalletTabStats').classList.toggle('active', tab==='stats');
   document.getElementById('btnWalletTabMedals').classList.toggle('active', tab==='medals');
+  document.getElementById('btnWalletTabMail').classList.toggle('active', tab==='mail');
   document.getElementById('walletLedgerSection').classList.toggle('active', tab==='ledger');
   document.getElementById('walletStatsSection').classList.toggle('active', tab==='stats');
   document.getElementById('walletMedalsSection').classList.toggle('active', tab==='medals');
+  document.getElementById('walletMailSection').classList.toggle('active', tab==='mail');
+  // (v0.19.2, item 8) BALANCE row is LEDGER-only
+  const balRow = document.getElementById('walletBalanceRow');
+  if(balRow) balRow.style.display = (tab==='ledger') ? '' : 'none';
   refreshWalletPanel();
 }
+document.getElementById('btnWalletTabMail').addEventListener('click', ()=> setWalletTab('mail'));
 function fmtDuration(totalSeconds){
   totalSeconds = Math.max(0, Math.floor(totalSeconds));
   const h = Math.floor(totalSeconds/3600);
@@ -9974,6 +10126,8 @@ function refreshWalletPanel(){
   const panel = document.getElementById('walletPanel');
   if(!panel || !panel.classList.contains('show')) return;
   document.getElementById('walletBalanceRead').textContent = bountyCredits + ' cr';
+  const balRow = document.getElementById('walletBalanceRow');
+  if(balRow) balRow.style.display = (walletTab==='ledger') ? '' : 'none';
   if(walletTab === 'ledger'){
     const list = document.getElementById('walletLedgerList');
     list.innerHTML = creditLedger.length === 0
@@ -10020,6 +10174,7 @@ function refreshWalletPanel(){
     }
   }
   if(walletTab === 'medals') renderMedals();
+  if(walletTab === 'mail') renderMailInbox();
 }
 document.getElementById('btnWallet').addEventListener('click', ()=> toggleWalletPanel());
 document.getElementById('btnCloseWallet').addEventListener('click', ()=> toggleWalletPanel(false));
@@ -10100,7 +10255,9 @@ function beginStarMapWarp(zone){
   // right now, so it can't shorten mid-charge if training happens to complete
   // while it's running
   const totalTime = effectiveStarMapWarpTime();
-  starMapCharge = { timer:0, zone, totalTime };
+  // (v0.19.2) wall-clock-anchored deadline (see startWarpSequence's comment) so a
+  // backgrounded tab doesn't pause the 15s+ charge-up
+  starMapCharge = { timer:0, zone, totalTime, endsAtMs: Date.now() + totalTime*1000 };
   createWarpChargeGlow();
   const bannerEl = document.getElementById('starMapCharge');
   const labelEl = document.getElementById('starMapChargeLabel');
@@ -10131,10 +10288,12 @@ function updateStarMapCharge(dt){
   if(!starMapCharge) return;
   starMapCharge.timer += dt;
   updateWarpChargeGlow();
-  const remain = Math.max(0, starMapCharge.totalTime - starMapCharge.timer);
+  // (v0.19.2) remaining time is derived from the wall-clock endsAtMs deadline, not
+  // from the dt-accumulated timer, so real elapsed background-tab time still counts
+  const remain = Math.max(0, (starMapCharge.endsAtMs - Date.now())/1000);
   const labelEl = document.getElementById('starMapChargeLabel');
   if(labelEl) labelEl.textContent = 'WARP CHARGING — ' + starMapCharge.zone.label.toUpperCase() + ' — ' + Math.ceil(remain) + 's';
-  if(starMapCharge.timer >= starMapCharge.totalTime){
+  if(Date.now() >= starMapCharge.endsAtMs){
     const zone = starMapCharge.zone;
     starMapCharge = null;
     disposeWarpChargeGlow();
@@ -10257,7 +10416,14 @@ function startAutopilotTo(destZoneKey){
   if(fromKey === destZoneKey){ flashMessage('ALREADY AT DESTINATION', 'warn'); return; }
   const legs = computeAutopilotRoute(fromKey, destZoneKey);
   if(!legs || !legs.length){ flashMessage('NO AUTOPILOT ROUTE FOUND', 'warn'); return; }
-  autopilot = { legs, legIndex:0, phase:'countdown', countdownTimer: AUTOPILOT_COUNTDOWN, destKey:destZoneKey, destLabel:destZone.label };
+  // (v0.19.2) countdownEndsAtMs is the wall-clock deadline the countdown is actually
+  // judged against (see startWarpSequence's comment on why); countdownTimer is kept
+  // in sync each tick purely for the existing banner-label display code below.
+  autopilot = { legs, legIndex:0, phase:'countdown', countdownTimer: AUTOPILOT_COUNTDOWN, countdownEndsAtMs: Date.now() + AUTOPILOT_COUNTDOWN*1000, destKey:destZoneKey, destLabel:destZone.label };
+  // (v0.19.2) activating autopilot brings the ship to a hard stop immediately,
+  // rather than carrying over whatever velocity it had -- autopilot's own
+  // movement/warp logic takes it from zero every time.
+  shipState.vel.set(0,0,0);
   toggleUniverseMapPanel(false);
   toggleStarMapPanel(false);
   setThrottle(1.0);
@@ -10306,7 +10472,14 @@ function beginAutopilotLeg(){
     startWarpSequence(leg.gate);
   } else {
     const zoneDef = STAR_MAP_ZONES.find(z=>z.key === leg.zoneKey);
+    // (v0.19.2) every leg MUST go through the same full charge-up (startWarpSequence's
+    // approach+jump timers, or beginStarMapWarp's full effectiveStarMapWarpTime()) as a
+    // manually-triggered warp -- if the zone lookup ever came up empty, autopilot used
+    // to silently no-op here, leaving warpSequence/starMapCharge both null so the very
+    // next animate() frame's updateAutopilot() check saw "leg complete" and advanced
+    // past it with ZERO charge time (the instant-warp bug). Fail loudly instead.
     if(zoneDef) beginStarMapWarp(zoneDef);
+    else cancelAutopilot('ROUTE ERROR');
   }
   updateAutopilotBanner();
 }
@@ -10314,9 +10487,9 @@ function beginAutopilotLeg(){
 function updateAutopilot(dt){
   if(!autopilot) return;
   if(autopilot.phase === 'countdown'){
-    autopilot.countdownTimer -= dt;
+    autopilot.countdownTimer = Math.max(0, (autopilot.countdownEndsAtMs - Date.now())/1000);
     updateAutopilotBanner();
-    if(autopilot.countdownTimer <= 0) beginAutopilotLeg();
+    if(Date.now() >= autopilot.countdownEndsAtMs) beginAutopilotLeg();
     return;
   }
   // 'leg-active': wait for whichever mechanism the current leg is using (a
@@ -11158,7 +11331,21 @@ function getPlayerSaveData(){
     // started earnedAchievements empty and checkAchievements() (which re-runs
     // every second) immediately treated every medal the loaded stats already
     // qualify for as brand new, popping "MEDAL EARNED" for all of them again.
-    earnedAchievements: Array.from(earnedAchievements)
+    earnedAchievements: Array.from(earnedAchievements),
+    // (v0.19.2 FAME system) per-chain current tier + cached Fame standing -- fameLevel/
+    // famePoints are fully recomputable from earnedAchievements+tierMedalLevels (see
+    // updateFameFromPoints), but saved too so the WALLET/MEDALS tab has a value to show
+    // instantly on load, before the first checkAchievements() tick recomputes it.
+    tierMedalLevels: Object.assign({}, tierMedalLevels),
+    fameLevel: fameLevel,
+    famePoints: famePoints,
+    // (v0.19.2, item 7/9) mutedPlayers: this player's own local mute list (per-player
+    // preference, so it lives here rather than a shared table -- see /mute's own
+    // comment). lastSeenNoticeId/welcomeEmailSent: purely bookkeeping so a GM notice or
+    // the one-time welcome email is never re-shown/re-sent after a reload.
+    mutedPlayers: mutedPlayers.slice(),
+    lastSeenNoticeId: lastSeenNoticeId,
+    welcomeEmailSent: welcomeEmailSent
   };
 }
 // Applies a previously-saved object to live game state. Written defensively --
@@ -11259,6 +11446,15 @@ function applyPlayerSaveData(d){
     // player actually earned a long time ago.
     ACHIEVEMENTS.forEach(a=>{ try{ if(a.check()) earnedAchievements.add(a.id); }catch(e){} });
   }
+  // (v0.19.2) tiered medal chain progress -- restored the same way; playtime's chain
+  // is session-based so its OWN saved tier is intentionally left at whatever it last
+  // reached (a new session's totalTimePlayedSeconds() starts back at 0, so re-earning
+  // playtime tiers naturally requires a fresh long-enough sitting again each time)
+  if(d.tierMedalLevels && typeof d.tierMedalLevels === 'object') tierMedalLevels = Object.assign({}, d.tierMedalLevels);
+  if(typeof updateFameFromPoints === 'function') updateFameFromPoints();
+  if(Array.isArray(d.mutedPlayers)) mutedPlayers = d.mutedPlayers.slice();
+  if(typeof d.lastSeenNoticeId === 'number') lastSeenNoticeId = d.lastSeenNoticeId;
+  if(typeof d.welcomeEmailSent === 'boolean') welcomeEmailSent = d.welcomeEmailSent;
 
   if(typeof d.nextShipInstanceId === 'number') nextShipInstanceId = d.nextShipInstanceId;
   if(d.shipSerialCounters && typeof d.shipSerialCounters === 'object') shipSerialCounters = Object.assign({}, shipSerialCounters, d.shipSerialCounters);
@@ -11651,8 +11847,327 @@ function cloudSyncSetupSql(){
     "  for select using (auth.uid() = user_id);",
     "drop policy if exists \"players record only their own ubi claims\" on ubi_claims;",
     "create policy \"players record only their own ubi claims\" on ubi_claims",
-    "  for insert with check (auth.uid() = user_id);"
+    "  for insert with check (auth.uid() = user_id);",
+    "",
+    "-- (v0.19.2, item 7) GAME MASTERS -- readable by everyone (so any client can check",
+    "-- ITS OWN gm status), but there is deliberately NO insert/update/delete policy at",
+    "-- all: with RLS enabled and no policy for a command, PostgREST rejects every",
+    "-- client-side attempt at it outright. The ONLY way to grant GM is a one-off manual",
+    "-- insert run directly in the Supabase SQL editor (see the separate one-time seed",
+    "-- statement given alongside this script) -- this is deliberate and is what makes",
+    "-- GM status impossible for any client to grant itself.",
+    "create table if not exists game_masters (",
+    "  user_id uuid primary key references auth.users(id) on delete cascade,",
+    "  granted_at timestamptz not null default now()",
+    ");",
+    "alter table game_masters enable row level security;",
+    "drop policy if exists \"game master roster is publicly readable\" on game_masters;",
+    "create policy \"game master roster is publicly readable\" on game_masters for select using (true);",
+    "",
+    "-- (v0.19.2) canonical callsign -> account directory, so any client can resolve a",
+    "-- typed callsign (mail recipient, /mute, /timeout, /ban target) to a user_id even",
+    "-- for a player who's currently offline. Each player can only write their OWN row.",
+    "create table if not exists player_names (",
+    "  user_id uuid primary key references auth.users(id) on delete cascade,",
+    "  name text not null,",
+    "  updated_at timestamptz not null default now()",
+    ");",
+    "alter table player_names enable row level security;",
+    "drop policy if exists \"player directory is publicly readable\" on player_names;",
+    "create policy \"player directory is publicly readable\" on player_names for select using (true);",
+    "drop policy if exists \"players can register their own name\" on player_names;",
+    "create policy \"players can register their own name\" on player_names",
+    "  for insert with check (auth.uid() = user_id);",
+    "drop policy if exists \"players can update their own name\" on player_names;",
+    "create policy \"players can update their own name\" on player_names",
+    "  for update using (auth.uid() = user_id) with check (auth.uid() = user_id);",
+    "",
+    "-- (v0.19.2, item 7) cross-server notices from a GM (/notice), shown in every",
+    "-- player's event log. Publicly readable; INSERT is gated server-side (RLS) on the",
+    "-- inserting account actually being present in game_masters -- a client editing its",
+    "-- own local JS cannot forge this, since Postgres itself checks auth.uid() against",
+    "-- game_masters on every insert attempt, not anything the client claims.",
+    "create table if not exists server_notices (",
+    "  id bigint generated always as identity primary key,",
+    "  message text not null,",
+    "  issued_by text not null,",
+    "  issued_by_user_id uuid references auth.users(id) on delete set null,",
+    "  created_at timestamptz not null default now()",
+    ");",
+    "alter table server_notices enable row level security;",
+    "drop policy if exists \"server notices are publicly readable\" on server_notices;",
+    "create policy \"server notices are publicly readable\" on server_notices for select using (true);",
+    "drop policy if exists \"only game masters can post server notices\" on server_notices;",
+    "create policy \"only game masters can post server notices\" on server_notices",
+    "  for insert with check (exists (select 1 from game_masters gm where gm.user_id = auth.uid()));",
+    "",
+    "-- (v0.19.2, item 7) /timeout (24 real-world hours) and /ban (permanent,",
+    "-- expires_at null) records, checked at LAUNCH to block a moderated account from",
+    "-- playing. Same RLS pattern as server_notices: only a real, authenticated GM",
+    "-- session can insert a row here, enforced by Postgres itself via game_masters.",
+    "create table if not exists player_moderation (",
+    "  id bigint generated always as identity primary key,",
+    "  target_user_id uuid not null references auth.users(id) on delete cascade,",
+    "  target_name text not null,",
+    "  action text not null check (action in ('timeout','ban')),",
+    "  expires_at timestamptz,",
+    "  issued_by text not null,",
+    "  issued_by_user_id uuid references auth.users(id) on delete set null,",
+    "  issued_at timestamptz not null default now()",
+    ");",
+    "alter table player_moderation enable row level security;",
+    "drop policy if exists \"moderation actions are publicly readable\" on player_moderation;",
+    "create policy \"moderation actions are publicly readable\" on player_moderation for select using (true);",
+    "drop policy if exists \"only game masters can issue moderation actions\" on player_moderation;",
+    "create policy \"only game masters can issue moderation actions\" on player_moderation",
+    "  for insert with check (exists (select 1 from game_masters gm where gm.user_id = auth.uid()));",
+    "",
+    "-- (v0.19.2, item 9) in-game player-to-player (and self-sent 'system') mail.",
+    "-- from_user_id is ALWAYS the actual inserting account (RLS enforces this, so no",
+    "-- client can forge a message as coming from someone else) -- a 'system' email",
+    "-- (e.g. the Galactic Empire welcome message) is simply a player's own client",
+    "-- inserting a row TO ITSELF with from_name set to the sentinel 'Galactic Empire'",
+    "-- (see sendWelcomeEmailIfNeeded()), since a pure client-only Supabase setup has no",
+    "-- service-role access to insert mail as a true third party.",
+    "create table if not exists player_mail (",
+    "  id bigint generated always as identity primary key,",
+    "  from_user_id uuid not null references auth.users(id) on delete cascade,",
+    "  from_name text not null,",
+    "  to_user_id uuid not null references auth.users(id) on delete cascade,",
+    "  to_name text not null,",
+    "  subject text not null default '',",
+    "  body text not null default '',",
+    "  sent_at timestamptz not null default now(),",
+    "  read_at timestamptz",
+    ");",
+    "alter table player_mail enable row level security;",
+    "drop policy if exists \"players read mail they sent or received\" on player_mail;",
+    "create policy \"players read mail they sent or received\" on player_mail",
+    "  for select using (auth.uid() = to_user_id or auth.uid() = from_user_id);",
+    "drop policy if exists \"players send mail as themselves\" on player_mail;",
+    "create policy \"players send mail as themselves\" on player_mail",
+    "  for insert with check (auth.uid() = from_user_id);",
+    "drop policy if exists \"players mark their own inbox read\" on player_mail;",
+    "create policy \"players mark their own inbox read\" on player_mail",
+    "  for update using (auth.uid() = to_user_id) with check (auth.uid() = to_user_id);"
   ].join('\n');
+}
+
+// ---------- Game Master role, moderation, server notices, mail, mute (v0.19.2, item 7/9) ----------
+// GM status is checked against the real authenticated Supabase session (game_masters,
+// select-open/insert-closed -- see cloudSyncSetupSql()) -- never a client-side-only flag,
+// since that would be trivially spoofable. isGameMaster is just a LOCAL CACHE of that
+// server-side truth for UI purposes (e.g. deciding whether to even try a GM command);
+// the actual enforcement for /notice, /timeout and /ban is the player_moderation/
+// server_notices tables' own INSERT policies, checked by Postgres itself on every
+// attempt -- a spoofed local isGameMaster=true still gets every write rejected server-side.
+let isGameMaster = false;
+async function fetchGameMasterStatus(){
+  isGameMaster = false;
+  if(!supabaseClient || !currentUser) return;
+  try{
+    const { data } = await supabaseClient.from('game_masters').select('user_id').eq('user_id', currentUser.id).maybeSingle();
+    isGameMaster = !!data;
+  }catch(e){ isGameMaster = false; }
+}
+// keeps the callsign -> user_id directory (player_names) up to date for THIS account
+// only (RLS only allows writing your own row) -- called once after LAUNCH and again
+// on every callsign change, so mail/moderation/mute targeting by name stays resolvable
+// even for players who are currently offline.
+async function syncOwnPlayerNameDirectory(){
+  if(!supabaseClient || !currentUser || !mpIdentity) return;
+  try{
+    await supabaseClient.from('player_names').upsert(
+      { user_id: currentUser.id, name: mpIdentity.name, updated_at: new Date().toISOString() },
+      { onConflict:'user_id' }
+    );
+  }catch(e){}
+}
+// resolves a typed callsign to { user_id, name }, or null if unknown. Case-insensitive
+// (names are always stored upper-cased already -- see sanitizeCallsignInput).
+async function resolvePlayerByName(name){
+  if(!supabaseClient || !name) return null;
+  try{
+    const { data } = await supabaseClient.from('player_names').select('user_id,name').ilike('name', name.trim()).limit(1).maybeSingle();
+    return data ? { user_id: data.user_id, name: data.name } : null;
+  }catch(e){ return null; }
+}
+// Checked once at LAUNCH, before the player is ever dropped into the belt. Returns a
+// human-readable block message if the signed-in account is currently timed out/banned,
+// else null. Reads player_moderation directly (publicly readable) -- there is no way
+// for a client to fake "not blocked" since it's the actual row (or absence of one)
+// that every other client/GM also sees.
+async function checkModerationBlock(){
+  if(!supabaseClient || !currentUser) return null;
+  try{
+    const { data } = await supabaseClient.from('player_moderation')
+      .select('action,expires_at,issued_at')
+      .eq('target_user_id', currentUser.id)
+      .order('issued_at', { ascending:false });
+    if(!data || !data.length) return null;
+    // a permanent ban (expires_at null) always blocks; a timeout blocks only until its
+    // expires_at passes -- take the strictest still-active row
+    const now = Date.now();
+    const ban = data.find(r=> r.action === 'ban');
+    if(ban) return 'YOUR ACCOUNT HAS BEEN PERMANENTLY BANNED BY A GAME MASTER.';
+    const activeTimeout = data.find(r=> r.action === 'timeout' && r.expires_at && new Date(r.expires_at).getTime() > now);
+    if(activeTimeout) return 'YOU ARE TIMED OUT UNTIL ' + new Date(activeTimeout.expires_at).toLocaleString() + '.';
+    return null;
+  }catch(e){ return null; }
+}
+// ---- /notice (GM only) ----
+let lastSeenNoticeId = 0; // persisted in save data -- see getPlayerSaveData/applyPlayerSaveData
+let serverNoticePollTimer = null; // set once at LAUNCH, see the startBtn handler
+async function issueGmNotice(message){
+  if(!isGameMaster){ logEvent('NOT AUTHORIZED — GAME MASTER ONLY', 'warn'); return; }
+  if(!supabaseClient || !currentUser || !message){ logEvent('NOTICE FAILED', 'warn'); return; }
+  try{
+    const { error } = await supabaseClient.from('server_notices').insert(
+      { message, issued_by: mpIdentity ? mpIdentity.name : 'GM', issued_by_user_id: currentUser.id }
+    );
+    if(error){ logEvent('NOTICE FAILED: ' + error.message, 'warn'); return; }
+    logEvent('NOTICE POSTED', 'good');
+  }catch(e){ logEvent('NOTICE FAILED — NETWORK ERROR', 'warn'); }
+}
+// polled periodically (see setInterval below) -- shows any notice newer than the last
+// one this client has seen, cross-server, to every player (including ones already
+// online, not just on their next login) since this runs continuously all session
+async function pollServerNotices(){
+  if(!supabaseClient || !currentUser || !gameLaunched) return;
+  try{
+    const { data } = await supabaseClient.from('server_notices').select('id,message,issued_by,created_at').order('id', { ascending:false }).limit(5);
+    if(!data || !data.length) return;
+    const fresh = data.filter(n=> n.id > lastSeenNoticeId).sort((a,b)=> a.id - b.id);
+    fresh.forEach(n=>{
+      zoneMessage('NOTICE: ' + n.message, 'good');
+      logEvent('=== SERVER NOTICE FROM ' + (n.issued_by||'GM').toUpperCase() + ': ' + n.message + ' ===', 'good');
+    });
+    if(data[0].id > lastSeenNoticeId) lastSeenNoticeId = data[0].id;
+  }catch(e){}
+}
+// ---- /timeout, /ban (GM only) ----
+async function issueGmModeration(action, targetName, durationMs){
+  if(!isGameMaster){ logEvent('NOT AUTHORIZED — GAME MASTER ONLY', 'warn'); return; }
+  const target = await resolvePlayerByName(targetName);
+  if(!target){ logEvent('UNKNOWN PLAYER: ' + targetName, 'warn'); return; }
+  try{
+    const { error } = await supabaseClient.from('player_moderation').insert({
+      target_user_id: target.user_id, target_name: target.name, action,
+      expires_at: durationMs ? new Date(Date.now()+durationMs).toISOString() : null,
+      issued_by: mpIdentity ? mpIdentity.name : 'GM', issued_by_user_id: currentUser.id
+    });
+    if(error){ logEvent(action.toUpperCase() + ' FAILED: ' + error.message, 'warn'); return; }
+    logEvent(action.toUpperCase() + ' ISSUED — ' + target.name, 'good');
+  }catch(e){ logEvent(action.toUpperCase() + ' FAILED — NETWORK ERROR', 'warn'); }
+}
+// ---- /mute, /unmute (available to every player -- purely local preference, no table) ----
+let mutedPlayers = []; // uppercase callsigns, persisted in save data
+function isPlayerMuted(name){ return !!name && mutedPlayers.indexOf(name.toUpperCase()) >= 0; }
+function mutePlayerByName(name){
+  const clean = (name||'').trim().toUpperCase();
+  if(!clean){ logEvent('MUTE FAILED — NO NAME GIVEN', 'warn'); return; }
+  if(mutedPlayers.indexOf(clean) < 0) mutedPlayers.push(clean);
+  logEvent('MUTED ' + clean, 'good');
+}
+function unmutePlayerByName(name){
+  const clean = (name||'').trim().toUpperCase();
+  const idx = mutedPlayers.indexOf(clean);
+  if(idx < 0){ logEvent(clean + ' IS NOT MUTED', 'warn'); return; }
+  mutedPlayers.splice(idx, 1);
+  logEvent('UNMUTED ' + clean, 'good');
+}
+
+// ---------- in-game mail (WALLET popup -> MAIL tab, item 9) ----------
+let mailInboxCache = [];
+async function sendPlayerMail(toName, subject, body){
+  if(!supabaseClient || !currentUser || !mpIdentity){ flashMessage('SIGN IN TO SEND MAIL', 'warn'); return false; }
+  const clean = (toName||'').trim();
+  if(!clean){ flashMessage('ENTER A RECIPIENT CALLSIGN', 'warn'); return false; }
+  if(!body || !body.trim()){ flashMessage('MESSAGE IS EMPTY', 'warn'); return false; }
+  const target = await resolvePlayerByName(clean);
+  if(!target){ flashMessage('UNKNOWN CALLSIGN: ' + clean.toUpperCase(), 'warn'); return false; }
+  try{
+    const { error } = await supabaseClient.from('player_mail').insert({
+      from_user_id: currentUser.id, from_name: mpIdentity.name,
+      to_user_id: target.user_id, to_name: target.name,
+      subject: (subject||'').trim().slice(0,80) || '(no subject)',
+      body: body.trim().slice(0,2000)
+    });
+    if(error){ flashMessage('SEND FAILED', 'warn'); return false; }
+    flashMessage('MAIL SENT TO ' + target.name, 'good');
+    logEvent('MAIL SENT TO ' + target.name, 'good');
+    return true;
+  }catch(e){ flashMessage('SEND FAILED — NETWORK ERROR', 'warn'); return false; }
+}
+async function fetchMailInbox(){
+  if(!supabaseClient || !currentUser) return [];
+  try{
+    const { data } = await supabaseClient.from('player_mail').select('id,from_name,subject,body,sent_at,read_at')
+      .eq('to_user_id', currentUser.id).order('sent_at', { ascending:false }).limit(50);
+    return data || [];
+  }catch(e){ return []; }
+}
+async function markMailRead(id){
+  if(!supabaseClient || !currentUser) return;
+  try{ await supabaseClient.from('player_mail').update({ read_at: new Date().toISOString() }).eq('id', id).eq('to_user_id', currentUser.id); }catch(e){}
+}
+async function renderMailInbox(){
+  const el = document.getElementById('mailInboxList');
+  if(!el) return;
+  el.innerHTML = '<div class="ledgerEmpty">LOADING…</div>';
+  mailInboxCache = await fetchMailInbox();
+  if(walletTab !== 'mail') return; // player switched tabs while this was in flight
+  if(!mailInboxCache.length){ el.innerHTML = '<div class="ledgerEmpty">NO MAIL</div>'; return; }
+  el.innerHTML = mailInboxCache.map(m=>{
+    const unread = !m.read_at;
+    const when = new Date(m.sent_at).toLocaleString();
+    return '<div class="prow" data-mail-id="' + m.id + '" style="align-items:flex-start; cursor:pointer; ' + (unread?'':'opacity:0.6;') + '">'
+      + '<span>' + (unread?'✉ ':'') + '<b>' + m.from_name + '</b> — ' + (m.subject||'(no subject)')
+      + '<br><span style="font-size:10px; color:var(--phosphor-dim);">' + when + '</span>'
+      + '<br><span style="font-size:11px;">' + m.body.replace(/</g,'&lt;').slice(0,300) + '</span></span>'
+      + '<span></span></div>';
+  }).join('');
+  el.querySelectorAll('[data-mail-id]').forEach(row=>{
+    row.addEventListener('click', ()=>{
+      const id = parseInt(row.getAttribute('data-mail-id'), 10);
+      const m = mailInboxCache.find(x=>x.id===id);
+      if(m && !m.read_at){ m.read_at = new Date().toISOString(); markMailRead(id); row.style.opacity = '0.6'; }
+    });
+  });
+}
+document.getElementById('btnSendMail').addEventListener('click', async ()=>{
+  const toEl = document.getElementById('mailToInput');
+  const subjEl = document.getElementById('mailSubjectInput');
+  const bodyEl = document.getElementById('mailBodyInput');
+  const ok = await sendPlayerMail(toEl.value, subjEl.value, bodyEl.value);
+  if(ok){ toEl.value = ''; subjEl.value = ''; bodyEl.value = ''; renderMailInbox(); }
+});
+// One-time welcome email from "Galactic Empire" -- since a pure client-only Supabase
+// setup has no service-role access to insert mail as a true third party, this is sent
+// by the NEW player's OWN client, to themselves, right after their very first LAUNCH
+// (guarded by the welcomeEmailSent save-data flag so it only ever fires once). from_name
+// is the 'Galactic Empire' sentinel; from_user_id is still (per RLS) the player's own
+// account, same as every other row in this table -- documented here and in the SQL.
+let welcomeEmailSent = false;
+async function sendWelcomeEmailIfNeeded(){
+  if(welcomeEmailSent || !supabaseClient || !currentUser || !mpIdentity) return;
+  welcomeEmailSent = true; // set before the await so a slow network never double-sends
+  const body = 'Welcome to VOID DRIFT, pilot ' + mpIdentity.name + '!\n\n'
+    + 'A few tips to get you started:\n'
+    + '- DOCK at any station (fly close and hold approach) to access the MARKET, LIBRARY, FITTING and contract boards.\n'
+    + '- MINE asteroids in the Kestrel Belt with a mining laser (see EQUIPMENT) to earn ore you can sell or refine.\n'
+    + '- Pirates and bounty hunters fight back — mount a weapon and shield from FITTING before venturing into riskier (yellow/red) zones.\n'
+    + '- Train up your SKILLS over real time; Memory Cubes and Skill Books (craftable at any station\'s LIBRARY) can speed that up.\n'
+    + '- Check the WALLET popup for your ledger, stats, medals and now this MAIL tab.\n'
+    + '- Contracts from the Navy, Mining Corp and Transportation Guild are a steady, low-risk way to build credits and reputation.\n\n'
+    + 'Fly safe out there.\n— Galactic Empire';
+  try{
+    await supabaseClient.from('player_mail').insert({
+      from_user_id: currentUser.id, from_name: 'Galactic Empire',
+      to_user_id: currentUser.id, to_name: mpIdentity.name,
+      subject: 'Welcome to Void Drift', body
+    });
+  }catch(e){}
 }
 
 // ---------- daily kill leaderboard (SERVER popup) ----------
@@ -11884,6 +12399,7 @@ async function submitCallsignChange(){
     if(mpIdentity){
       mpIdentity.name = clean;
       if(mpZoneChannel && mpZoneOk) mpZoneChannel.track({ id: mpIdentity.id, name: mpIdentity.name, classKey: activeShipInstance ? activeShipInstance.classKey : 'starter' });
+      syncOwnPlayerNameDirectory(); // (v0.19.2) keep the callsign->account directory current
     }
     closeCallsignPanel();
     flashMessage('CALLSIGN SET: ' + clean, 'good');
@@ -12185,8 +12701,8 @@ function trackServerRosterPresence(){
       name: mpIdentity.name,
       classKey: activeShipInstance ? activeShipInstance.classKey : 'starter',
       // total trained skill levels (out of a max of 28 across all 7 skills at LV.4
-      // each) -- replaces the old combat-XP level as the "LV" shown to other
-      // players now that combat/mining no longer use XP/levels (see SKILLS)
+      // each) -- kept for the PROFILE popup's own "Level" row (unaffected by item 10);
+      // no longer shown in the ONLINE list itself, see refreshServerPanel
       level: SKILL_ORDER.reduce((sum,k)=> sum + (skillLevels[k]||0), 0),
       credits: bountyCredits,
       kills: piratesKilled,
@@ -12194,7 +12710,13 @@ function trackServerRosterPresence(){
       miningRep: maxStationRep('mining'),
       transportRep: maxStationRep('transport'),
       achievements: earnedAchievements.size,
-      achievementsTotal: ACHIEVEMENTS.length
+      achievementsTotal: ACHIEVEMENTS.length,
+      // (v0.19.2, item 10) wall-clock LAUNCH timestamp (Date.now()-based, same
+      // gameStartTime the local "Time Played" stat uses) + this player's current Fame
+      // level -- the ONLINE list derives "ONLINE Xm · FAME N" from these two instead of
+      // the old skill-level "LV" readout (see refreshServerPanel)
+      joinedAtMs: mpJoinedAtMs,
+      fameLevel: fameLevel
     });
   }catch(e){}
 }
@@ -12211,7 +12733,7 @@ function joinChatChannel(){
   const ch = supabaseClient.channel('chat:' + currentServer, { config:{ broadcast:{ self:false }, presence:{ key: mpIdentity.id } } });
   ch.on('broadcast', { event:'chat' }, (msg)=>{
     const p = msg.payload || {};
-    if(p.text) logEvent('[ALL][' + (p.name || '???') + ']: ' + p.text, 'chat-all');
+    if(p.text && !isPlayerMuted(p.name)) logEvent('[ALL][' + (p.name || '???') + ']: ' + p.text, 'chat-all');
   });
   ch.on('broadcast', { event:'whisper' }, (msg)=>{
     const p = msg.payload || {};
@@ -12221,6 +12743,7 @@ function joinChatChannel(){
     // transport-encrypted, same tradeoff as every other broadcast in this game.
     if(!p.text || !p.toName || !mpIdentity) return;
     if(p.toName.toUpperCase() !== mpIdentity.name.toUpperCase()) return;
+    if(isPlayerMuted(p.fromName)) return; // item 7: /mute hides that player's messages locally
     logEvent('[WHISPER FROM ' + (p.fromName || '???') + ']: ' + p.text, 'chat-whisper');
   });
   // server-wide presence -- powers the SERVER popup's ONLINE list/profiles. Synced
@@ -12245,6 +12768,23 @@ function sendChatMessage(rawText){
   if(!rawText) return;
   const text = rawText.trim();
   if(!text) return;
+  // (v0.19.2, item 7) GM/moderation/mute commands -- checked before the existing /w
+  // and /a prefixes below so they never get sent as a literal chat message. Every
+  // command gives clear success/failure feedback in the issuing player's own event
+  // log (see each handler above); a non-GM attempting /notice, /timeout or /ban is
+  // told "NOT AUTHORIZED" locally, but the REAL enforcement is server-side RLS on the
+  // underlying table insert (see checkModerationBlock/cloudSyncSetupSql) -- a
+  // spoofed local isGameMaster flag cannot actually write those rows.
+  const noticeMatch = text.match(/^\/notice\s+([\s\S]+)$/i);
+  if(noticeMatch){ issueGmNotice(noticeMatch[1].trim()); return; }
+  const timeoutMatch = text.match(/^\/timeout\s+(\S+)/i);
+  if(timeoutMatch){ issueGmModeration('timeout', timeoutMatch[1], 24*60*60*1000); return; }
+  const banMatch = text.match(/^\/ban\s+(\S+)/i);
+  if(banMatch){ issueGmModeration('ban', banMatch[1], null); return; }
+  const muteMatch = text.match(/^\/mute\s+(\S+)/i);
+  if(muteMatch){ mutePlayerByName(muteMatch[1]); return; }
+  const unmuteMatch = text.match(/^\/unmute\s+(\S+)/i);
+  if(unmuteMatch){ unmutePlayerByName(unmuteMatch[1]); return; }
   const whisperMatch = text.match(/^\/w\s+(\S+)\s+([\s\S]+)$/i);
   if(whisperMatch){
     const toName = whisperMatch[1];
@@ -12305,14 +12845,14 @@ function joinZoneChannel(zoneKey){
   // /a (all-zone) and /w (whisper), which go over the separate server-wide channel.
   ch.on('broadcast', { event:'chat' }, (msg)=>{
     const p = msg.payload || {};
-    if(p.text) logEvent('[' + (p.name || '???') + ']: ' + p.text, 'chat-zone');
+    if(p.text && !isPlayerMuted(p.name)) logEvent('[' + (p.name || '???') + ']: ' + p.text, 'chat-zone');
   });
   // achievement unlocks are zone-local news, same as "X HAS ENTERED THE ZONE" --
   // only players currently sharing this zone channel see another pilot's medal
   // (see checkAchievements, which sends this whenever earnedAchievements grows)
   ch.on('broadcast', { event:'achievement' }, (msg)=>{
     const p = msg.payload || {};
-    if(p.name && p.medal) logEvent('=== ' + p.name.toUpperCase() + ' EARNED MEDAL: ' + p.medal.toUpperCase() + ' ===', 'good');
+    if(p.name && p.medal && !isPlayerMuted(p.name)) logEvent('=== ' + p.name.toUpperCase() + ' EARNED MEDAL: ' + p.medal.toUpperCase() + ' ===', 'good');
   });
   ch.on('presence', { event:'leave' }, ({ key })=>{
     const entry = remotePlayers[key];
@@ -12865,6 +13405,7 @@ const IN_GAME_MONTH_NAMES = ['JAN','FEB','MAR','APR','MAY','JUN','JUL','AUG','SE
 const GAME_EPOCH_MS = Date.UTC(2026, 0, 1, 0, 0, 0);
 function inGameElapsedRealSeconds(){ return Math.max(0, (Date.now() - GAME_EPOCH_MS) / 1000); }
 let gameStartTime = null; // per-SESSION marker only now (this session's own play-time stat/mobile-hint gating) -- NOT the universe clock above; set on LAUNCH click (see startBtn handler below); null = not launched yet
+let mpJoinedAtMs = null; // (v0.19.2, item 10) Date.now() at LAUNCH -- a wall-clock twin of gameStartTime (which uses performance.now()) for broadcasting "how long online" to other players via presence; see trackServerRosterPresence
 function inGameIsLeapYear(y){ return (y%4===0 && y%100!==0) || (y%400===0); }
 function inGameDaysInMonth(y, m){ // m is 0-11
   const lengths = [31, inGameIsLeapYear(y)?29:28, 31,30,31,30,31,31,30,31,30,31];
@@ -13742,6 +14283,7 @@ function repossessNormalShip(hunterEntry){
   logEvent('YOUR SHIP HAS BEEN REPOSSESSED', 'warn');
   zoneMessage('SHIP REPOSSESSED — LOAN CLEARED', 'warn');
   playerStunned = 3.0;
+  playerStunnedEndsAtMs = Date.now() + 3000;
   shipState.vel.set(0,0,0);
   setCommand('idle');
   weaponsFree = false;
@@ -15085,9 +15627,10 @@ function animate(){
     // weapons fire is separately gated off below; movement physics must not be.
     speed = updateShip(dt);
   } else if(settingsMenuOpen){
-    // ship simply sits frozen while the settings menu is open -- same "pause the
-    // player's own input/physics, keep the background sim running" approach as
-    // inspect mode above (pirates/wrecks/gates/etc keep updating regardless)
+    // (v0.19.2) settings menu is a non-blocking overlay: the player's ship keeps
+    // flying whatever command/velocity was already active, exactly like inspect
+    // mode above -- only NEW input/commands are blocked (see inputLocked()).
+    speed = updateShip(dt);
   } else if(dockingSequence){
     if(dockingSequence.phase === 'approach') updateShip(dt);
     updateDockingSequence(dt);
@@ -15130,9 +15673,8 @@ function animate(){
   updateMiningBeam();
   updateBountyHunters(dt);
   if(playerStunned > 0){
-    playerStunned -= dt;
+    playerStunned = Math.max(0, (playerStunnedEndsAtMs - Date.now())/1000);
     shipState.vel.set(0,0,0); // ion-blast stun (see updateBountyHunters): fully immobilized
-    if(playerStunned <= 0) playerStunned = 0;
   }
   updateCamera(); // already branches on `inspecting` to orbit the inspected target instead of the ship
   updateSky(); // recenters the skybox on the just-updated camera.position -- see updateSky() comment
@@ -15211,9 +15753,15 @@ document.getElementById('startBtn').addEventListener('click', async ()=>{
   // updateBootFlowVisibility()) -- but guard anyway rather than let a stray
   // click drop an unauthenticated session into the belt.
   if(!currentUser){ flashMessage('LOG IN TO PLAY', 'warn'); return; }
+  // (v0.19.2, item 7) block a timed-out/banned account from ever entering the belt --
+  // see checkModerationBlock()'s own comment on why this is safe to trust (it's the
+  // same row every other client/GM sees, not a client-side flag)
+  const modBlockMsg = await checkModerationBlock();
+  if(modBlockMsg){ flashMessage('ACCESS BLOCKED', 'warn'); logEvent('=== ' + modBlockMsg + ' ===', 'warn'); return; }
   document.getElementById('bootscreen').style.display = 'none';
   clock.start();
   gameStartTime = performance.now(); // starts the in-game clock (#clockPanel) at LAUNCH
+  mpJoinedAtMs = Date.now(); // (v0.19.2) wall-clock twin of the above, see its declaration
   // LAUNCH click is a real user gesture -- the only place audio can legally start
   // per browser autoplay policy. Kicks off the shared AudioContext and the
   // quiet ambient drone loop for the whole session.
@@ -15267,6 +15815,14 @@ document.getElementById('startBtn').addEventListener('click', async ()=>{
   // that shipState.pos/currentZoneKey() reflect wherever the save (or default
   // spawn) just put the player
   initMultiplayer();
+  // (v0.19.2, item 7/9) GM status, callsign directory, welcome mail and the server
+  // notice poll all need mpIdentity, which initMultiplayer() just set up -- fire these
+  // off now (fire-and-forget where safe) rather than blocking LAUNCH on them
+  fetchGameMasterStatus();
+  syncOwnPlayerNameDirectory();
+  sendWelcomeEmailIfNeeded();
+  pollServerNotices();
+  if(!serverNoticePollTimer) serverNoticePollTimer = setInterval(pollServerNotices, 20000);
   // free one-time callsign pick: any signed-in account that hasn't chosen one yet
   // (brand-new registrations and pre-existing accounts alike) gets prompted here,
   // once, for free -- see openCallsignPanel/submitCallsignChange
