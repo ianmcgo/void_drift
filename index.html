@@ -1496,7 +1496,16 @@
     <button class="cmdbtn" id="btnOpenHelp">HELP</button>
     <button class="cmdbtn" id="btnToggleFullscreen">⛶ FULL SCREEN</button>
     <button class="cmdbtn" id="btnResetHud">RESET HUD LAYOUT</button>
-    <button class="cmdbtn" id="btnCopyDbSetup" style="display:none;">COPY DB SETUP SQL</button>
+    <!-- item: this used to start hidden and only reveal itself when the
+         player_saves fetch specifically failed (see the cloudSyncError check
+         further down) -- but a table added later (auction_listings, say) can be
+         missing from an older self-hosted Supabase project while player_saves
+         itself works fine, in which case that trigger never fires and this
+         button stayed invisible right when it was needed most. Always visible
+         now; the script it copies is fully idempotent (create table IF NOT
+         EXISTS, drop-then-recreate policies) so re-running it against a project
+         that already has some/all of these tables is always safe. -->
+    <button class="cmdbtn" id="btnCopyDbSetup">COPY DB SETUP SQL</button>
     <button class="cmdbtn" id="btnCloseSettings">RESUME</button>
     <button class="cmdbtn danger" id="btnSaveExit">SAVE &amp; EXIT</button>
   </div>
@@ -1842,9 +1851,9 @@
 // compatibility depends on it. Add new keys, don't rename old ones.
 
 // ---------- version / build info (shown in the ESC settings menu) ----------
-const GAME_VERSION = "0.17.0";
+const GAME_VERSION = "0.17.1";
 const GAME_LAST_EDITED = "2026-09-23";
-const GAME_BUILD_TIME = "16:42 PT"; // wall-clock time this build was published, not just the date
+const GAME_BUILD_TIME = "17:43 PT"; // wall-clock time this build was published, not just the date
 
 // ---------- update-available banner ----------
 // Periodically re-fetches this very page (same-origin -- works identically whether
