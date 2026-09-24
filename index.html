@@ -1864,9 +1864,9 @@
 // compatibility depends on it. Add new keys, don't rename old ones.
 
 // ---------- version / build info (shown in the ESC settings menu) ----------
-const GAME_VERSION = "0.18.1";
+const GAME_VERSION = "0.18.2";
 const GAME_LAST_EDITED = "2026-09-23";
-const GAME_BUILD_TIME = "21:03 PT"; // wall-clock time this build was published, not just the date
+const GAME_BUILD_TIME = "21:25 PT"; // wall-clock time this build was published, not just the date
 
 // ---------- update-available banner ----------
 // Periodically re-fetches this very page (same-origin -- works identically whether
@@ -10895,6 +10895,17 @@ function cloudSyncSetupSql(){
     "  updated_at timestamptz not null default now(),",
     "  primary key (user_id, server, day)",
     ");",
+    // item: every 'alter table ... add column if not exists ...' line below (here
+    // and throughout the rest of this script) exists because 'create table if not
+    // exists' is a no-op on a table that already exists -- if that table was first
+    // created back before a given column was added to this schema, the column
+    // would otherwise silently never show up, and every insert/select touching it
+    // fails with a PGRST204 "could not find the column ... in the schema cache"
+    // error. These are safe to run unconditionally, even against a table that
+    // already has every column (IF NOT EXISTS makes each one a no-op then).
+    "alter table daily_kills add column if not exists name text not null default 'UNKNOWN';",
+    "alter table daily_kills add column if not exists kills int not null default 0;",
+    "alter table daily_kills add column if not exists updated_at timestamptz not null default now();",
     "alter table daily_kills enable row level security;",
     "drop policy if exists \"daily kills are publicly readable\" on daily_kills;",
     "create policy \"daily kills are publicly readable\" on daily_kills for select using (true);",
@@ -10914,6 +10925,8 @@ function cloudSyncSetupSql(){
     "  updated_at timestamptz not null default now(),",
     "  primary key (server, station_id)",
     ");",
+    "alter table station_market add column if not exists stock jsonb not null default '{}'::jsonb;",
+    "alter table station_market add column if not exists updated_at timestamptz not null default now();",
     "alter table station_market enable row level security;",
     "drop policy if exists \"station market is publicly readable\" on station_market;",
     "create policy \"station market is publicly readable\" on station_market for select using (true);",
@@ -10934,6 +10947,8 @@ function cloudSyncSetupSql(){
     "  updated_at timestamptz not null default now(),",
     "  primary key (server, zone_key)",
     ");",
+    "alter table zone_mining_state add column if not exists nodes jsonb not null default '{}'::jsonb;",
+    "alter table zone_mining_state add column if not exists updated_at timestamptz not null default now();",
     "alter table zone_mining_state enable row level security;",
     "drop policy if exists \"zone mining state is publicly readable\" on zone_mining_state;",
     "create policy \"zone mining state is publicly readable\" on zone_mining_state for select using (true);",
@@ -10954,6 +10969,8 @@ function cloudSyncSetupSql(){
     "  updated_at timestamptz not null default now(),",
     "  primary key (server, station_id, faction)",
     ");",
+    "alter table quest_boards add column if not exists board jsonb not null default '{}'::jsonb;",
+    "alter table quest_boards add column if not exists updated_at timestamptz not null default now();",
     "alter table quest_boards enable row level security;",
     "drop policy if exists \"quest boards are publicly readable\" on quest_boards;",
     "create policy \"quest boards are publicly readable\" on quest_boards for select using (true);",
@@ -10977,6 +10994,17 @@ function cloudSyncSetupSql(){
     "  price int not null,",
     "  created_at timestamptz not null default now()",
     ");",
+    // item: this is the fix for the PGRST204 "could not find the 'station_id'
+    // column" error -- a project that created this table back before station_id
+    // existed in this schema never got it added, since 'create table if not
+    // exists' above is a no-op once the table already exists
+    "alter table auction_listings add column if not exists server text not null default 'PVE';",
+    "alter table auction_listings add column if not exists station_id text not null default 'unknown';",
+    "alter table auction_listings add column if not exists seller_name text not null default 'UNKNOWN';",
+    "alter table auction_listings add column if not exists item_key text not null default '';",
+    "alter table auction_listings add column if not exists qty int not null default 0;",
+    "alter table auction_listings add column if not exists price int not null default 0;",
+    "alter table auction_listings add column if not exists created_at timestamptz not null default now();",
     "alter table auction_listings enable row level security;",
     "drop policy if exists \"auction listings are publicly readable\" on auction_listings;",
     "create policy \"auction listings are publicly readable\" on auction_listings for select using (true);",
@@ -11002,6 +11030,10 @@ function cloudSyncSetupSql(){
     "  item_label text,",
     "  created_at timestamptz not null default now()",
     ");",
+    "alter table auction_payouts add column if not exists server text not null default 'PVE';",
+    "alter table auction_payouts add column if not exists amount int not null default 0;",
+    "alter table auction_payouts add column if not exists item_label text;",
+    "alter table auction_payouts add column if not exists created_at timestamptz not null default now();",
     "alter table auction_payouts enable row level security;",
     "drop policy if exists \"players see only their own pending payouts\" on auction_payouts;",
     "create policy \"players see only their own pending payouts\" on auction_payouts",
@@ -11024,6 +11056,8 @@ function cloudSyncSetupSql(){
     "  updated_at timestamptz not null default now(),",
     "  primary key (server, station_id)",
     ");",
+    "alter table station_treasury add column if not exists balance int not null default 0;",
+    "alter table station_treasury add column if not exists updated_at timestamptz not null default now();",
     "alter table station_treasury enable row level security;",
     "drop policy if exists \"station treasury is publicly readable\" on station_treasury;",
     "create policy \"station treasury is publicly readable\" on station_treasury for select using (true);",
@@ -11044,6 +11078,8 @@ function cloudSyncSetupSql(){
     "  claimed_at timestamptz not null default now(),",
     "  primary key (server, station_id, user_id, day)",
     ");",
+    "alter table ubi_claims add column if not exists amount int not null default 0;",
+    "alter table ubi_claims add column if not exists claimed_at timestamptz not null default now();",
     "alter table ubi_claims enable row level security;",
     "drop policy if exists \"players see only their own ubi claims\" on ubi_claims;",
     "create policy \"players see only their own ubi claims\" on ubi_claims",
