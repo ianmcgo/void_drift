@@ -818,6 +818,13 @@
   }
   #eventLog .chatInputRow input:focus{ outline:none; border-color:var(--phosphor); }
   #eventLog .list div.chatLine{ color:#fff; font-weight:bold; }
+  /* per-scope chat colors: zone chat (default local channel) stays close to white,
+     all-server chat reads amber, whispers read magenta/pink -- picked to be
+     distinguishable from both each other and the warn(red)/good(purple xp) colors
+     already used elsewhere in this log */
+  #eventLog .list div.chatLine.chatZone{ color:#d7ffe9; }
+  #eventLog .list div.chatLine.chatAll{ color:var(--amber); }
+  #eventLog .list div.chatLine.chatWhisper{ color:#ff7ce8; }
   /* mpBottomGroup wraps the status row + chat input as a single fixed-height unit so
      margin-top:auto (moved here from .chatInputRow) pushes the WHOLE group flush to
      the panel's bottom edge, same trick as before, now with an extra row inside it. */
@@ -895,6 +902,62 @@
     font-family:'VT323',monospace; font-size:13px; letter-spacing:1px; padding:3px 10px; cursor:pointer;
   }
   #starMapCharge button:hover{background:rgba(255,77,77,0.15);}
+
+  /* autopilot status banner -- identical shape/positioning convention to
+     #starMapCharge, stacked one row below it */
+  #autopilotBanner{
+    display:none;
+    top:calc(222px + env(safe-area-inset-top,0px)); left:50%; transform:translateX(-50%);
+    font-family:'VT323',monospace; font-size:16px; letter-spacing:1px; color:var(--xp);
+    text-shadow:0 0 8px rgba(201,141,255,0.6); background:var(--panel-bg); border:1px solid var(--panel-border);
+    padding:7px 14px; text-align:center; z-index:41; align-items:center; gap:12px; white-space:nowrap;
+  }
+  #autopilotBanner.show{display:flex;}
+  #autopilotBanner button{
+    pointer-events:auto; background:transparent; border:1px solid var(--danger); color:var(--danger);
+    font-family:'VT323',monospace; font-size:13px; letter-spacing:1px; padding:3px 10px; cursor:pointer;
+  }
+  #autopilotBanner button:hover{background:rgba(255,77,77,0.15);}
+
+  /* UNIVERSE MAP -- large centered modal, mostly filled by a canvas the JS draws
+     the hex-grid galaxy graph into (see renderUniverseMap()). Same opaque-modal
+     language as the settings/auth panels (item request: "should not be see-through"
+     applies here too, it's a busy starfield behind it). */
+  #universeMapPanel{
+    display:none;
+    top:50%; left:50%; transform:translate(-50%,-50%);
+    width:min(94vw,920px); height:min(88vh,700px);
+    background:var(--panel-bg-solid); border:1px solid var(--panel-border);
+    padding:14px 16px 16px; pointer-events:auto; z-index:80;
+    flex-direction:column;
+  }
+  #universeMapPanel.show{display:flex;}
+  #universeMapPanel .phdr{
+    font-family:'VT323',monospace; font-size:22px; letter-spacing:2px; color:var(--amber);
+    display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;
+    border-bottom:1px solid var(--panel-border); padding-bottom:8px; flex:0 0 auto;
+  }
+  #universeMapPanel .phdr button{
+    background:transparent; border:1px solid var(--panel-border); color:var(--phosphor);
+    font-family:'VT323',monospace; font-size:16px; padding:2px 10px; cursor:pointer;
+  }
+  #universeMapLegend{
+    flex:0 0 auto; display:flex; flex-wrap:wrap; gap:14px; align-items:center;
+    font-size:11px; letter-spacing:1px; color:var(--phosphor-dim); margin-bottom:8px;
+  }
+  #universeMapLegend .umSwatch{
+    display:inline-block; width:10px; height:10px; margin-right:5px; vertical-align:middle;
+    border:1px solid rgba(0,0,0,0.4);
+  }
+  #universeMapLegend .umHint{ margin-left:auto; color:var(--phosphor); }
+  #universeMapCanvas{
+    flex:1 1 auto; min-height:0; width:100%; height:100%;
+    background:rgba(0,0,0,0.35); border:1px solid rgba(109,255,194,0.2); cursor:pointer;
+  }
+  @media (max-width:640px){
+    #universeMapPanel{ width:96vw; height:80vh; padding:10px 10px 12px; }
+    #universeMapLegend .umHint{ margin-left:0; width:100%; }
+  }
 
   /* star-map zone-select rows (reuses the same visual language as the equipment
      panel's .peq rows for consistency) */
@@ -1304,9 +1367,28 @@
 <div class="hud popupPanel" id="starMapPanel">
   <div class="phdr"><span>STAR MAP</span><button id="btnCloseStarMap">✕</button></div>
   <div class="popupBody">
+    <button class="cmdbtn clickable" id="btnOpenUniverseMap" style="width:100%; margin-bottom:10px; font-size:13px;">🌌 UNIVERSE MAP — ALL SECTORS</button>
     <div class="psection" style="margin-top:0;" id="starMapGalaxyHdr">KNOWN ZONES</div>
     <div id="starMapZoneList"></div>
   </div>
+</div>
+
+<!-- UNIVERSE MAP -- a full hex-grid view of every known sector across all four
+     galaxies (see renderUniverseMap()), reachable from the STAR MAP popup above.
+     Shows real warp-gate connections (solid lines) and same-galaxy zones only
+     reachable via a long-range star-map warp (dashed lines), colored by each
+     zone's danger tier. Clicking a hex sets an autopilot destination -- see the
+     "---------- autopilot ----------" JS section for the routing/execution side. -->
+<div class="hud" id="universeMapPanel">
+  <div class="phdr"><span>UNIVERSE MAP</span><button id="btnCloseUniverseMap">✕</button></div>
+  <div id="universeMapLegend">
+    <span><i class="umSwatch" style="background:#5cc9ff;"></i>STATION</span>
+    <span><i class="umSwatch" style="background:#6dffa0;"></i>SAFE</span>
+    <span><i class="umSwatch" style="background:#e8c547;"></i>MILD RISK</span>
+    <span><i class="umSwatch" style="background:#ff4d4d;"></i>DANGEROUS</span>
+    <span class="umHint">CLICK A SECTOR TO SET AUTOPILOT</span>
+  </div>
+  <canvas id="universeMapCanvas"></canvas>
 </div>
 
 <div class="hud popupPanel" id="serverPanel">
@@ -1455,6 +1537,17 @@
 <div class="hud" id="starMapCharge">
   <span id="starMapChargeLabel">WARP CHARGING</span>
   <button class="clickable" id="btnCancelStarMapWarp">CANCEL WARP</button>
+</div>
+
+<!-- Autopilot status banner -- same visual language/stacking as #starMapCharge
+     just above, positioned one row further down (see CSS). Shown for the whole
+     lifetime of an active autopilot run (5s countdown, then each jump in the
+     route) -- see the autopilot state machine in the JS "---------- autopilot
+     ----------" section. STOP is always clickable, even mid-jump, so the player
+     can take back manual control "at any time" as requested. -->
+<div class="hud" id="autopilotBanner">
+  <span id="autopilotBannerLabel">AUTOPILOT ENGAGING</span>
+  <button class="clickable" id="btnStopAutopilot">STOP AUTOPILOT</button>
 </div>
 
 <div class="hud" id="targetPanel">
@@ -1749,9 +1842,9 @@
 // compatibility depends on it. Add new keys, don't rename old ones.
 
 // ---------- version / build info (shown in the ESC settings menu) ----------
-const GAME_VERSION = "0.16.0";
+const GAME_VERSION = "0.17.0";
 const GAME_LAST_EDITED = "2026-09-23";
-const GAME_BUILD_TIME = "16:20 PT"; // wall-clock time this build was published, not just the date
+const GAME_BUILD_TIME = "16:42 PT"; // wall-clock time this build was published, not just the date
 
 // ---------- update-available banner ----------
 // Periodically re-fetches this very page (same-origin -- works identically whether
@@ -7018,17 +7111,33 @@ document.getElementById('btnAuctionList').addEventListener('click', async ()=>{
   if(qty <= 0 || have < qty){ flashMessage('NOT ENOUGH CARGO TO LIST', 'warn'); return; }
   if(bountyCredits < AUCTION_LISTING_FEE){ flashMessage('NOT ENOUGH CREDITS FOR LISTING FEE', 'warn'); return; }
   const def = itemDisplayDef(itemType);
-  removeFromCargo(itemType, qty);
-  bountyCredits -= AUCTION_LISTING_FEE;
-  addLedgerEntry(-AUCTION_LISTING_FEE, 'Auction listing fee (' + def.label + ')');
   const listing = {
     id: 'lst_' + Date.now() + '_' + Math.floor(Math.random()*100000),
     server: currentServer, station_id: dockedStation.id,
     seller_id: currentUser.id, seller_name: mpIdentity ? mpIdentity.name : 'UNKNOWN',
     item_key: itemType, qty, price, created_at: new Date().toISOString()
   };
-  try{ await supabaseClient.from('auction_listings').upsert(listing, { onConflict:'id' }); }
-  catch(e){ console.warn('auction list exception', e); }
+  // item (bugfix): the item used to be pulled out of cargo (and the listing fee
+  // charged) BEFORE the insert even ran, with the insert's own `error` never
+  // checked -- any failure (most commonly RLS rejecting the insert because
+  // currentUser.id/auth.uid() had drifted apart, or a network hiccup) silently
+  // destroyed the item with no listing ever created anywhere to show for it.
+  // Now: attempt the insert FIRST, check its `error`, and only touch cargo/
+  // credits once the listing is confirmed to actually exist server-side.
+  let insertError = null;
+  try{
+    const { error } = await supabaseClient.from('auction_listings').upsert(listing, { onConflict:'id' });
+    insertError = error || null;
+  }catch(e){ insertError = e; }
+  if(insertError){
+    console.warn('auction list failed', insertError);
+    flashMessage('LISTING FAILED — ITEM NOT REMOVED', 'warn');
+    logEvent('AUCTION: LISTING FAILED (' + (insertError.message || 'unknown error') + ') — CARGO UNCHANGED', 'warn');
+    return;
+  }
+  removeFromCargo(itemType, qty);
+  bountyCredits -= AUCTION_LISTING_FEE;
+  addLedgerEntry(-AUCTION_LISTING_FEE, 'Auction listing fee (' + def.label + ')');
   flashMessage('LISTED ' + qty + 'x ' + def.label.toUpperCase() + ' FOR ' + price + ' CR', 'good');
   logEvent('AUCTION: LISTED ' + qty + 'x ' + def.label.toUpperCase() + ' FOR ' + price + ' CR (-1 CR LISTING FEE)', 'good');
   updateCargoUI();
@@ -7052,8 +7161,21 @@ async function handleAuctionGridClick(e){
     const weightNeeded = listing.qty * itemWeight(listing.item_key);
     if(weightNeeded > cargoRemainingCapacity()){ flashMessage('CARGO HOLD FULL', 'warn'); return; }
     const def = itemDisplayDef(listing.item_key);
-    try{ await supabaseClient.from('auction_listings').delete().eq('id', listing.id); }
-    catch(e){ console.warn('auction buy delete exception', e); }
+    // item (bugfix, same class as the listing bug above): confirm the delete
+    // actually succeeded server-side before charging credits/handing over cargo --
+    // otherwise a failed delete (RLS hiccup, network error, or someone else already
+    // bought it a moment earlier) could debit the buyer for a listing that either
+    // never leaves the board or was already gone.
+    let deleteError = null;
+    try{ const { error } = await supabaseClient.from('auction_listings').delete().eq('id', listing.id); deleteError = error || null; }
+    catch(e){ deleteError = e; }
+    if(deleteError){
+      console.warn('auction buy delete failed', deleteError);
+      flashMessage('PURCHASE FAILED — TRY AGAIN', 'warn');
+      logEvent('AUCTION: PURCHASE FAILED (' + (deleteError.message || 'unknown error') + ')', 'warn');
+      await syncAuctionListingsOnDock(dockedStation);
+      return;
+    }
     const tax = Math.ceil(listing.price * STATION_SALES_TAX);
     const sellerProceeds = listing.price - tax;
     bountyCredits -= listing.price;
@@ -7076,8 +7198,16 @@ async function handleAuctionGridClick(e){
     const id = cancelBtn.dataset.auctionCancel;
     const listing = auctionListingsCache.find(l=>l.id === id) || auctionMyListingsCache.find(l=>l.id === id);
     if(!listing || !currentUser || listing.seller_id !== currentUser.id) return;
-    try{ await supabaseClient.from('auction_listings').delete().eq('id', listing.id); }
-    catch(e){ console.warn('auction cancel exception', e); }
+    let cancelError = null;
+    try{ const { error } = await supabaseClient.from('auction_listings').delete().eq('id', listing.id); cancelError = error || null; }
+    catch(e){ cancelError = e; }
+    if(cancelError){
+      console.warn('auction cancel failed', cancelError);
+      flashMessage('CANCEL FAILED — TRY AGAIN', 'warn');
+      logEvent('AUCTION: CANCEL FAILED (' + (cancelError.message || 'unknown error') + ')', 'warn');
+      await syncAuctionListingsOnDock(dockedStation);
+      return;
+    }
     // items always return to YOUR ship's cargo hold right now, even if this
     // listing was posted at a different station than the one you're docked at
     // -- cargo isn't location-specific, so there's nothing to reconcile
@@ -8972,18 +9102,27 @@ function refreshServerPanel(){
   if(!panel || !panel.classList.contains('show')) return;
   if(serverTab === 'online'){
     const list = document.getElementById('serverOnlineList');
-    const ids = Object.keys(serverRoster).filter(id=> id !== (mpIdentity && mpIdentity.id));
+    // item: the player should see themselves listed too (previously deliberately
+    // filtered out) -- self is now included and sorted to the top with a "(YOU)"
+    // tag instead of being hidden, since trackServerRosterPresence() already tracks
+    // (and rebuildServerRosterFromPresenceState already stores) our own entry
+    const selfId = mpIdentity && mpIdentity.id;
+    const ids = Object.keys(serverRoster).sort((a,b)=> (a===selfId ? -1 : b===selfId ? 1 : 0));
     if(ids.length === 0){
-      list.innerHTML = '<div class="ledgerEmpty">NO ONE ELSE ONLINE RIGHT NOW</div>';
+      list.innerHTML = '<div class="ledgerEmpty">NO ONE ONLINE RIGHT NOW</div>';
     } else {
       // player names are already restricted to [A-Z0-9_-] by sanitizeCallsignInput
       // (or the fixed GUEST-#### template for guests), so no HTML escaping needed here
       list.innerHTML = ids.map(id=>{
         const p = serverRoster[id];
-        return '<div class="prow clickable" data-roster-id="' + id + '" style="cursor:pointer;"><span>' + (p.name || '???') + '</span><span>LV ' + (p.level||1) + '</span></div>';
+        const isSelf = id === selfId;
+        return '<div class="prow' + (isSelf ? '' : ' clickable') + '" data-roster-id="' + id + '"' + (isSelf ? '' : ' style="cursor:pointer;"') +
+          '><span>' + (p.name || '???') + (isSelf ? ' <span style="color:var(--phosphor-dim);">(YOU)</span>' : '') + '</span><span>LV ' + (p.level||1) + '</span></div>';
       }).join('');
       list.querySelectorAll('[data-roster-id]').forEach(row=>{
-        row.addEventListener('click', ()=> openProfilePanel(serverRoster[row.getAttribute('data-roster-id')]));
+        const id = row.getAttribute('data-roster-id');
+        if(id === selfId) return; // no point opening a profile popup on yourself
+        row.addEventListener('click', ()=> openProfilePanel(serverRoster[id]));
       });
     }
   } else {
@@ -9235,6 +9374,352 @@ function updateStarMapCharge(dt){
 document.getElementById('btnStarMap').addEventListener('click', ()=> toggleStarMapPanel());
 document.getElementById('btnCloseStarMap').addEventListener('click', ()=> toggleStarMapPanel(false));
 
+// ---------- universe map (full galaxy-graph view) + autopilot ----------
+// NAMING STABILITY: none of this introduces any persisted save-data fields --
+// autopilot state is purely transient/in-memory (never saved), so nothing here
+// needs to follow the item-key/entry-type naming-stability rule.
+
+// one shared unordered-pair edge list built from the real physical gate network
+// (ALL_GATES) -- used by both the universe map's line-drawing and the autopilot
+// pathfinder below, so the two always agree with each other and with what
+// doWarp()/startWarpSequence() can actually fly through.
+function buildGateEdges(){
+  const seen = {};
+  const edges = [];
+  ALL_GATES.forEach(g=>{
+    if(!g.pairGate) return;
+    const a = g.zoneKey, b = g.pairGate.zoneKey;
+    const k = a < b ? a + '|' + b : b + '|' + a;
+    if(seen[k]) return;
+    seen[k] = true;
+    edges.push({ a, b, gateAtoB: g, gateBtoA: g.pairGate, intergalaxy: !!g.linksToGalaxy });
+  });
+  return edges;
+}
+// this galaxy's own zone tier, normalized across Galaxy A's hand-written entries
+// (which never got a .tier field -- see STAR_MAP_ZONES, lines ~8853-8856) and the
+// generated B/C/D entries (which do carry z.tier). 'belt' reads as Galaxy A's
+// yellow/mild-risk tier, matching STAR_MAP_TIER_COLOR's own convention.
+function universeZoneTier(z){
+  if(z.tier) return z.tier;
+  if(z.key === 'belt') return 'yellow';
+  if(z.key === 'station' || z.key === 'green' || z.key === 'red') return z.key === 'station' ? 'station' : z.key;
+  return 'station';
+}
+function universeZoneIsPort(z){ return STATIONS.some(s=> s.zoneKey === z.key); }
+
+// ---- pathfinding: shortest-weight route across the whole known galaxy graph ----
+// Physical gate hops (weight 1) are always preferred; a same-galaxy "long-range
+// star-map warp" hop (weight 4, reusing beginStarMapWarp's existing 15s-charge
+// mechanic) fills in the zones that have no physical gate of their own at all
+// (Galaxy B's red zone, C's yellow zone, D's yellow zone -- see the research notes
+// in this section's comments elsewhere) so every zone in STAR_MAP_ZONES is always
+// reachable from anywhere.
+function buildAutopilotGraph(){
+  const graph = {};
+  function addEdge(from, to, edge){ (graph[from] = graph[from] || []).push(Object.assign({ to }, edge)); }
+  buildGateEdges().forEach(e=>{
+    addEdge(e.a, e.b, { type:'gate', gate: e.gateAtoB, weight:1 });
+    addEdge(e.b, e.a, { type:'gate', gate: e.gateBtoA, weight:1 });
+  });
+  const byGalaxy = {};
+  STAR_MAP_ZONES.forEach(z=> (byGalaxy[z.galaxy] = byGalaxy[z.galaxy] || []).push(z.key));
+  Object.values(byGalaxy).forEach(keys=>{
+    keys.forEach(a=> keys.forEach(b=>{
+      if(a === b) return;
+      addEdge(a, b, { type:'starmap', weight:4 });
+    }));
+  });
+  return graph;
+}
+function computeAutopilotRoute(fromKey, toKey){
+  if(fromKey === toKey) return [];
+  const graph = buildAutopilotGraph();
+  const keys = STAR_MAP_ZONES.map(z=>z.key);
+  const dist = {}, prev = {}, visited = {};
+  keys.forEach(k=> dist[k] = Infinity);
+  dist[fromKey] = 0;
+  for(let iter=0; iter<keys.length; iter++){
+    let u = null, best = Infinity;
+    keys.forEach(k=>{ if(!visited[k] && dist[k] < best){ best = dist[k]; u = k; } });
+    if(u === null) break;
+    visited[u] = true;
+    if(u === toKey) break;
+    (graph[u] || []).forEach(e=>{
+      const nd = dist[u] + e.weight;
+      if(nd < dist[e.to]){ dist[e.to] = nd; prev[e.to] = { from:u, edge:e }; }
+    });
+  }
+  if(dist[toKey] === Infinity || !prev[toKey]) return null;
+  const legs = [];
+  let cur = toKey;
+  while(cur !== fromKey){
+    const pe = prev[cur];
+    if(!pe) return null;
+    legs.unshift({ type:pe.edge.type, gate:pe.edge.gate, zoneKey:cur });
+    cur = pe.from;
+  }
+  return legs;
+}
+
+// ---- autopilot execution ----
+const AUTOPILOT_COUNTDOWN = 5;
+let autopilot = null; // { legs, legIndex, phase:'countdown'|'leg-active', countdownTimer, destKey, destLabel }
+function autopilotActive(){ return !!autopilot; }
+function startAutopilotTo(destZoneKey){
+  if(autopilot) return;
+  if(inputLocked()){ flashMessage('CANNOT ENGAGE AUTOPILOT RIGHT NOW', 'warn'); return; }
+  const destZone = STAR_MAP_ZONES.find(z=>z.key === destZoneKey);
+  if(!destZone) return;
+  const fromKey = currentZoneKey();
+  if(fromKey === destZoneKey){ flashMessage('ALREADY AT DESTINATION', 'warn'); return; }
+  const legs = computeAutopilotRoute(fromKey, destZoneKey);
+  if(!legs || !legs.length){ flashMessage('NO AUTOPILOT ROUTE FOUND', 'warn'); return; }
+  autopilot = { legs, legIndex:0, phase:'countdown', countdownTimer: AUTOPILOT_COUNTDOWN, destKey:destZoneKey, destLabel:destZone.label };
+  toggleUniverseMapPanel(false);
+  toggleStarMapPanel(false);
+  setThrottle(1.0);
+  updateAutopilotBanner();
+  logEvent('AUTOPILOT SET — DESTINATION: ' + destZone.label.toUpperCase() + ' (' + legs.length + ' JUMP' + (legs.length>1?'S':'') + ')', 'good');
+  zoneMessage('AUTOPILOT ENGAGING — ' + AUTOPILOT_COUNTDOWN + 's', 'good');
+}
+function cancelAutopilot(reason){
+  if(!autopilot) return;
+  autopilot = null;
+  if(starMapCharge) cancelStarMapWarp();
+  if(warpSequence){
+    // a committed mid-jump flash (phase 'jump') is just aborted outright rather
+    // than left to finish -- reset the FX it was mid-way through animating so
+    // stopping autopilot never leaves the camera/starfield stuck mid-punch
+    if(warpSequence.phase === 'jump'){
+      camera.fov = CAMERA_BASE_FOV;
+      camera.updateProjectionMatrix();
+      if(starField1) starField1.material.size = 0.65;
+      if(starField2) starField2.material.size = 0.95;
+      const flashEl = document.getElementById('warpFlash');
+      if(flashEl) flashEl.style.opacity = '0';
+    }
+    warpSequence = null;
+    setCommand('idle');
+  }
+  updateAutopilotBanner();
+  logEvent('AUTOPILOT DISENGAGED' + (reason ? ' — ' + reason : ''), 'warn');
+  zoneMessage('AUTOPILOT DISENGAGED', 'warn');
+}
+function updateAutopilotBanner(){
+  const bannerEl = document.getElementById('autopilotBanner');
+  const labelEl = document.getElementById('autopilotBannerLabel');
+  if(!bannerEl) return;
+  if(!autopilot){ bannerEl.classList.remove('show'); return; }
+  bannerEl.classList.add('show');
+  if(!labelEl) return;
+  labelEl.textContent = autopilot.phase === 'countdown'
+    ? 'AUTOPILOT ENGAGING — ' + autopilot.destLabel.toUpperCase() + ' — ' + Math.ceil(autopilot.countdownTimer) + 's'
+    : 'AUTOPILOT — ' + autopilot.destLabel.toUpperCase() + ' — JUMP ' + (autopilot.legIndex+1) + '/' + autopilot.legs.length;
+}
+function beginAutopilotLeg(){
+  const leg = autopilot.legs[autopilot.legIndex];
+  autopilot.phase = 'leg-active';
+  if(leg.type === 'gate'){
+    startWarpSequence(leg.gate);
+  } else {
+    const zoneDef = STAR_MAP_ZONES.find(z=>z.key === leg.zoneKey);
+    if(zoneDef) beginStarMapWarp(zoneDef);
+  }
+  updateAutopilotBanner();
+}
+// called every frame from animate() -- a no-op whenever autopilot is null
+function updateAutopilot(dt){
+  if(!autopilot) return;
+  if(autopilot.phase === 'countdown'){
+    autopilot.countdownTimer -= dt;
+    updateAutopilotBanner();
+    if(autopilot.countdownTimer <= 0) beginAutopilotLeg();
+    return;
+  }
+  // 'leg-active': wait for whichever mechanism the current leg is using (a
+  // physical-gate startWarpSequence, or a long-range beginStarMapWarp charge --
+  // both ultimately funnel through warpSequence's 'jump' phase and doWarp()) to
+  // fully clear before advancing, since both null out warpSequence/starMapCharge
+  // themselves right when the jump actually lands
+  if(!warpSequence && !starMapCharge){
+    autopilot.legIndex++;
+    if(autopilot.legIndex >= autopilot.legs.length){
+      const label = autopilot.destLabel;
+      autopilot = null;
+      updateAutopilotBanner();
+      logEvent('AUTOPILOT — ARRIVED AT ' + label.toUpperCase(), 'good');
+      zoneMessage('AUTOPILOT — ARRIVED AT DESTINATION', 'good');
+    } else {
+      beginAutopilotLeg();
+    }
+  }
+}
+document.getElementById('btnStopAutopilot').addEventListener('click', ()=> cancelAutopilot('MANUAL STOP'));
+
+// ---- universe map rendering ----
+// per-galaxy hub placement, arranged in a ring matching the real inter-galaxy gate
+// topology (A<->B<->C<->D<->A -- see the ring-link comments above ALL_GATES'
+// construction) so the drawn connections never have to cross the canvas
+const UNIVERSE_GALAXY_ANGLE = { A:-90, B:0, C:90, D:180 }; // degrees, 0=+x, clockwise
+let universeMapLayout = null; // cached {zoneKey: {x,y,zone}} in canvas-local units, rebuilt on each render
+let universeMapHexR = 24;     // hex radius used by the same render, kept in sync for hit-testing
+function computeUniverseMapLayout(w, h){
+  const cx = w/2, cy = h/2;
+  const hubR = Math.min(w,h) * 0.30;
+  const clusterR = Math.min(w,h) * 0.115;
+  const layout = {};
+  GALAXY_KEYS.forEach(g=>{
+    const ang = UNIVERSE_GALAXY_ANGLE[g] * Math.PI/180;
+    const hubX = cx + Math.cos(ang)*hubR, hubY = cy + Math.sin(ang)*hubR;
+    const zones = starMapZonesInGalaxy(g);
+    const station = zones.find(z=> universeZoneTier(z) === 'station');
+    const others = zones.filter(z=> z !== station);
+    if(station) layout[station.key] = { x:hubX, y:hubY, zone:station };
+    // 3 remaining zones (green/yellow/red) at 120°-apart points around the hub,
+    // rotated so they fan out AWAY from the canvas center (looks tidier than a
+    // fixed absolute rotation regardless of which ring position this galaxy is at)
+    const outward = Math.atan2(hubY-cy, hubX-cx);
+    others.forEach((z,i)=>{
+      const a = outward + (i - (others.length-1)/2) * (Math.PI/2.6);
+      layout[z.key] = { x: hubX + Math.cos(a)*clusterR, y: hubY + Math.sin(a)*clusterR, zone:z };
+    });
+  });
+  return layout;
+}
+function universeMapHexPath(ctx, x, y, r){
+  ctx.beginPath();
+  for(let i=0;i<6;i++){
+    const a = Math.PI/6 + i*Math.PI/3; // pointy-top hex
+    const px = x + r*Math.cos(a), py = y + r*Math.sin(a);
+    if(i===0) ctx.moveTo(px,py); else ctx.lineTo(px,py);
+  }
+  ctx.closePath();
+}
+function renderUniverseMap(){
+  const canvas = document.getElementById('universeMapCanvas');
+  if(!canvas) return;
+  const wrap = canvas.parentElement;
+  const w = Math.max(200, wrap.clientWidth - 4), h = Math.max(200, canvas.clientHeight || wrap.clientHeight - 90);
+  const dpr = window.devicePixelRatio || 1;
+  canvas.width = w*dpr; canvas.height = h*dpr;
+  canvas.style.width = w+'px'; canvas.style.height = h+'px';
+  const ctx = canvas.getContext('2d');
+  ctx.setTransform(dpr,0,0,dpr,0,0);
+  ctx.clearRect(0,0,w,h);
+  const layout = computeUniverseMapLayout(w,h);
+  universeMapLayout = layout;
+  const curKey = currentZoneKey();
+  const hexR = Math.max(18, Math.min(w,h) * 0.032);
+  universeMapHexR = hexR;
+  // gate edges (solid = real physical connection, brighter/thicker = inter-galaxy)
+  const drawnGalaxyHubLinks = {};
+  buildGateEdges().forEach(e=>{
+    const pa = layout[e.a], pb = layout[e.b];
+    if(!pa || !pb) return;
+    ctx.beginPath();
+    ctx.moveTo(pa.x, pa.y); ctx.lineTo(pb.x, pb.y);
+    ctx.strokeStyle = e.intergalaxy ? '#6dffc2' : 'rgba(109,255,194,0.55)';
+    ctx.lineWidth = e.intergalaxy ? 2.4 : 1.6;
+    ctx.stroke();
+  });
+  // dashed lines: same-galaxy zones with NO physical gate of their own at all,
+  // shown running back to their galaxy's station hex, to indicate "still in this
+  // system, reachable via a long-range star-map warp" rather than leaving them
+  // floating with no connection drawn at all
+  const gateZoneSet = {};
+  buildGateEdges().forEach(e=>{ gateZoneSet[e.a]=true; gateZoneSet[e.b]=true; });
+  GALAXY_KEYS.forEach(g=>{
+    const zones = starMapZonesInGalaxy(g);
+    const station = zones.find(z=> universeZoneTier(z) === 'station');
+    if(!station) return;
+    zones.forEach(z=>{
+      if(z === station || gateZoneSet[z.key]) return;
+      const pa = layout[station.key], pb = layout[z.key];
+      if(!pa || !pb) return;
+      ctx.save();
+      ctx.setLineDash([4,5]);
+      ctx.beginPath();
+      ctx.moveTo(pa.x, pa.y); ctx.lineTo(pb.x, pb.y);
+      ctx.strokeStyle = 'rgba(109,255,194,0.3)';
+      ctx.lineWidth = 1.2;
+      ctx.stroke();
+      ctx.restore();
+    });
+  });
+  // hexes
+  ctx.font = (hexR*0.42) + 'px "VT323",monospace';
+  ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  Object.keys(layout).forEach(key=>{
+    const p = layout[key];
+    const isCurrent = key === curKey;
+    universeMapHexPath(ctx, p.x, p.y, hexR);
+    ctx.fillStyle = p.zone.color + (isCurrent ? 'cc' : '55');
+    ctx.fill();
+    ctx.lineWidth = isCurrent ? 3 : 1.4;
+    ctx.strokeStyle = isCurrent ? '#ffffff' : 'rgba(255,255,255,0.5)';
+    ctx.stroke();
+    if(universeZoneIsPort(p.zone)){
+      ctx.fillStyle = '#001108';
+      ctx.fillText('P', p.x, p.y - hexR*0.1);
+    } else if(isCurrent){
+      ctx.fillStyle = '#001108';
+      ctx.fillText('★', p.x, p.y - hexR*0.1);
+    }
+  });
+  // galaxy name labels, above each hub
+  ctx.font = (hexR*0.36) + 'px "VT323",monospace';
+  ctx.fillStyle = '#ffb020';
+  GALAXY_KEYS.forEach(g=>{
+    const zones = starMapZonesInGalaxy(g);
+    const station = zones.find(z=> universeZoneTier(z) === 'station');
+    const p = station ? layout[station.key] : null;
+    if(!p) return;
+    ctx.fillText(GALAXY_DEFS[g].name.toUpperCase(), p.x, p.y - hexR - 10);
+  });
+  // zone labels, below each hex
+  ctx.font = (hexR*0.26) + 'px "Share Tech Mono",monospace';
+  ctx.fillStyle = 'rgba(255,255,255,0.85)';
+  Object.keys(layout).forEach(key=>{
+    const p = layout[key];
+    const short = p.zone.label.split(' — ')[0].split(' (')[0];
+    ctx.fillText(short, p.x, p.y + hexR + 9);
+  });
+}
+function universeMapZoneAt(px, py){
+  if(!universeMapLayout) return null;
+  let bestKey = null, bestD = Infinity;
+  Object.keys(universeMapLayout).forEach(key=>{
+    const p = universeMapLayout[key];
+    const d = Math.hypot(p.x-px, p.y-py);
+    if(d < bestD){ bestD = d; bestKey = key; }
+  });
+  // a little generous beyond the drawn hex radius so edge clicks still register
+  return (bestKey && bestD < universeMapHexR*1.15) ? bestKey : null;
+}
+function toggleUniverseMapPanel(show){
+  const panel = document.getElementById('universeMapPanel');
+  if(!panel) return;
+  const willShow = show !== undefined ? show : !panel.classList.contains('show');
+  panel.classList.toggle('show', willShow);
+  if(willShow) requestAnimationFrame(renderUniverseMap);
+}
+document.getElementById('btnOpenUniverseMap').addEventListener('click', ()=>{ toggleStarMapPanel(false); toggleUniverseMapPanel(true); });
+document.getElementById('btnCloseUniverseMap').addEventListener('click', ()=> toggleUniverseMapPanel(false));
+document.getElementById('universeMapCanvas').addEventListener('click', (e)=>{
+  const canvas = e.currentTarget;
+  const rect = canvas.getBoundingClientRect();
+  const px = e.clientX - rect.left, py = e.clientY - rect.top;
+  const key = universeMapZoneAt(px, py);
+  if(!key) return;
+  if(key === currentZoneKey()){ flashMessage('ALREADY THERE', 'warn'); return; }
+  startAutopilotTo(key);
+});
+window.addEventListener('resize', ()=>{
+  const panel = document.getElementById('universeMapPanel');
+  if(panel && panel.classList.contains('show')) renderUniverseMap();
+});
+
 // ---------- "unidentified" ship display names ----------
 // generic helper: any hostile ship-type contact (pirates today; structured generically
 // so a future ship type could reuse it) reads as "Unidentified Ship" until the player
@@ -9377,10 +9862,16 @@ function targetIsReady(entry){
   return entry.type === 'wreck' || entry.type === 'station' || entry.type === 'gate' || entry.type === 'asteroid' || entry.type === 'cargopod' || entry.type === 'debris' || lockedId === entry.id;
 }
 document.getElementById('btnApproach').addEventListener('click', ()=>{
+  // any manual flight command button doubles as "take back control" while
+  // autopilot is active but between legs (mid-leg it's already blocked by
+  // inputLocked() below, same as every other cinematic in this game) -- see
+  // the "---------- autopilot ----------" JS section
+  if(autopilot){ cancelAutopilot('MANUAL OVERRIDE'); return; }
   if(inputLocked()) return;
   if(targetIsReady(selected)) setCommand('approach_target', { target: selected });
 });
 document.getElementById('btnOrbit').addEventListener('click', ()=>{
+  if(autopilot){ cancelAutopilot('MANUAL OVERRIDE'); return; }
   if(inputLocked()) return;
   if(targetIsReady(selected)){
     // for a mineable asteroid, clamp the orbit standoff so it always stays within
@@ -9393,6 +9884,7 @@ document.getElementById('btnOrbit').addEventListener('click', ()=>{
   }
 });
 document.getElementById('btnKeepRange').addEventListener('click', ()=>{
+  if(autopilot){ cancelAutopilot('MANUAL OVERRIDE'); return; }
   if(inputLocked()) return;
   if(targetIsReady(selected)){
     const wantOffset = (selected.type === 'asteroid') ? Math.min(700, MINING_RANGE - 40) : 700;
@@ -9616,6 +10108,7 @@ function updatePlayerMining(dt){
 // scripted docking-approach / warp-jump cinematics
 function inputLocked(){ return docked || !!dockingSequence || !!warpSequence || !!starMapCharge || inspecting || settingsMenuOpen || playerStunned > 0; }
 document.getElementById('btnWarp').addEventListener('click', ()=>{
+  if(autopilot){ cancelAutopilot('MANUAL OVERRIDE'); return; }
   if(inputLocked()) return;
   if(!selected || selected.type!=='gate') return;
   const dist = shipState.pos.distanceTo(selected.mesh.position) - selected.radius;
@@ -9630,6 +10123,7 @@ document.getElementById('btnWarp').addEventListener('click', ()=>{
   startWarpSequence(selected);
 });
 document.getElementById('btnDock').addEventListener('click', ()=>{
+  if(autopilot){ cancelAutopilot('MANUAL OVERRIDE'); return; }
   if(inputLocked()) return;
   if(!selected || selected.type!=='station') return;
   const dist = shipState.pos.distanceTo(selected.mesh.position) - selected.radius;
@@ -9637,6 +10131,7 @@ document.getElementById('btnDock').addEventListener('click', ()=>{
   startDockingSequence(selected);
 });
 document.getElementById('btnStop').addEventListener('click', ()=>{
+  if(autopilot){ cancelAutopilot('MANUAL STOP'); return; }
   if(inputLocked()) return;
   setCommand('idle');
 });
@@ -10782,7 +11277,7 @@ function joinChatChannel(){
   const ch = supabaseClient.channel('chat:' + currentServer, { config:{ broadcast:{ self:false }, presence:{ key: mpIdentity.id } } });
   ch.on('broadcast', { event:'chat' }, (msg)=>{
     const p = msg.payload || {};
-    if(p.text) logEvent('[ALL][' + (p.name || '???') + ']: ' + p.text, 'chat');
+    if(p.text) logEvent('[ALL][' + (p.name || '???') + ']: ' + p.text, 'chat-all');
   });
   ch.on('broadcast', { event:'whisper' }, (msg)=>{
     const p = msg.payload || {};
@@ -10792,7 +11287,7 @@ function joinChatChannel(){
     // transport-encrypted, same tradeoff as every other broadcast in this game.
     if(!p.text || !p.toName || !mpIdentity) return;
     if(p.toName.toUpperCase() !== mpIdentity.name.toUpperCase()) return;
-    logEvent('[WHISPER FROM ' + (p.fromName || '???') + ']: ' + p.text, 'chat');
+    logEvent('[WHISPER FROM ' + (p.fromName || '???') + ']: ' + p.text, 'chat-whisper');
   });
   // server-wide presence -- powers the SERVER popup's ONLINE list/profiles. Synced
   // wholesale on 'sync' (covers initial join and any missed join/leave events) plus
@@ -10820,18 +11315,18 @@ function sendChatMessage(rawText){
   if(whisperMatch){
     const toName = whisperMatch[1];
     const body = whisperMatch[2];
-    logEvent('[YOU → ' + toName.toUpperCase() + ']: ' + body, 'chat');
+    logEvent('[YOU → ' + toName.toUpperCase() + ']: ' + body, 'chat-whisper');
     if(mpChatChannel && mpIdentity) mpChatChannel.send({ type:'broadcast', event:'whisper', payload:{ toName, fromName: mpIdentity.name, text: body } });
     return;
   }
   const allMatch = text.match(/^\/a\s+([\s\S]+)$/i);
   if(allMatch){
     const body = allMatch[1];
-    logEvent('[ALL][YOU]: ' + body, 'chat');
+    logEvent('[ALL][YOU]: ' + body, 'chat-all');
     if(mpChatChannel && mpIdentity) mpChatChannel.send({ type:'broadcast', event:'chat', payload:{ name: mpIdentity.name, text: body, scope:'all' } });
     return;
   }
-  logEvent('[YOU]: ' + text, 'chat');
+  logEvent('[YOU]: ' + text, 'chat-zone');
   if(mpZoneChannel && mpIdentity) mpZoneChannel.send({ type:'broadcast', event:'chat', payload:{ name: mpIdentity.name, text } });
 }
 
@@ -10876,7 +11371,7 @@ function joinZoneChannel(zoneKey){
   // /a (all-zone) and /w (whisper), which go over the separate server-wide channel.
   ch.on('broadcast', { event:'chat' }, (msg)=>{
     const p = msg.payload || {};
-    if(p.text) logEvent('[' + (p.name || '???') + ']: ' + p.text, 'chat');
+    if(p.text) logEvent('[' + (p.name || '???') + ']: ' + p.text, 'chat-zone');
   });
   // achievement unlocks are zone-local news, same as "X HAS ENTERED THE ZONE" --
   // only players currently sharing this zone channel see another pilot's medal
@@ -11207,6 +11702,14 @@ function logEvent(text, type){
   const row = document.createElement('div');
   if(type==='warn') row.style.color = 'var(--danger)';
   else if(type==='good') row.style.color = 'var(--xp)';
+  // chat messages get both the shared bold .chatLine treatment AND a type-specific
+  // color so zone chat / all-server chat / whispers all read as visually distinct
+  // at a glance (see the .chatLine.* CSS rules) -- plain 'chat' (no sub-type) is
+  // kept as a fallback so any not-yet-updated call site still renders instead of
+  // silently breaking
+  else if(type==='chat-zone'){ row.classList.add('chatLine','chatZone'); }
+  else if(type==='chat-all'){ row.classList.add('chatLine','chatAll'); }
+  else if(type==='chat-whisper'){ row.classList.add('chatLine','chatWhisper'); }
   else if(type==='chat') row.classList.add('chatLine');
   const now = new Date();
   const hh = String(now.getHours()).padStart(2,'0');
@@ -11901,6 +12404,14 @@ function damagePlayer(dmg, source){
     setCommand('idle');
     weaponsFree = false;
     miningActive = false; miningTarget = null;
+    // item: a hull breach can land mid-autopilot-flight -- without this, clearing
+    // warpSequence/starMapCharge just below (to abandon the cinematic) would look
+    // indistinguishable from a normal completed leg to updateAutopilot()'s own
+    // "warpSequence just went null" detection, so it would wrongly declare
+    // "ARRIVED" at the intended destination even though the ship actually died and
+    // respawned in an escape pod wherever it happened to be at the time.
+    if(autopilot) cancelAutopilot('SHIP DESTROYED');
+    if(starMapCharge){ starMapCharge = null; disposeWarpChargeGlow(); const bnr = document.getElementById('starMapCharge'); if(bnr) bnr.classList.remove('show'); }
     // a hull breach can land mid-way through a docking/warp cinematic -- abandon it
     // cleanly rather than leaving a shrunk ship or a stuck flash overlay behind
     if(dockingSequence || warpSequence){
@@ -13622,6 +14133,13 @@ function animate(){
   } else {
     speed = updateShip(dt);
   }
+  // runs every frame regardless of which branch above fired -- during 'countdown'
+  // it's a no-op on ship physics (whatever command was already active just keeps
+  // running via updateShip(dt) above), during 'leg-active' it's just watching
+  // warpSequence/starMapCharge (already being driven by their own branches above)
+  // to know when to kick off the next leg. See the "---------- autopilot
+  // ----------" JS section.
+  updateAutopilot(dt);
   const uiLocked = seqActive || !!starMapCharge || inspecting || !!inspectTransition || settingsMenuOpen || playerStunned > 0;
   const cmdRowEl = document.getElementById('cmdRow');
   if(cmdRowEl){
