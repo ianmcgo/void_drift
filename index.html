@@ -443,9 +443,26 @@
   #dockedPanel{
     display:none;
     top:50%; left:50%; transform:translate(-50%,-50%);
-    width:min(92vw,440px); max-height:90vh; overflow-y:auto;
+    /* item: widened a bit from 440px so the compacted 3-column main menu grid (see
+       .dockMainGrid below) has room to read cleanly without needing to scroll */
+    width:min(94vw,560px); max-height:90vh; overflow-y:auto;
     background:var(--panel-bg); border:1px solid var(--panel-border);
     padding:20px 24px 22px; text-align:center; pointer-events:auto;
+  }
+  /* item: compact multi-column grid for the station's main docked menu (was a single
+     tall column requiring scroll to see every option) -- same buttons, denser layout.
+     Only #dockMainPanel's own .dbtns gets this (via the extra .dockMainGrid class);
+     every other .dbtns usage elsewhere in the file (sub-panel BACK buttons, settings
+     menu, auth panel, etc.) is untouched. */
+  #dockedPanel .dockMainGrid.dbtns{
+    display:grid; grid-template-columns:repeat(3, 1fr); gap:8px;
+  }
+  #dockedPanel .dockMainGrid.dbtns .cmdbtn{
+    font-size:12.5px; padding:10px 6px; line-height:1.25; min-height:44px;
+    display:flex; align-items:center; justify-content:center; text-align:center;
+  }
+  @media (max-width:480px){
+    #dockedPanel .dockMainGrid.dbtns{ grid-template-columns:repeat(2, 1fr); }
   }
   #dockedPanel.show{display:block;}
   #dockedPanel h2{font-family:'VT323',monospace; font-size:28px; letter-spacing:3px; color:var(--amber); margin:0 0 4px; text-shadow:0 0 8px rgba(255,176,32,0.5);}
@@ -806,6 +823,10 @@
   }
   #helpMenu p{font-size:13px; color:var(--phosphor-dim); line-height:1.6; margin:0 0 4px;}
   #helpMenu .dbtns{display:flex; flex-direction:column; gap:10px; margin-top:16px;}
+  /* item: expanded HELP content is now organized under section headers, same visual
+     language as the docking bay/wallet .psection headers elsewhere */
+  #helpMenu .psection{font-size:12px; letter-spacing:1px; color:var(--amber); margin-top:12px; text-align:left;}
+  #helpMenu .keys > div{margin-bottom:4px;}
 
   /* chat input docked to the bottom of the event log panel -- same panel border
      language, styled to look attached rather than floating separately. flex:0 0 auto
@@ -899,6 +920,21 @@
   #btnExitInspect.show{display:block;}
   #btnExitInspect:hover{background:rgba(109,255,194,0.18);}
 
+  /* local physical-gate warp sequence readout (approach + hyperspace-jump cinematic --
+     see startWarpSequence/updateWarpSequence) -- same top-center banner convention as
+     #starMapCharge/#autopilotBanner just below, stacked one row ABOVE them. This is the
+     "warp countdown and information at the top middle of the screen" HUD; warp
+     start/charge/complete no longer write to the event log (see showWarpStatusHud/
+     hideWarpStatusHud/updateWarpStatusHud). */
+  #warpStatusHud{
+    display:none;
+    top:calc(142px + env(safe-area-inset-top,0px)); left:50%; transform:translateX(-50%);
+    font-family:'VT323',monospace; font-size:16px; letter-spacing:1px; color:var(--phosphor);
+    text-shadow:0 0 8px rgba(109,255,194,0.6); background:var(--panel-bg); border:1px solid var(--panel-border);
+    padding:7px 14px; text-align:center; z-index:41; align-items:center; gap:12px; white-space:nowrap;
+  }
+  #warpStatusHud.show{display:flex;}
+
   /* persistent long-range (star-map) warp charge-up readout -- unlike the other
      top-center banners above, this one does NOT fade/auto-hide on a timer: it stays
      up for the full charge duration (visible regardless of whether the star-map popup
@@ -946,6 +982,18 @@
     flex-direction:column;
   }
   #universeMapPanel.show{display:flex;}
+  #universeMapSelectionBar{
+    flex:0 0 auto; margin-top:8px; padding:8px 12px; background:rgba(0,0,0,0.35);
+    border:1px solid var(--panel-border); align-items:center; justify-content:space-between;
+    gap:12px; pointer-events:auto;
+  }
+  #universeMapSelectionName{
+    font-family:'VT323',monospace; font-size:18px; letter-spacing:1px; color:#ffd76d;
+  }
+  #universeMapSelectionHint{
+    font-family:'Share Tech Mono',monospace; font-size:10px; color:var(--phosphor-dim); letter-spacing:1px;
+  }
+  #universeMapSelectionBar button{ flex:0 0 auto; }
   #universeMapPanel .phdr{
     font-family:'VT323',monospace; font-size:22px; letter-spacing:2px; color:var(--amber);
     display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;
@@ -1329,7 +1377,6 @@
   <div id="hullhpbar"><i id="hullHPFill"></i></div>
   <div class="row" style="margin-top:6px;"><span>CARGO</span><span id="cargoWeightRead">0 / 500</span></div>
   <div id="cargoBar"><i id="cargoFill"></i></div>
-  <div class="row" style="margin-top:4px;"><span>KNOWLEDGE</span><span id="knowledgeRead">0</span></div>
   <div class="row clickable" style="margin-top:6px; gap:4px;">
     <button class="cmdbtn" id="btnInventory" style="flex:1; font-size:11px; padding:5px 2px; min-width:0;">CARGO</button>
     <button class="cmdbtn" id="btnEquipment" style="flex:1; font-size:11px; padding:5px 2px; min-width:0;">EQUIPMENT</button>
@@ -1350,10 +1397,13 @@
   </div>
   <div class="row" style="margin-top:6px;"><span>FLIGHT MODE</span><span id="modeRead">DRIFT</span></div>
   <div class="row" style="margin-top:8px;"><span>THROTTLE CAP</span></div>
+  <!-- item: STOP moved here from the target HUD, next to the power/throttle-cap
+       buttons it logically belongs with -->
   <div class="row clickable" style="margin-top:2px; gap:6px;">
     <button class="cmdbtn" id="btnThrottle25" style="flex:1; font-size:12px; padding:5px 4px; min-width:0;">25%</button>
     <button class="cmdbtn" id="btnThrottle50" style="flex:1; font-size:12px; padding:5px 4px; min-width:0;">50%</button>
     <button class="cmdbtn" id="btnThrottleFull" style="flex:1; font-size:12px; padding:5px 4px; min-width:0;">FULL</button>
+    <button class="cmdbtn danger" id="btnStop" style="flex:1; font-size:12px; padding:5px 4px; min-width:0;">STOP</button>
   </div>
 </div>
 
@@ -1416,9 +1466,19 @@
     <span><i class="umSwatch" style="background:#6dffa0;"></i>SAFE</span>
     <span><i class="umSwatch" style="background:#e8c547;"></i>MILD RISK</span>
     <span><i class="umSwatch" style="background:#ff4d4d;"></i>DANGEROUS</span>
-    <span class="umHint">CLICK A SECTOR TO SET AUTOPILOT</span>
+    <span class="umHint">CLICK A SECTOR TO SELECT IT</span>
   </div>
   <canvas id="universeMapCanvas"></canvas>
+  <!-- item 13: selecting a sector (instead of immediately autopiloting to it) shows
+       this bar with its full name and a WARP or AUTOPILOT action button -->
+  <div id="universeMapSelectionBar" style="display:none;">
+    <div>
+      <div id="universeMapSelectionName">—</div>
+      <div id="universeMapSelectionHint">—</div>
+    </div>
+    <button class="cmdbtn" id="btnUniverseMapWarp" style="display:none;">WARP</button>
+    <button class="cmdbtn" id="btnUniverseMapAutopilot" style="display:none;">AUTOPILOT</button>
+  </div>
 </div>
 
 <div class="hud popupPanel" id="serverPanel">
@@ -1445,6 +1505,10 @@
     <!-- (v0.19.2, item 8) BALANCE is shown ONLY while the LEDGER tab is active -- see
          refreshWalletPanel(), which toggles this row's visibility on every tab switch -->
     <div class="prow" id="walletBalanceRow" style="font-size:16px;"><span>BALANCE</span><span id="walletBalanceRead">0 cr</span></div>
+    <!-- item: KNOWLEDGE moved here from the main telemetry HUD -- always visible in
+         the wallet popup header (unlike BALANCE, it's not ledger-tab-gated; Knowledge
+         isn't credits, no reason to hide it behind a tab) -->
+    <div class="prow" id="walletKnowledgeRow" style="font-size:14px;"><span>KNOWLEDGE</span><span id="walletKnowledgeRead">0</span></div>
     <div class="walletTabs">
       <button class="clickable" id="btnWalletTabLedger">LEDGER</button>
       <button class="clickable" id="btnWalletTabStats">STATS</button>
@@ -1573,20 +1637,69 @@
   <h2>HOW TO PLAY</h2>
   <p>Belt Runner-class shuttle, docked at Meridian Station. A warp gate nearby leads out
   to Haven Reach — a safe asteroid field patrolled by the Galactic Navy. Longer-range STAR MAP
-  jumps reach two more zones: the mildly dangerous Kestrel Belt and the deadly Maelstrom, plus
-  wherever the green-zone warp gates physically connect.</p>
+  jumps and AUTOPILOT reach every other zone in the galaxy; physical inter-galaxy gates lead
+  to three more galaxies beyond that.</p>
+
+  <div class="psection" style="margin-top:10px;">CONTROLS</div>
   <div class="keys">
     <div><b>Click/Tap</b> a contact — select &nbsp;&nbsp; <b>Double-click/tap</b> space — approach point</div>
     <div><b>Drag</b> — orbit camera &nbsp;&nbsp; <b>Scroll / Pinch</b> — zoom</div>
     <div><b>Lock</b> target, then <b>Approach / Orbit / Keep Range</b></div>
-    <div><b class="warn">Engage Weapons</b> on locked raiders — your to-hit % grows slowly as you level up</div>
-    <div>Shields regenerate over time (after a few seconds free of fire) — raiders carry none, only hull. Once your own shields collapse, hits start damaging your hull for real</div>
-    <div>Kills leave <b>wreckage</b> to salvage for scrap + a black box. <b>Mine asteroids</b> with a mining laser for ore.</div>
-    <div>Dock at a station to <b>repair hull damage</b>, visit the <b>MARKET</b>/<b>FITTING</b> to buy and equip gear, and take on jobs at the <b>GALACTIC NAVY</b> and <b>MINING CORP</b> offices for credits and reputation.</div>
-    <div>Buy or finance ships at the <b>SHIPYARD</b> — new ships go to storage, where you can board, swap or sell them. The Prospector-class mining ship can mount a mining laser but no weapons; the starter ship is the reverse.</div>
-    <div><b class="warn">Warning:</b> a destroyed hull loses your current XP progress (never a level) and drops you into a weak, unarmed escape pod at the wreck site — board a stored ship or buy a new one at the SHIPYARD to get back in the fight</div>
-    <div>Track reputation, achievements and your ledger from the <b>WALLET</b> popup &nbsp;&nbsp; type in the event log to broadcast a message</div>
+    <div>Set a <b>THROTTLE CAP</b> (25% / 50% / FULL) on the telemetry panel, or hit <b>STOP</b> next to it to kill your velocity</div>
+    <div><b>Esc</b> (or the on-screen <b>SETTINGS</b> button) opens the settings menu / backs out of inspect mode</div>
   </div>
+
+  <div class="psection">DOCKING &amp; STATIONS</div>
+  <div class="keys">
+    <div><b>DOCK</b> once in range of a station to open its docking bay menu — <b>UNDOCK</b> launches you back out near the local gate</div>
+    <div>While docked: <b>REPAIR HULL</b>, sell cargo/ore, browse the <b>MARKET</b>, list/browse the <b>AUCTION HOUSE</b>, refit gear at <b>FITTING</b>, manage the <b>STORAGE</b> hold, buy/finance ships at the <b>SHIPYARD</b>, take a <b>LOAN</b>, queue <b>MANUFACTURING</b> jobs, craft at the <b>LIBRARY</b>, and take contracts from the <b>GALACTIC NAVY</b>, <b>MINING CORP</b> and <b>TRANSPORTATION GUILD</b> offices</div>
+    <div>Every station buys/sells at its own market prices and collects its own small <b>STATION TAX</b> on market trades, auction fees and Library crafting — funding the <b>SECTOR GOVERNMENT</b> panel's tax trust for that station</div>
+    <div>STORAGE and crafting output are <b>per-station</b> — items you bank or craft at one station stay there until you fly back or move them yourself</div>
+  </div>
+
+  <div class="psection">MINING</div>
+  <div class="keys">
+    <div>Equip a <b>Mining Laser</b> at FITTING, lock an asteroid, then hit <b>MINE</b> to extract iron/copper/silver/gold ore into your cargo hold</div>
+    <div>Sell ore at any station's MARKET, or list it on the AUCTION HOUSE — richer ore types are worth more but rarer</div>
+    <div>The Mining Corp office pays contracts for ore turn-ins and builds your reputation there</div>
+  </div>
+
+  <div class="psection">COMBAT</div>
+  <div class="keys">
+    <div><b class="warn">Engage Weapons</b> on a locked hostile — your to-hit % grows slowly as you level combat skills</div>
+    <div>Shields regenerate over time once you're clear of fire for a few seconds — hostiles carry none, only hull. Once your own shields collapse, hits start damaging your hull for real</div>
+    <div>Kills leave <b>wreckage</b> to <b>SALVAGE</b> for scrap + a black box (or, rarely, a captain's black box) — turn these in to the Galactic Navy office, or sell/auction them like any other stored item</div>
+    <div><b class="warn">Warning:</b> a destroyed hull drops you into a weak, unarmed escape pod at the wreck site — board a stored ship or buy a new one at the SHIPYARD to get back in the fight</div>
+  </div>
+
+  <div class="psection">WARP &amp; AUTOPILOT</div>
+  <div class="keys">
+    <div>Fly up to a physical warp gate and hit <b>WARP</b> for a short local jump — a brief alignment + hyperspace cinematic plays before you arrive</div>
+    <div>The <b>STAR MAP</b> panel charges up a slower, longer-range direct warp to any zone in your current galaxy from anywhere — the countdown shows at the top-middle of the screen and can be cancelled any time before it fires</div>
+    <div>The <b>UNIVERSE MAP</b> shows every galaxy at once — click a sector to select/zoom in on it, then press <b>WARP</b> (in range) or <b>AUTOPILOT</b> (further out) to actually go there</div>
+    <div><b>AUTOPILOT</b> flies a short countdown, then chains one or more full-charge direct warps toward your destination on its own — it never uses gates, so every leg takes the same full warm-up time a manual STAR MAP warp would. Any manual input cancels it instantly</div>
+    <div>Autopilot and long-range star-map warps only travel within your current galaxy — crossing into another galaxy needs an inter-galaxy gate flown manually</div>
+  </div>
+
+  <div class="psection">SKILLS, LIBRARY &amp; KNOWLEDGE</div>
+  <div class="keys">
+    <div>Skills train automatically over real wall-clock time from the <b>SKILLS</b> panel — training keeps advancing even while docked or offline</div>
+    <div><b>Knowledge</b> (shown in the WALLET popup) accrues from active playtime and from kills/mining/quests/medals — spend it at any station's <b>LIBRARY</b></div>
+    <div>The Library crafts <b>Memory Cubes</b> (banked Knowledge you can later burn to instantly speed up whatever skill is training) and <b>Skill Books</b> (scribe once a skill hits LV.1+, to unlock training the next levels) — both cost Knowledge + credits (plus station tax) and take real time to finish, landing in that station's STORAGE when done</div>
+  </div>
+
+  <div class="psection">AUCTION HOUSE</div>
+  <div class="keys">
+    <div>List anything sitting in a station's STORAGE for other players to buy — set your own price, up to 4 active listings per station</div>
+    <div>Listings elsewhere show up under "my listings" until sold or cancelled; sale proceeds (minus station tax) land in your WALLET automatically</div>
+  </div>
+
+  <div class="psection">WALLET &amp; MAIL</div>
+  <div class="keys">
+    <div>The <b>WALLET</b> popup tracks your <b>LEDGER</b> (credit history), lifetime <b>STATS</b>, earned <b>MEDALS</b> (fixed achievements plus infinitely-scaling tiered chains), Knowledge balance, and your <b>MAIL</b></div>
+    <div>Type in the event log to broadcast a message to other players sharing your zone</div>
+  </div>
+
   <div class="dbtns">
     <button class="cmdbtn" id="btnCloseHelp">◀ BACK</button>
   </div>
@@ -1597,6 +1710,14 @@
 <div class="hud" id="lockAlert"></div>
 <div class="hud" id="inspectInfo"></div>
 <button class="hud clickable" id="btnExitInspect">✕ RETURN TO SHIP VIEW</button>
+<!-- Local physical-gate warp sequence readout (approach + hyperspace-jump cinematic).
+     Warp start/charge/complete no longer log to the event log -- this top-middle HUD
+     carries that info instead (see showWarpStatusHud/hideWarpStatusHud/
+     updateWarpStatusHud in the JS "warp approach + hyperspace-jump transition"
+     section). Stacked one row above #starMapCharge, same visual language. -->
+<div class="hud" id="warpStatusHud">
+  <span id="warpStatusHudLabel">ALIGNING FOR WARP</span>
+</div>
 <div class="hud" id="starMapCharge">
   <span id="starMapChargeLabel">WARP CHARGING</span>
   <button class="clickable" id="btnCancelStarMapWarp">CANCEL WARP</button>
@@ -1628,7 +1749,6 @@
     <button class="cmdbtn" id="btnMine" disabled style="display:none;">MINE</button>
     <button class="cmdbtn" id="btnDock" disabled style="display:none;">DOCK</button>
     <button class="cmdbtn" id="btnWarp" disabled style="display:none;">WARP</button>
-    <button class="cmdbtn danger" id="btnStop">STOP</button>
   </div>
 </div>
 
@@ -1637,7 +1757,10 @@
   <div class="sub" id="dockedStationName">MERIDIAN STATION</div>
 
   <div id="dockMainPanel" class="dockSubPanel show">
-    <div class="dbtns">
+    <!-- item: compacted into a denser multi-column grid (was a single tall column of
+         14 full-width buttons that needed scrolling to see them all) -- same click
+         targets/functionality, just tighter layout so everything fits on-screen -->
+    <div class="dbtns dockMainGrid">
       <button class="cmdbtn" id="btnDockRepair">REPAIR HULL</button>
       <button class="cmdbtn" id="btnDockCargoPanel">SELL CARGO</button>
       <button class="cmdbtn" id="btnDockMarketPanel">MARKET</button>
@@ -1654,7 +1777,7 @@
       <button class="cmdbtn" id="btnDockGovPanel">SECTOR GOVERNMENT</button>
     </div>
 
-    <div class="dbtns" style="margin-top:18px;">
+    <div class="dbtns" style="margin-top:14px;">
       <button class="cmdbtn danger" id="btnUndock">UNDOCK</button>
     </div>
   </div>
@@ -1921,9 +2044,9 @@
 // compatibility depends on it. Add new keys, don't rename old ones.
 
 // ---------- version / build info (shown in the ESC settings menu) ----------
-const GAME_VERSION = "0.19.2";
+const GAME_VERSION = "0.19.3";
 const GAME_LAST_EDITED = "2026-09-24";
-const GAME_BUILD_TIME = "07:42 PT"; // wall-clock time this build was published, not just the date
+const GAME_BUILD_TIME = "09:17 PT"; // wall-clock time this build was published, not just the date
 
 // ---------- update-available banner ----------
 // Periodically re-fetches this very page (same-origin -- works identically whether
@@ -2848,7 +2971,8 @@ function awardKnowledge(amount, reasonLabel){
   updateKnowledgeUI();
 }
 function updateKnowledgeUI(){
-  const el = document.getElementById('knowledgeRead');
+  // item: KNOWLEDGE display moved from the main telemetry HUD into the WALLET popup
+  const el = document.getElementById('walletKnowledgeRead');
   if(el) el.textContent = Math.floor(knowledge).toLocaleString();
   if(typeof renderLibraryPanel === 'function') renderLibraryPanel();
 }
@@ -6729,7 +6853,8 @@ function enterDock(station){
   showDockSubPanel('dockMainPanel');
   updateDockedPanel();
   zoneMessage('DOCKED AT ' + dockedStation.name.toUpperCase(), 'good');
-  logEvent('DOCKED AT ' + dockedStation.name.toUpperCase(), 'good');
+  // item: docking/undocking no longer write to the event log (zoneMessage above still
+  // gives the on-screen confirmation) -- it was pure noise in the log
   syncStationMarketOnDock();
   syncQuestBoardsOnDock(dockedStation);
   syncAuctionListingsOnDock(dockedStation);
@@ -6771,7 +6896,7 @@ function exitDock(){
   setCommand('forward'); // depart under way instead of sitting idle right outside the hull
   selectTarget(null);
   zoneMessage('UNDOCKED', 'good');
-  logEvent('UNDOCKED FROM ' + undockStation.name.toUpperCase(), 'good');
+  // item: no event-log entry for undocking either (see enterDock's matching comment)
   dockedStation = null;
 }
 
@@ -6792,7 +6917,7 @@ function startDockingSequence(station){
   audio.dock();
   setCommand('approach_target', { target: station });
   zoneMessage('DOCKING SEQUENCE INITIATED', 'good');
-  logEvent('DOCKING SEQUENCE INITIATED — ' + station.name.toUpperCase(), 'good');
+  // item: no event-log entry for the docking sequence start either (see enterDock)
 }
 function updateDockingSequence(dt){
   const seq = dockingSequence;
@@ -7312,16 +7437,24 @@ async function claimAuctionPayouts(){
   }catch(e){ console.warn('claim auction payouts exception', e); }
 }
 // (Library update) which of the player's own item types are eligible to auction --
-// same sellPrice != null rule as before, but now sourced from STATION STORAGE
-// (stationStorageStacks), not ship cargo: listings can only be posted from items
-// already banked in storage, matching how bought listings are received (see
-// handleAuctionGridClick's BUY branch below) and manufacturing/library output.
+// sourced from STATION STORAGE (stationStorageStacks), not ship cargo: listings can
+// only be posted from items already banked in storage, matching how bought listings
+// are received (see handleAuctionGridClick's BUY branch below) and manufacturing/
+// library output.
+// (bugfix) this used to also require def.sellPrice != null, which is really "can this
+// be sold directly to the STATION MARKET" (a completely different system) -- it was
+// never meant to gate the auction house, but reusing it here silently blocked listing
+// black boxes/captain black boxes (Navy-turn-in-only, no station buy price) and Memory
+// Cubes/Skill Books (Library-craft-only, no station buy price) even though none of
+// them are quest-bound to any specific active quest instance -- they're all ordinary
+// tradeable stack items, just ones the station itself won't buy. The auction listing
+// price is entirely player-set (see #auctionSellPrice) and never reads def.sellPrice,
+// so there's no reason to gate on it. Every item type actually sitting in storage is
+// now listable.
 const AUCTION_MAX_LISTINGS_PER_STATION = 4;
 function auctionEligibleItemTypes(){
   const totals = {};
   stationStorage().forEach(s=>{
-    const def = itemDisplayDef(s.itemType);
-    if(!def || def.sellPrice == null) return;
     totals[s.itemType] = (totals[s.itemType] || 0) + s.qty;
   });
   return totals;
@@ -7773,7 +7906,12 @@ let libraryCrafting = {};
 // real seconds (see SKILLS above), so 10 in-game minutes = that / 6.
 const LIBRARY_CUBE_MS_PER_KNOWLEDGE = (SKILL_REAL_SECONDS_PER_INGAME_HOUR / 6) * 1000;
 // (v0.19.2 economy rebalance) flat rate: 100 credits per 1 Knowledge crafted into the cube
-function libraryCubeCreditsCost(knowledgeAmt){ return Math.round(Math.max(1, knowledgeAmt) * 100); }
+// base cost BEFORE station tax -- see libraryCubeTax() below, which reuses the same
+// STATION_SALES_TAX (5%) rate market buys/sells and auction fees already use, rather
+// than inventing a separate Library-specific rate.
+function libraryCubeBaseCreditsCost(knowledgeAmt){ return Math.round(Math.max(1, knowledgeAmt) * 100); }
+function libraryCubeTax(knowledgeAmt){ return Math.ceil(libraryCubeBaseCreditsCost(knowledgeAmt) * STATION_SALES_TAX); }
+function libraryCubeCreditsCost(knowledgeAmt){ return libraryCubeBaseCreditsCost(knowledgeAmt) + libraryCubeTax(knowledgeAmt); }
 function libraryCubeDurationMs(knowledgeAmt){ return Math.round(Math.max(1, knowledgeAmt) * LIBRARY_CUBE_MS_PER_KNOWLEDGE * academicsCraftTimeMultiplier()); }
 // (v0.19.2 economy rebalance) hardcoded table, doubling every book level: the LV.2 book
 // (first scribable tier, unlocks skill level 2) = 5 Knowledge + 1000 credits, LV.3 = 10
@@ -7782,7 +7920,11 @@ function libraryCubeDurationMs(knowledgeAmt){ return Math.round(Math.max(1, know
 // (LV.5 would be 40 Knowledge + 8000 credits, etc.) so raising SKILL_MAX_LEVEL later
 // needs no further change here.
 function libraryBookKnowledgeCost(level){ return 5 * Math.pow(2, Math.max(2,level) - 2); }
-function libraryBookCreditsCost(level){ return 1000 * Math.pow(2, Math.max(2,level) - 2); }
+function libraryBookBaseCreditsCost(level){ return 1000 * Math.pow(2, Math.max(2,level) - 2); }
+// same STATION_SALES_TAX (5%) rate reused from market/auction, applied on top of the
+// base scribing cost -- see item: "station tax on Library crafting costs"
+function libraryBookTax(level){ return Math.ceil(libraryBookBaseCreditsCost(level) * STATION_SALES_TAX); }
+function libraryBookCreditsCost(level){ return libraryBookBaseCreditsCost(level) + libraryBookTax(level); }
 // scribing time = 1/6 of that LEVEL's own full training duration (SKILL_LEVEL_DURATION_MS),
 // modified by Academics -- e.g. a Level-2 book (1 in-game day to TRAIN) takes 1/6 of an
 // in-game day of real wall-clock time to SCRIBE
@@ -7877,7 +8019,9 @@ function startMemoryCubeCraft(knowledgeAmt){
   if(bountyCredits < creditsCost){ flashMessage('NOT ENOUGH CREDITS', 'warn'); return; }
   knowledge -= knowledgeAmt;
   bountyCredits -= creditsCost;
-  addLedgerEntry(-creditsCost, 'Memory Cube crafting (' + knowledgeAmt + ' knowledge)');
+  const cubeTaxAmt = libraryCubeTax(knowledgeAmt);
+  addLedgerEntry(-creditsCost, 'Memory Cube crafting (' + knowledgeAmt + ' knowledge, ' + cubeTaxAmt + ' cr tax)');
+  addStationTax(dockedStation.id, cubeTaxAmt);
   libraryCrafting[dockedStation.id] = {
     kind:'cube', startedAtMs: Date.now(), durationMs: libraryCubeDurationMs(knowledgeAmt),
     costKnowledge: knowledgeAmt, costCredits: creditsCost, cubeKnowledge: knowledgeAmt
@@ -7901,7 +8045,9 @@ function startBookScribe(key, level){
   if(bountyCredits < creditsCost){ flashMessage('NOT ENOUGH CREDITS', 'warn'); return; }
   knowledge -= knowledgeCost;
   bountyCredits -= creditsCost;
-  addLedgerEntry(-creditsCost, def.name + ' Lv.' + level + ' Book scribing');
+  const bookTaxAmt = libraryBookTax(level);
+  addLedgerEntry(-creditsCost, def.name + ' Lv.' + level + ' Book scribing (' + bookTaxAmt + ' cr tax)');
+  addStationTax(dockedStation.id, bookTaxAmt);
   libraryCrafting[dockedStation.id] = {
     kind:'book', startedAtMs: Date.now(), durationMs: libraryBookDurationMs(level),
     costKnowledge: knowledgeCost, costCredits: creditsCost, bookSkill: key, bookLevel: level
@@ -8006,27 +8152,43 @@ function renderLibraryPanel(){
     const cubeAcademicsOk = (skillLevels.academics||0) >= 1;
     const cubeWrap = document.getElementById('libraryCubeForm');
     if(cubeWrap){
+      // (fix) this whole form gets rebuilt on every periodic UI refresh (e.g. the
+      // knowledge-accrual tick's updateKnowledgeUI() -> renderLibraryPanel() call every
+      // few seconds), which was blowing away whatever amount the player had just typed
+      // by always re-stamping a hardcoded value="10" on the fresh <input>. Preserve
+      // whatever the player currently has entered (if the input already exists and
+      // still has focus/a value) across the rebuild instead of resetting it.
+      const existingCubeInput = document.getElementById('libraryCubeAmt');
+      const preservedCubeAmt = existingCubeInput && existingCubeInput.value !== '' ? existingCubeInput.value : '10';
       cubeWrap.innerHTML = !cubeAcademicsOk
         ? '<div class="drow"><span>REQUIRES ACADEMICS LV.1</span></div>'
         : '<div class="dockSubRow">'
           + '<span class="dsName">Knowledge to invest</span>'
-          + '<input type="number" min="1" step="1" value="10" id="libraryCubeAmt">'
+          + '<input type="number" min="1" step="1" value="' + preservedCubeAmt + '" id="libraryCubeAmt">'
           + '<button class="cmdbtn" id="btnLibraryCraftCube">CRAFT</button>'
           + '</div>'
-          + '<div class="drow" style="font-size:10px; color:var(--phosphor-dim);"><span>10 in-game min per knowledge point (x' + academicsCraftTimeMultiplier().toFixed(2) + ' Academics) + 25 cr/knowledge</span></div>';
+          + '<div class="drow" style="font-size:10px; color:var(--phosphor-dim);"><span>10 in-game min per knowledge point (x' + academicsCraftTimeMultiplier().toFixed(2) + ' Academics) + 100 cr/knowledge + ' + Math.round(STATION_SALES_TAX*100) + '% station tax</span></div>';
     }
     // Skill Book form -- one row per basic/advanced skill that's at least LV.1
     const bookWrap = document.getElementById('libraryBookForm');
     if(bookWrap){
       const eligible = SKILL_ORDER.filter(k=> (skillLevels[k]||0) >= 1 && libraryScribableBookLevels(k).length > 0);
+      // (fix, same reasoning as the cube input above) preserve each skill's currently
+      // selected book level across a rebuild instead of always resetting to option 0
+      const preservedLevels = {};
+      eligible.forEach(k=>{
+        const sel = document.querySelector('select[data-book-level-select="' + k + '"]');
+        if(sel && sel.value) preservedLevels[k] = sel.value;
+      });
       bookWrap.innerHTML = !eligible.length
         ? '<div class="drow"><span>NO SKILL AT LV.1+ YET — TRAIN ONE FIRST</span></div>'
         : eligible.map(k=>{
             const def = SKILL_DEFS[k];
             const levels = libraryScribableBookLevels(k);
+            const sel = preservedLevels[k];
             return '<div class="dockSubRow">'
               + '<span class="dsName">' + def.name + ' (LV.' + (skillLevels[k]||0) + ')</span>'
-              + '<select data-book-level-select="' + k + '">' + levels.map(l=> '<option value="' + l + '">LV.' + l + ' — ' + libraryBookKnowledgeCost(l) + ' KN + ' + libraryBookCreditsCost(l) + ' CR</option>').join('') + '</select>'
+              + '<select data-book-level-select="' + k + '">' + levels.map(l=> '<option value="' + l + '"' + (sel && String(l)===sel ? ' selected' : '') + '>LV.' + l + ' — ' + libraryBookKnowledgeCost(l) + ' KN + ' + libraryBookCreditsCost(l) + ' CR</option>').join('') + '</select>'
               + '<button class="cmdbtn" data-book-scribe="' + k + '">SCRIBE</button>'
               + '</div>';
           }).join('');
@@ -9685,6 +9847,23 @@ const WARP_SEQ_APPROACH_TIME_BASE = 1.0;
 function effectiveWarpApproachTime(){ return WARP_SEQ_APPROACH_TIME_BASE * systemsWarpTimeMultiplier(); }
 const WARP_SEQ_JUMP_TIME = 1.1; // total sequence ~2.1s
 const CAMERA_BASE_FOV = 50;
+// top-middle warp status HUD (#warpStatusHud) -- shows/updates/hides in lockstep with
+// warpSequence's own lifetime. showWarpStatusHud()/updateWarpStatusHudLabel() are also
+// called from beginStarMapWarp/updateStarMapCharge for the long-range charge-up (which
+// hands off into this same warpSequence 'jump' phase), so the label reads sensibly
+// across both the local-gate and long-range warp paths.
+function showWarpStatusHud(){
+  const el = document.getElementById('warpStatusHud');
+  if(el) el.classList.add('show');
+}
+function hideWarpStatusHud(){
+  const el = document.getElementById('warpStatusHud');
+  if(el) el.classList.remove('show');
+}
+function updateWarpStatusHudLabel(text){
+  const el = document.getElementById('warpStatusHudLabel');
+  if(el) el.textContent = text;
+}
 function startWarpSequence(gate){
   if(dockingSequence || warpSequence || docked) return;
   // (v0.19.2) phase deadlines are wall-clock-anchored (Date.now()-based), not derived
@@ -9698,7 +9877,10 @@ function startWarpSequence(gate){
   audio.warp();
   setCommand('approach_target', { target: gate });
   zoneMessage('ALIGNING FOR WARP — ' + gate.name.toUpperCase(), 'good');
-  logEvent('WARP SEQUENCE INITIATED — ' + gate.name.toUpperCase(), 'good');
+  // item: warp notifications no longer go to the event log -- the top-middle warp
+  // HUD (#warpStatusHud) carries this info instead
+  updateWarpStatusHudLabel('ALIGNING FOR WARP — ' + gate.name.toUpperCase());
+  showWarpStatusHud();
 }
 function updateWarpSequence(dt){
   const seq = warpSequence;
@@ -9708,12 +9890,15 @@ function updateWarpSequence(dt){
   if(seq.phase === 'approach'){
     // updateShip(dt) (driven from animate()) is already flying/turning the ship
     // toward the gate under the approach_target command set above
+    const remain = Math.max(0, (seq.approachEndsAtMs - Date.now())/1000);
+    updateWarpStatusHudLabel('ALIGNING FOR WARP — ' + (seq.gate && seq.gate.name ? seq.gate.name.toUpperCase() + ' — ' : '') + remain.toFixed(1) + 's');
     if(Date.now() >= seq.approachEndsAtMs){
       seq.phase = 'jump';
       seq.timer = 0;
       seq.jumpEndsAtMs = Date.now() + WARP_SEQ_JUMP_TIME*1000;
     }
   } else if(seq.phase === 'jump'){
+    updateWarpStatusHudLabel('WARPING' + (seq.gate && seq.gate.name ? ' — ' + seq.gate.name.toUpperCase() : '') + '…');
     const t = Math.min(1, seq.timer / WARP_SEQ_JUMP_TIME);
     // streak straight ahead, accelerating well past normal top speed
     const fwd = new THREE.Vector3(0,0,-1).applyQuaternion(ship.quaternion);
@@ -9735,6 +9920,7 @@ function updateWarpSequence(dt){
       if(starField2) starField2.material.size = 0.95;
       if(flashEl) flashEl.style.opacity = '0';
       warpSequence = null;
+      hideWarpStatusHud();
       doWarp(seq.gate);
     }
   }
@@ -10263,7 +10449,8 @@ function beginStarMapWarp(zone){
   const labelEl = document.getElementById('starMapChargeLabel');
   if(labelEl) labelEl.textContent = 'WARP CHARGING — ' + zone.label.toUpperCase() + ' — ' + Math.ceil(totalTime) + 's';
   if(bannerEl) bannerEl.classList.add('show');
-  logEvent('LONG-RANGE WARP CHARGING — DESTINATION: ' + zone.label.toUpperCase(), 'good');
+  // item: warp notifications no longer go to the event log -- the #starMapCharge
+  // banner itself (already top-middle) carries the countdown/destination
   zoneMessage('WARP DRIVE CHARGING — ' + Math.ceil(totalTime) + 's TO ' + zone.label.toUpperCase(), 'good');
   renderStarMap();
   // item: close the STAR MAP popup the instant the WARP button is pressed (charge
@@ -10277,7 +10464,6 @@ function cancelStarMapWarp(){
   disposeWarpChargeGlow();
   const bannerEl = document.getElementById('starMapCharge');
   if(bannerEl) bannerEl.classList.remove('show');
-  logEvent('LONG-RANGE WARP CHARGE ABORTED', 'warn');
   zoneMessage('WARP CHARGE ABORTED', 'warn');
   renderStarMap();
 }
@@ -10308,8 +10494,26 @@ function updateStarMapCharge(dt){
     weaponsFree = false;
     audio.warp();
     zoneMessage('WARPING — ' + zone.label.toUpperCase(), 'good');
-    logEvent('LONG-RANGE WARP JUMP — ' + zone.label.toUpperCase(), 'good');
-    warpSequence = { phase:'jump', timer:0, gate: zone.arrivalGate() };
+    // (CRITICAL BUGFIX, v0.19.2 regression) this object was missing jumpEndsAtMs --
+    // updateWarpSequence's 'jump'-phase branch judges completion purely off
+    // `Date.now() >= seq.jumpEndsAtMs`, and with jumpEndsAtMs left undefined that
+    // comparison (Date.now() >= undefined) is ALWAYS false, since undefined coerces
+    // to NaN and every comparison against NaN is false. The jump phase therefore
+    // never completed: the ship kept accelerating forward under the jump-phase
+    // "streak straight ahead" velocity override forever, doWarp() (which actually
+    // lands the ship at the destination) never fired, and warpSequence never got
+    // nulled out -- which is also exactly what inputLocked() (docked ||
+    // dockingSequence || warpSequence || ...) and every button-disable check key off
+    // of, so the player was left permanently "moving forward fast" with every button
+    // unresponsive. This is the direct cause of bug reports "warping...didn't do it
+    // and just had me moving forward fast and all buttons stop working" (star-map
+    // warp) and "drifting into space" (autopilot legs that route through this exact
+    // same long-range-warp hand-off). Local physical-gate warps (startWarpSequence)
+    // were never affected -- they set jumpEndsAtMs correctly on their own
+    // approach->jump transition; only this direct-to-jump entry point missed it.
+    warpSequence = { phase:'jump', timer:0, gate: zone.arrivalGate(), jumpEndsAtMs: Date.now() + WARP_SEQ_JUMP_TIME*1000 };
+    showWarpStatusHud();
+    updateWarpStatusHudLabel('WARPING — ' + zone.label.toUpperCase() + '…');
   }
 }
 document.getElementById('btnStarMap').addEventListener('click', ()=> toggleStarMapPanel());
@@ -10350,25 +10554,31 @@ function universeZoneTier(z){
 function universeZoneIsPort(z){ return STATIONS.some(s=> s.zoneKey === z.key); }
 
 // ---- pathfinding: shortest-weight route across the whole known galaxy graph ----
-// Physical gate hops (weight 1) are always preferred; a same-galaxy "long-range
-// star-map warp" hop (weight 4, reusing beginStarMapWarp's existing 15s-charge
-// mechanic) fills in the zones that have no physical gate of their own at all
-// (Galaxy B's red zone, C's yellow zone, D's yellow zone -- see the research notes
-// in this section's comments elsewhere) so every zone in STAR_MAP_ZONES is always
-// reachable from anywhere.
+// item: autopilot must NEVER use physical warp gates -- only direct, full-warm-up
+// point-to-point warps (the same long-range beginStarMapWarp()/effectiveStarMapWarpTime()
+// mechanic a manual STAR MAP warp uses), chained leg by leg until the ship reaches its
+// destination. Gate edges (buildGateEdges(), weight-1 hops) are deliberately NOT fed
+// into this graph at all -- only same-galaxy "long-range star-map warp" hops (weight 1
+// here since they're now the ONLY edge type, so relative weight no longer matters) are.
+// This is a real behavior change from the previous version, which mixed gate hops
+// (preferred, much shorter timing) into the route -- that's exactly what produced the
+// "instantly warping" bug report (short gate-timed legs mixed in with a route the
+// player expected to be uniformly slow, full-charge warps). Consequence: since
+// long-range star-map warps never cross galaxies (see beginStarMapWarp's own
+// same-galaxy check), autopilot now can only route within the CURRENT galaxy --
+// computeAutopilotRoute() below correctly returns null (-> "NO AUTOPILOT ROUTE FOUND")
+// for a cross-galaxy destination rather than ever reaching for a gate. Manually flying
+// through an inter-galaxy gate is still how a player crosses galaxies; this is a
+// documented scope decision, not an oversight.
 function buildAutopilotGraph(){
   const graph = {};
   function addEdge(from, to, edge){ (graph[from] = graph[from] || []).push(Object.assign({ to }, edge)); }
-  buildGateEdges().forEach(e=>{
-    addEdge(e.a, e.b, { type:'gate', gate: e.gateAtoB, weight:1 });
-    addEdge(e.b, e.a, { type:'gate', gate: e.gateBtoA, weight:1 });
-  });
   const byGalaxy = {};
   STAR_MAP_ZONES.forEach(z=> (byGalaxy[z.galaxy] = byGalaxy[z.galaxy] || []).push(z.key));
   Object.values(byGalaxy).forEach(keys=>{
     keys.forEach(a=> keys.forEach(b=>{
       if(a === b) return;
-      addEdge(a, b, { type:'starmap', weight:4 });
+      addEdge(a, b, { type:'starmap', weight:1 });
     }));
   });
   return graph;
@@ -10448,6 +10658,7 @@ function cancelAutopilot(reason){
       if(flashEl) flashEl.style.opacity = '0';
     }
     warpSequence = null;
+    hideWarpStatusHud();
     setCommand('idle');
   }
   updateAutopilotBanner();
@@ -10468,6 +10679,9 @@ function updateAutopilotBanner(){
 function beginAutopilotLeg(){
   const leg = autopilot.legs[autopilot.legIndex];
   autopilot.phase = 'leg-active';
+  // (item: autopilot never uses gates) buildAutopilotGraph() above only ever produces
+  // 'starmap' edges now, so leg.type === 'gate' can no longer actually occur -- this
+  // branch is kept only as a defensive fallback in case that ever changes again.
   if(leg.type === 'gate'){
     startWarpSequence(leg.gate);
   } else {
@@ -10519,6 +10733,11 @@ document.getElementById('btnStopAutopilot').addEventListener('click', ()=> cance
 const UNIVERSE_GALAXY_ANGLE = { A:-90, B:0, C:90, D:180 }; // degrees, 0=+x, clockwise
 let universeMapLayout = null; // cached {zoneKey: {x,y,zone}} in canvas-local units, rebuilt on each render
 let universeMapHexR = 24;     // hex radius used by the same render, kept in sync for hit-testing
+// item 13: clicking a sector no longer immediately starts autopilot -- it just selects/
+// "zooms in" on that sector (see renderUniverseMap's drawOrder/isSelected handling) and
+// reveals a WARP or AUTOPILOT action button (see updateUniverseMapSelectionBar) that
+// the player has to explicitly press to actually move. null = nothing selected.
+let universeMapSelectedKey = null;
 function computeUniverseMapLayout(w, h){
   const cx = w/2, cy = h/2;
   const hubR = Math.min(w,h) * 0.30;
@@ -10602,24 +10821,31 @@ function renderUniverseMap(){
       ctx.restore();
     });
   });
-  // hexes
-  ctx.font = (hexR*0.42) + 'px "VT323",monospace';
+  // hexes -- the selected one (see universeMapSelectedKey / item 13's "zoom in on
+  // the section, read the name better" request) is drawn LAST (on top of every other
+  // hex/line) at a visibly bigger radius with a bright pulsing ring, which reads as a
+  // "zoom" on the clicked sector without needing to actually re-project/pan the whole
+  // canvas -- simpler and just as legible at this map's scale.
   ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-  Object.keys(layout).forEach(key=>{
+  const drawOrder = Object.keys(layout).slice().sort((a,b)=> (a===universeMapSelectedKey?1:0) - (b===universeMapSelectedKey?1:0));
+  drawOrder.forEach(key=>{
     const p = layout[key];
     const isCurrent = key === curKey;
-    universeMapHexPath(ctx, p.x, p.y, hexR);
-    ctx.fillStyle = p.zone.color + (isCurrent ? 'cc' : '55');
+    const isSelected = key === universeMapSelectedKey;
+    const r = isSelected ? hexR * 1.55 : hexR;
+    ctx.font = (r*0.42) + 'px "VT323",monospace';
+    universeMapHexPath(ctx, p.x, p.y, r);
+    ctx.fillStyle = p.zone.color + (isCurrent ? 'cc' : (isSelected ? '99' : '55'));
     ctx.fill();
-    ctx.lineWidth = isCurrent ? 3 : 1.4;
-    ctx.strokeStyle = isCurrent ? '#ffffff' : 'rgba(255,255,255,0.5)';
+    ctx.lineWidth = isSelected ? 3.5 : (isCurrent ? 3 : 1.4);
+    ctx.strokeStyle = isSelected ? '#ffd76d' : (isCurrent ? '#ffffff' : 'rgba(255,255,255,0.5)');
     ctx.stroke();
     if(universeZoneIsPort(p.zone)){
       ctx.fillStyle = '#001108';
-      ctx.fillText('P', p.x, p.y - hexR*0.1);
+      ctx.fillText('P', p.x, p.y - r*0.1);
     } else if(isCurrent){
       ctx.fillStyle = '#001108';
-      ctx.fillText('★', p.x, p.y - hexR*0.1);
+      ctx.fillText('★', p.x, p.y - r*0.1);
     }
   });
   // galaxy name labels, above each hub
@@ -10632,13 +10858,16 @@ function renderUniverseMap(){
     if(!p) return;
     ctx.fillText(GALAXY_DEFS[g].name.toUpperCase(), p.x, p.y - hexR - 10);
   });
-  // zone labels, below each hex
-  ctx.font = (hexR*0.26) + 'px "Share Tech Mono",monospace';
-  ctx.fillStyle = 'rgba(255,255,255,0.85)';
+  // zone labels, below each hex -- the selected zone's label is drawn bigger/brighter
+  // too, so its full name is easy to actually read (item 13)
   Object.keys(layout).forEach(key=>{
     const p = layout[key];
-    const short = p.zone.label.split(' — ')[0].split(' (')[0];
-    ctx.fillText(short, p.x, p.y + hexR + 9);
+    const isSelected = key === universeMapSelectedKey;
+    const r = isSelected ? hexR * 1.55 : hexR;
+    ctx.font = (isSelected ? hexR*0.4 : hexR*0.26) + 'px "Share Tech Mono",monospace';
+    ctx.fillStyle = isSelected ? '#ffd76d' : 'rgba(255,255,255,0.85)';
+    const label = isSelected ? p.zone.label : p.zone.label.split(' — ')[0].split(' (')[0];
+    ctx.fillText(label, p.x, p.y + r + (isSelected?13:9));
   });
 }
 function universeMapZoneAt(px, py){
@@ -10657,7 +10886,32 @@ function toggleUniverseMapPanel(show){
   if(!panel) return;
   const willShow = show !== undefined ? show : !panel.classList.contains('show');
   panel.classList.toggle('show', willShow);
+  if(!willShow) universeMapSelectedKey = null; // clear selection on close
   if(willShow) requestAnimationFrame(renderUniverseMap);
+  updateUniverseMapSelectionBar();
+}
+// item 13: the info/action bar shown under the legend once a sector is selected --
+// names it clearly, and offers WARP (same-galaxy destinations, reachable by a direct
+// long-range star-map warp) or AUTOPILOT (destinations autopilot can chain a route to
+// -- see computeAutopilotRoute; per item 8 this never crosses galaxies either, since
+// autopilot no longer uses gates at all) depending on which is actually possible.
+function updateUniverseMapSelectionBar(){
+  const bar = document.getElementById('universeMapSelectionBar');
+  if(!bar) return;
+  const key = universeMapSelectedKey;
+  const zone = key ? STAR_MAP_ZONES.find(z=>z.key===key) : null;
+  if(!zone){ bar.style.display = 'none'; return; }
+  bar.style.display = 'flex';
+  const nameEl = document.getElementById('universeMapSelectionName');
+  if(nameEl) nameEl.textContent = zone.label.toUpperCase();
+  const isHere = key === currentZoneKey();
+  const sameGalaxy = !zone.galaxy || zone.galaxy === currentGalaxyKey();
+  const warpBtn = document.getElementById('btnUniverseMapWarp');
+  const autopilotBtn = document.getElementById('btnUniverseMapAutopilot');
+  if(warpBtn) warpBtn.style.display = (!isHere && sameGalaxy) ? '' : 'none';
+  if(autopilotBtn) autopilotBtn.style.display = (!isHere && !sameGalaxy) ? '' : 'none';
+  const hintEl = document.getElementById('universeMapSelectionHint');
+  if(hintEl) hintEl.textContent = isHere ? 'YOU ARE HERE' : (sameGalaxy ? 'WITHIN WARP RANGE' : 'ANOTHER GALAXY — GATE OR AUTOPILOT REQUIRED');
 }
 document.getElementById('btnOpenUniverseMap').addEventListener('click', ()=>{ toggleStarMapPanel(false); toggleUniverseMapPanel(true); });
 document.getElementById('btnCloseUniverseMap').addEventListener('click', ()=> toggleUniverseMapPanel(false));
@@ -10666,8 +10920,26 @@ document.getElementById('universeMapCanvas').addEventListener('click', (e)=>{
   const rect = canvas.getBoundingClientRect();
   const px = e.clientX - rect.left, py = e.clientY - rect.top;
   const key = universeMapZoneAt(px, py);
+  // item 13: click just selects/zooms the sector now -- it no longer starts autopilot
+  // by itself. Clicking empty space, or re-clicking the already-selected sector,
+  // clears the selection; clicking a different sector selects that one instead.
+  universeMapSelectedKey = (key && key !== universeMapSelectedKey) ? key : null;
+  renderUniverseMap();
+  updateUniverseMapSelectionBar();
+});
+document.getElementById('btnUniverseMapWarp').addEventListener('click', ()=>{
+  const key = universeMapSelectedKey;
+  const zone = key ? STAR_MAP_ZONES.find(z=>z.key===key) : null;
+  if(!zone) return;
+  if(inputLocked()){ flashMessage('CANNOT WARP RIGHT NOW', 'warn'); return; }
+  universeMapSelectedKey = null;
+  toggleUniverseMapPanel(false);
+  beginStarMapWarp(zone);
+});
+document.getElementById('btnUniverseMapAutopilot').addEventListener('click', ()=>{
+  const key = universeMapSelectedKey;
   if(!key) return;
-  if(key === currentZoneKey()){ flashMessage('ALREADY THERE', 'warn'); return; }
+  universeMapSelectedKey = null;
   startAutopilotTo(key);
 });
 window.addEventListener('resize', ()=>{
@@ -11450,7 +11722,29 @@ function applyPlayerSaveData(d){
   // is session-based so its OWN saved tier is intentionally left at whatever it last
   // reached (a new session's totalTimePlayedSeconds() starts back at 0, so re-earning
   // playtime tiers naturally requires a fresh long-enough sitting again each time)
-  if(d.tierMedalLevels && typeof d.tierMedalLevels === 'object') tierMedalLevels = Object.assign({}, d.tierMedalLevels);
+  if(d.tierMedalLevels && typeof d.tierMedalLevels === 'object'){
+    tierMedalLevels = Object.assign({}, d.tierMedalLevels);
+  } else {
+    // (bugfix, login medal-spam) a save written before TIER_CHAINS existed (or one
+    // that otherwise never persisted this field) has NO tierMedalLevels at all, so
+    // tierMedalLevels was silently left at its fresh-page-load default of {} --
+    // checkTierMedals()'s very next tick then saw every chain's cur sitting at 0
+    // while the stats just restored above already qualified for many tiers, and its
+    // catch-up loop (meant only for genuine big offline gains) re-"earned" and
+    // re-notified EVERY tier from 1 up through the current one, all at once, on
+    // every login. Silently backfill each chain's already-qualifying tier from the
+    // just-restored lifetime stats instead -- same reasoning/pattern as the
+    // ACHIEVEMENTS backfill just above -- so nothing gets (re-)announced for
+    // progress the player already made before this field existed.
+    tierMedalLevels = {};
+    TIER_CHAINS.forEach(chain=>{
+      let val = 0;
+      try{ val = chain.statFn(); }catch(e){ val = 0; }
+      let cur = 0, guard = 0;
+      while(val >= tierThreshold(chain, cur+1) && guard < 500){ cur++; guard++; }
+      if(cur > 0) tierMedalLevels[chain.key] = cur;
+    });
+  }
   if(typeof updateFameFromPoints === 'function') updateFameFromPoints();
   if(Array.isArray(d.mutedPlayers)) mutedPlayers = d.mutedPlayers.slice();
   if(typeof d.lastSeenNoticeId === 'number') lastSeenNoticeId = d.lastSeenNoticeId;
@@ -13885,6 +14179,7 @@ function damagePlayer(dmg, source){
     // cleanly rather than leaving a shrunk ship or a stuck flash overlay behind
     if(dockingSequence || warpSequence){
       dockingSequence = null; warpSequence = null;
+      hideWarpStatusHud();
       ship.scale.setScalar(1);
       camera.fov = CAMERA_BASE_FOV; camera.updateProjectionMatrix();
       if(starField1) starField1.material.size = 0.65;
