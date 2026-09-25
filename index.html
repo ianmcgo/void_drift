@@ -93,6 +93,13 @@
     border-bottom:1px solid var(--panel-border); cursor:move; pointer-events:auto;
     display:flex; align-items:center; justify-content:space-between;
     box-sizing:border-box; padding:0 2px 0 6px; gap:6px;
+    /* item 6: without this, a touchstart/touchmove on the strip is free to be
+       interpreted by the browser as a page scroll/pan gesture before our own
+       pointermove handler ever sees it -- touch-action:none tells the browser
+       this element owns ALL touch gestures itself, which is what actually makes
+       drag-by-touch work at all (see the pointerdown/pointermove/pointerup
+       rewrite in makePanelManageable). */
+    touch-action:none;
   }
   .panelDragStrip .stripTitle{
     font-size:9px; letter-spacing:2px; color:var(--phosphor-dim); white-space:nowrap;
@@ -107,7 +114,7 @@
   .panelCtrls button:hover{ background:rgba(109,255,194,0.2); }
   .panelResizeGrip{
     position:absolute; right:-1px; bottom:-1px; width:13px; height:13px; cursor:nwse-resize;
-    pointer-events:auto; opacity:0.65;
+    pointer-events:auto; opacity:0.65; touch-action:none; /* item 6: see .panelDragStrip's comment */
     background:
       linear-gradient(135deg, transparent 0 38%, var(--panel-border) 38% 46%, transparent 46% 100%),
       linear-gradient(135deg, transparent 0 62%, var(--panel-border) 62% 70%, transparent 70% 100%),
@@ -121,7 +128,7 @@
      height alone, keeping whatever width is already set untouched. */
   .panelResizeGripBottom{
     position:absolute; left:50%; bottom:-1px; width:52px; height:9px;
-    transform:translateX(-50%); cursor:ns-resize; pointer-events:auto; opacity:0.65;
+    transform:translateX(-50%); cursor:ns-resize; pointer-events:auto; opacity:0.65; touch-action:none;
     background:repeating-linear-gradient(to right, var(--panel-border) 0 6px, transparent 6px 11px);
   }
   .panelResizeGripBottom:hover{ opacity:1; }
@@ -299,6 +306,16 @@
   .cmdbtn.danger{border-color:rgba(255,77,77,0.6); color:var(--danger);}
   .cmdbtn.danger:hover{background:rgba(255,77,77,0.15);}
   .cmdbtn.danger.active{background:var(--danger); color:#1a0000;}
+  /* item 7: the ORBIT distance dropdown -- styled with the exact same dark
+     terminal palette as every other .cmdbtn (background:transparent over the
+     panel's own var(--panel-bg), var(--panel-border) borders, phosphor text)
+     instead of a default unstyled white <select>. Positioned to drop straight
+     down from #btnOrbit without pushing KEEP RANGE/ENGAGE/etc sideways. */
+  .orbitDropdown{
+    position:absolute; top:100%; left:0; width:100%; z-index:50;
+    display:flex; flex-direction:column; box-shadow:0 6px 14px rgba(0,0,0,0.55);
+  }
+  .orbitDropdown .cmdbtn{ width:100%; box-sizing:border-box; border-top:none; }
 
   /* reticle brackets */
   .bracket{position:fixed; z-index:35; pointer-events:none; border:2px solid var(--phosphor); transform:translate(-50%,-50%);}
@@ -520,8 +537,13 @@
   #dockNavColumn.show{display:block;}
   #dockNavColumn h2{font-family:'VT323',monospace; font-size:20px; letter-spacing:2px; color:var(--amber); margin:0 0 4px; text-shadow:0 0 8px rgba(255,176,32,0.5);}
   #dockNavColumn .sub{font-size:11px; color:var(--phosphor-dim); margin-bottom:12px; letter-spacing:1px;}
-  .dockNavList{display:flex; flex-direction:column; gap:6px;}
-  .dockNavList .cmdbtn{font-size:12px; padding:9px 8px; text-align:left; width:100%; box-sizing:border-box;}
+  /* item 5: shrunk from font-size:12px/padding:9px 8px/gap:6px -- with a dozen
+     station options now in this column, the old sizing routinely needed the
+     column's own overflow-y:auto scrollbar to see everything at a normal desktop
+     viewport height. This trims enough off each row that the full list fits
+     without scrolling while staying comfortably tappable. */
+  .dockNavList{display:flex; flex-direction:column; gap:4px;}
+  .dockNavList .cmdbtn{font-size:11px; padding:6px 8px; text-align:left; width:100%; box-sizing:border-box;}
   .dockNavList .cmdbtn.active{background:var(--phosphor); color:#001108; font-weight:bold;}
 
   /* regression fix (item E): station sub-panels (MARKET, FINANCE OFFICE, LIBRARY,
@@ -1828,6 +1850,28 @@
     <label>PANEL BACKGROUND OPACITY (<span id="panelOpacityReadout">72</span>%)</label>
     <input type="range" id="panelOpacitySlider" min="20" max="100" step="1" value="72">
   </div>
+  <!-- item 4: two independent saved custom HUD layouts -- one for the main
+       space/flight HUD panel set, one for the station/docked panel set (different
+       panels are relevant/visible in each context, see group:'space'/'station' at
+       each panel's makePanelManageable call site). Stored under distinct
+       localStorage keys (see HUD_LAYOUT_STORAGE_KEYS) -- a per-device UI
+       preference, not gameplay state, so this deliberately does NOT round-trip
+       through the Supabase cloud save the way actual progress does; a saved
+       layout auto-applies on LAUNCH (space) and on docking (station) without
+       needing LOAD clicked every time -- see applyCustomHudLayout's call sites.
+       Only the SPACE controls live here -- openSettingsMenu() refuses to open at
+       all while docked (see its own guard just above), so a Settings-menu button
+       could never actually be reached while station panels are even visible. The
+       STATION controls live in #dockNavColumn instead (see its own SAVE/LOAD
+       STATION HUD LAYOUT buttons), the one place that's genuinely on screen
+       whenever those panels are. -->
+  <div class="settingsRow" style="flex-direction:column; align-items:stretch; gap:6px;">
+    <label>CUSTOM SPACE HUD LAYOUT (auto-loads on login)</label>
+    <div class="dbtns" style="margin-top:0;">
+      <button class="cmdbtn" id="btnSaveHudSpace">SAVE SPACE HUD LAYOUT</button>
+      <button class="cmdbtn" id="btnLoadHudSpace">LOAD SPACE HUD LAYOUT</button>
+    </div>
+  </div>
   <div class="dbtns">
     <button class="cmdbtn" id="btnOpenHelp">HELP</button>
     <button class="cmdbtn" id="btnToggleFullscreen">⛶ FULL SCREEN</button>
@@ -1862,9 +1906,20 @@
   <div class="keys">
     <div><b>Click/Tap</b> a contact — select &nbsp;&nbsp; <b>Double-click/tap</b> space — approach point</div>
     <div><b>Drag</b> — orbit camera &nbsp;&nbsp; <b>Scroll / Pinch</b> — zoom</div>
-    <div><b>Lock</b> target, then <b>Approach / Orbit / Keep Range</b></div>
-    <div>Set a <b>THROTTLE CAP</b> (25% / 50% / FULL) on the telemetry panel, or hit <b>STOP</b> next to it to kill your velocity</div>
+    <div><b>Approach / Orbit / Keep Range</b> work on any selected contact; <b>Lock</b> is only needed to Mine, Engage weapons on, or Salvage from something</div>
+    <div>Set a <b>THROTTLE CAP</b> (25% / 50% / FULL) on the telemetry panel, or hit <b>STOP</b> next to it to kill your velocity — either way you'll cruise forward even with nothing targeted</div>
     <div><b>Esc</b> (or the on-screen <b>SETTINGS</b> button) opens the settings menu / backs out of inspect mode</div>
+  </div>
+
+  <!-- item 9: full keybinding scheme -- additive, doesn't replace anything above -->
+  <div class="psection">KEYBOARD SHORTCUTS</div>
+  <div class="keys">
+    <div><b>T</b> target closest &nbsp;&nbsp; <b>H</b> target closest hostile &nbsp;&nbsp; <b>M</b> target closest minable &nbsp;&nbsp; <b>S</b> target closest salvageable</div>
+    <div><b>←</b> / <b>→</b> cycle target by distance (closer / farther) &nbsp;&nbsp; <b>E</b> engage weapons on locked hostile</div>
+    <div><b>1</b> / <b>2</b> / <b>3</b> / <b>4</b> — throttle 25% / 50% / FULL / STOP</div>
+    <div><b>Z</b> star map &nbsp;&nbsp; <b>C</b> cargo &nbsp;&nbsp; <b>D</b> data pad &nbsp;&nbsp; <b>R</b> reload (equip most valuable owned ammo)</div>
+    <div><b>Shift+H</b> show/hide the whole HUD</div>
+    <div>Shortcuts are ignored while typing in chat or any other text field</div>
   </div>
 
   <div class="psection">DOCKING &amp; STATIONS</div>
@@ -1995,22 +2050,34 @@
   <div id="cmdRow">
     <button class="cmdbtn" id="btnLock">LOCK</button>
     <button class="cmdbtn" id="btnApproach" disabled>APPROACH</button>
-    <button class="cmdbtn" id="btnOrbit" disabled>ORBIT</button>
-    <!-- item 15: orbit distance selector -- CURRENT uses whatever distance the ship is
-         at the moment ORBIT is clicked, the others are fixed standoffs. Applies to the
-         next ORBIT click only (mirrors how the command buttons already work). -->
-    <select id="orbitDistanceSelect" class="cmdbtn" style="flex:0 0 auto; min-width:90px; padding:8px 4px;">
-      <option value="current">ORBIT: CURRENT</option>
-      <option value="200">ORBIT: 200M</option>
-      <option value="500">ORBIT: 500M</option>
-      <option value="1000">ORBIT: 1000M</option>
-    </select>
+    <!-- item 7 REWORK: was a plain ORBIT button plus a separate, unstyled native
+         <select> for the distance (which rendered as a jarring default-white
+         browser dropdown, and took two clicks in two different spots to pick
+         CURRENT). Now a single control: clicking ORBIT the first time reveals 4
+         options in place -- CURRENT lands exactly where the ORBIT button itself
+         just was (it's the SAME #btnOrbit element, just relabeled -- clicking that
+         same screen spot again fires CURRENT), 200/500/1000 M appear stacked
+         underneath it, absolutely positioned so they overlay downward without
+         reflowing KEEP RANGE/ENGAGE/etc beside it. See openOrbitMenu/
+         closeOrbitMenu/doOrbitCommand in the JS "flight commands" section. -->
+    <div id="orbitControl" style="position:relative; flex:1 1 auto; min-width:88px;">
+      <button class="cmdbtn" id="btnOrbit" disabled style="width:100%; box-sizing:border-box;">ORBIT</button>
+      <div id="orbitExtraOptions" class="orbitDropdown" style="display:none;">
+        <button type="button" class="cmdbtn orbitOpt" data-orbit-dist="200">200 M</button>
+        <button type="button" class="cmdbtn orbitOpt" data-orbit-dist="500">500 M</button>
+        <button type="button" class="cmdbtn orbitOpt" data-orbit-dist="1000">1000 M</button>
+      </div>
+    </div>
     <button class="cmdbtn" id="btnKeepRange" disabled>KEEP RANGE</button>
     <button class="cmdbtn danger" id="btnFire" disabled style="display:none;">ENGAGE</button>
     <button class="cmdbtn" id="btnSalvage" disabled style="display:none;">SALVAGE</button>
     <button class="cmdbtn" id="btnMine" disabled style="display:none;">MINE</button>
     <button class="cmdbtn" id="btnDock" disabled style="display:none;">DOCK</button>
     <button class="cmdbtn" id="btnWarp" disabled style="display:none;">WARP</button>
+    <!-- item 8: explicit, dedicated way to drop a target/lock -- separate from STOP
+         (which only ever kills velocity, see its handler's comment). Clears the
+         selection AND closes this panel. -->
+    <button class="cmdbtn danger" id="btnDisengage">DISENGAGE</button>
   </div>
 </div>
 
@@ -2035,6 +2102,16 @@
     <button class="cmdbtn" id="btnDockMiningPanel">MINING CORP OFFICE</button>
     <button class="cmdbtn" id="btnDockTransportPanel">TRANSPORTATION GUILD</button>
     <button class="cmdbtn" id="btnDockGovPanel">SECTOR GOVERNMENT</button>
+  </div>
+  <!-- item 4: station HUD layout save/load lives HERE rather than the SETTINGS menu --
+       openSettingsMenu() refuses to open at all while docked (see its own guard), so
+       a player standing at a station could never reach a Settings-menu button anyway.
+       This is the only place the STATION preset controls are actually reachable while
+       the station sub-panels themselves are even on screen. The SPACE preset controls
+       stay in SETTINGS, since that IS reachable during normal flight. -->
+  <div class="dbtns" style="margin-top:10px;">
+    <button class="cmdbtn" id="btnSaveHudStation">SAVE STATION HUD LAYOUT</button>
+    <button class="cmdbtn" id="btnLoadHudStation">LOAD STATION HUD LAYOUT</button>
   </div>
   <div class="dbtns" style="margin-top:14px;">
     <button class="cmdbtn danger" id="btnUndock">UNDOCK</button>
@@ -2337,9 +2414,9 @@
 // compatibility depends on it. Add new keys, don't rename old ones.
 
 // ---------- version / build info (shown in the ESC settings menu) ----------
-const GAME_VERSION = "0.20.3";
+const GAME_VERSION = "0.21.0";
 const GAME_LAST_EDITED = "2026-09-24";
-const GAME_BUILD_TIME = "20:28 PT"; // wall-clock time this build was published, not just the date
+const GAME_BUILD_TIME = "21:21 PT"; // wall-clock time this build was published, not just the date
 
 // ---------- update-available banner ----------
 // Periodically re-fetches this very page (same-origin -- works identically whether
@@ -7247,6 +7324,17 @@ function closeDockSubPanel(name){
   const btn = navBtnId && document.getElementById(navBtnId);
   if(btn) btn.classList.remove('active');
 }
+// item 3: clicking a nav-column button a SECOND time (while its own sub-panel is
+// already open) now closes that panel instead of just re-focusing/re-rendering it --
+// the panel's own X button (via onClose above) keeps working exactly as before as
+// the other way to close it. Opening a DIFFERENT panel is untouched: it still just
+// opens alongside whatever else is already open (showDockSubPanel never force-closes
+// other panels), only re-clicking the SAME button now toggles.
+function toggleDockSubPanel(name){
+  const el = document.getElementById(name);
+  if(el && el.classList.contains('show')) closeDockSubPanel(name);
+  else showDockSubPanel(name);
+}
 
 function enterDock(station){
   if(docked) return;
@@ -7275,6 +7363,13 @@ function enterDock(station){
   // fill area) is controlled by showDockSubPanel itself based on which panel is open
   document.getElementById('dockNavColumn').classList.add('show');
   showDockSubPanel('dockMainPanel');
+  // item 4: silently auto-apply a saved custom STATION HUD layout every time the
+  // player docks, if one exists -- same "no LOAD click needed" auto-load as the
+  // SPACE layout on LAUNCH. Applying it here (rather than only once per session)
+  // means it also re-snaps station panels back to the saved layout after they were
+  // dragged around during an earlier dock visit this session without being
+  // re-saved -- consistent, predictable behavior rather than surprising drift.
+  if(typeof applyCustomHudLayout === 'function') applyCustomHudLayout('station', false);
   updateDockedPanel();
   zoneMessage('DOCKED AT ' + dockedStation.name.toUpperCase(), 'good');
   // item: docking/undocking no longer write to the event log (zoneMessage above still
@@ -7412,7 +7507,7 @@ document.getElementById('btnUndock').addEventListener('click', ()=>{ exitDock();
 // the MARKET panel (a cargoTile grid + a qty prompt box), instead of popping open the
 // separate floating/draggable cargo-hold popup -- keeps every docking-bay sub-panel
 // (MARKET, FITTING, STORAGE, SELL CARGO) visually consistent with each other. ----------
-document.getElementById('btnDockCargoPanel').addEventListener('click', ()=> showDockSubPanel('dockCargoPanel'));
+document.getElementById('btnDockCargoPanel').addEventListener('click', ()=> toggleDockSubPanel('dockCargoPanel'));
 document.getElementById('btnDockCargoBack').addEventListener('click', ()=> {
   document.getElementById('dockCargoSellPrompt').style.display = 'none';
   dockSellActionStackId = null;
@@ -7676,11 +7771,11 @@ document.getElementById('marketBuyConfirm').addEventListener('click', ()=>{
   pushStationMarketToCloud();
   addStationTax(activeStationEntry().id, tax);
 });
-document.getElementById('btnDockMarketPanel').addEventListener('click', ()=> showDockSubPanel('dockMarketPanel'));
+document.getElementById('btnDockMarketPanel').addEventListener('click', ()=> toggleDockSubPanel('dockMarketPanel'));
 document.getElementById('btnDockMarketBack').addEventListener('click', ()=> closeDockSubPanel('dockMarketPanel'));
-document.getElementById('btnDockAuctionPanel').addEventListener('click', ()=> showDockSubPanel('dockAuctionPanel'));
+document.getElementById('btnDockAuctionPanel').addEventListener('click', ()=> toggleDockSubPanel('dockAuctionPanel'));
 document.getElementById('btnDockAuctionBack').addEventListener('click', ()=> closeDockSubPanel('dockAuctionPanel'));
-document.getElementById('btnDockGovPanel').addEventListener('click', ()=> showDockSubPanel('dockGovPanel'));
+document.getElementById('btnDockGovPanel').addEventListener('click', ()=> toggleDockSubPanel('dockGovPanel'));
 document.getElementById('btnDockGovBack').addEventListener('click', ()=> closeDockSubPanel('dockGovPanel'));
 
 // ---------- Sector Government / station tax trust (signed-in players only) ----------
@@ -8262,7 +8357,7 @@ document.getElementById('fitShieldList').addEventListener('click', (e)=>{
 document.getElementById('fitMiningList').addEventListener('click', (e)=>{
   if(e.target.closest('#btnFitMining')){ toggleMiningLaserEquip(); renderFittingPanel(); }
 });
-document.getElementById('btnDockFittingPanel').addEventListener('click', ()=> showDockSubPanel('dockFittingPanel'));
+document.getElementById('btnDockFittingPanel').addEventListener('click', ()=> toggleDockSubPanel('dockFittingPanel'));
 document.getElementById('btnDockFittingBack').addEventListener('click', ()=> closeDockSubPanel('dockFittingPanel'));
 
 // ---------- item 7: MANUFACTURING -- queue-built items from known blueprints ----------
@@ -8395,7 +8490,7 @@ document.getElementById('mfgRecipeList').addEventListener('click', (e)=>{
   const qty = input ? parseInt(input.value, 10) : 1;
   startManufacturing(bpType, qty);
 });
-document.getElementById('btnDockManufacturingPanel').addEventListener('click', ()=> showDockSubPanel('dockManufacturingPanel'));
+document.getElementById('btnDockManufacturingPanel').addEventListener('click', ()=> toggleDockSubPanel('dockManufacturingPanel'));
 document.getElementById('btnDockManufacturingBack').addEventListener('click', ()=> closeDockSubPanel('dockManufacturingPanel'));
 
 // ---------- LIBRARY (Memory Cube crafting + Skill Book scribing) ----------
@@ -8712,7 +8807,7 @@ function renderLibraryPanel(){
     }
   }
 }
-document.getElementById('btnDockLibraryPanel').addEventListener('click', ()=> showDockSubPanel('dockLibraryPanel'));
+document.getElementById('btnDockLibraryPanel').addEventListener('click', ()=> toggleDockSubPanel('dockLibraryPanel'));
 document.getElementById('btnDockLibraryBack').addEventListener('click', ()=> closeDockSubPanel('dockLibraryPanel'));
 document.getElementById('dockLibraryPanel').addEventListener('click', (e)=>{
   const cancelBtn = e.target.closest('#btnLibraryCancelCraft');
@@ -8818,7 +8913,7 @@ function renderDockStorageRows(){
           + '</div>';
       }).join('');
 }
-document.getElementById('btnDockStoragePanel').addEventListener('click', ()=> showDockSubPanel('dockStoragePanel'));
+document.getElementById('btnDockStoragePanel').addEventListener('click', ()=> toggleDockSubPanel('dockStoragePanel'));
 document.getElementById('btnDockStorageBack').addEventListener('click', ()=> { closeStorageMovePrompt(); closeDockSubPanel('dockStoragePanel'); });
 function addToStationStorage(itemType, qty, stationId){
   qty = Math.max(0, Math.round(qty));
@@ -8923,7 +9018,7 @@ document.getElementById('dsMoveConfirm').addEventListener('click', ()=>{
 // financed the same way, and any stored ship can be boarded (swapped to) or sold
 // from here. See activateShipInstance/boardStoredShip/sellStoredShip/buyNewShip/
 // financeStarterGear above (defined alongside the ship-ownership state).
-document.getElementById('btnDockShipyardPanel').addEventListener('click', ()=> showDockSubPanel('dockShipyardPanel'));
+document.getElementById('btnDockShipyardPanel').addEventListener('click', ()=> toggleDockSubPanel('dockShipyardPanel'));
 document.getElementById('btnDockShipyardBack').addEventListener('click', ()=> closeDockSubPanel('dockShipyardPanel'));
 function renderDockShipyardPanel(){
   const curEl = document.getElementById('shipyardCurrentRead');
@@ -8999,11 +9094,11 @@ document.getElementById('shipyardStoredShipsList').addEventListener('click', (e)
 });
 
 // ---------- station LOAN section (item 16: now embedded in dockShipyardPanel) ----------
-document.getElementById('btnDockNavyPanel').addEventListener('click', ()=> showDockSubPanel('dockNavyPanel'));
+document.getElementById('btnDockNavyPanel').addEventListener('click', ()=> toggleDockSubPanel('dockNavyPanel'));
 document.getElementById('btnDockNavyBack').addEventListener('click', ()=> closeDockSubPanel('dockNavyPanel'));
-document.getElementById('btnDockMiningPanel').addEventListener('click', ()=> showDockSubPanel('dockMiningPanel'));
+document.getElementById('btnDockMiningPanel').addEventListener('click', ()=> toggleDockSubPanel('dockMiningPanel'));
 document.getElementById('btnDockMiningBack').addEventListener('click', ()=> closeDockSubPanel('dockMiningPanel'));
-document.getElementById('btnDockTransportPanel').addEventListener('click', ()=> showDockSubPanel('dockTransportPanel'));
+document.getElementById('btnDockTransportPanel').addEventListener('click', ()=> toggleDockSubPanel('dockTransportPanel'));
 document.getElementById('btnDockTransportBack').addEventListener('click', ()=> closeDockSubPanel('dockTransportPanel'));
 // item 4c: shows the COMBINED balance (ship + gear) here -- the DATA PAD's LOANS tab
 // (see renderLoansTab) breaks the two out individually
@@ -11775,6 +11870,10 @@ function displayNameFor(entry){
 }
 function selectTarget(entry){
   if(entry && !entry.alive) return;
+  // item 7: switching (or clearing) the target while the ORBIT distance dropdown
+  // happens to be open would otherwise leave it open over a stale/no-longer-shown
+  // ORBIT button -- always close it on any selection change.
+  if(typeof closeOrbitMenu === 'function') closeOrbitMenu();
   selected = entry;
   // item-inspector info box: a world-target selection change is one of its two
   // selection sources (see lastInspectorSource / refreshItemInspector)
@@ -11819,10 +11918,24 @@ function refreshCmdButtons(){
   document.getElementById('btnLock').disabled = !selected.alive;
   document.getElementById('btnLock').textContent = (lockedId===selected.id) ? 'LOCKED' : (lockProgress>0 && lockProgress<1 ? 'LOCKING…' : 'LOCK');
   document.getElementById('btnLock').classList.toggle('active', lockedId===selected.id);
-  document.getElementById('btnApproach').disabled = !locked;
-  document.getElementById('btnOrbit').disabled = !locked;
-  document.getElementById('btnKeepRange').disabled = !locked;
+  // item 10: APPROACH/ORBIT/KEEP RANGE are movement commands, not weapon/mining/
+  // salvage actions -- "you should be able to approach and orbit anything without
+  // a lock. only have lock as an option for objects that you need to target like
+  // mining, attacking or salvaging from." They now only require a live, selected
+  // contact (same as LOCK itself), never an actual weapon-lock -- `locked` (still
+  // used below for ENGAGE, and implicitly for MINE/SALVAGE via their skipLock-true
+  // target types) is deliberately NOT used here anymore. KEEP RANGE is included
+  // alongside APPROACH/ORBIT since it's the same kind of lock-free movement
+  // command, not a combat/mining/salvage action -- consistent with the stated rule
+  // even though the user's message didn't name it explicitly.
+  document.getElementById('btnApproach').disabled = !selected.alive;
+  document.getElementById('btnOrbit').disabled = !selected.alive;
+  document.getElementById('btnKeepRange').disabled = !selected.alive;
+  if(!selected.alive && typeof closeOrbitMenu === 'function') closeOrbitMenu();
   document.getElementById('btnApproach').classList.toggle('active', command.type==='approach_target' && command.target===selected);
+  // item 7: don't stomp the ORBIT button's "CURRENT" label while its distance
+  // dropdown is open -- only toggle .active (never touch textContent) here;
+  // openOrbitMenu/closeOrbitMenu own the label the rest of the time.
   document.getElementById('btnOrbit').classList.toggle('active', command.type==='orbit' && command.target===selected);
   document.getElementById('btnKeepRange').classList.toggle('active', command.type==='keep_range' && command.target===selected);
   const fireBtn = document.getElementById('btnFire');
@@ -11890,9 +12003,17 @@ document.getElementById('btnLock').addEventListener('click', ()=>{
   lockProgress = 0.001;
   document.getElementById('lockLabel').textContent = 'LOCKING…';
 });
+// item 10: renamed in spirit (kept the name for minimal churn) -- this used to mean
+// "lock-exempt type, OR actually locked", gating APPROACH/ORBIT/KEEP RANGE behind a
+// real weapon-lock for anything that wasn't already lock-exempt (e.g. a hostile
+// ship). Movement commands no longer need a lock at all -- "you should be able to
+// approach and orbit anything without a lock" -- so this is now simply "is there a
+// live, selected contact to move toward". The lock-required gate for
+// mining/attacking/salvaging lives elsewhere (MINE/ENGAGE/SALVAGE's own disabled
+// logic in refreshCmdButtons, and skipLock there for the target types that never
+// needed a lock in the first place) and is untouched.
 function targetIsReady(entry){
-  if(!entry) return false;
-  return entry.type === 'wreck' || entry.type === 'station' || entry.type === 'gate' || entry.type === 'asteroid' || entry.type === 'cargopod' || entry.type === 'debris' || lockedId === entry.id;
+  return !!(entry && entry.alive);
 }
 document.getElementById('btnApproach').addEventListener('click', ()=>{
   // any manual flight command button doubles as "take back control" while
@@ -11903,26 +12024,66 @@ document.getElementById('btnApproach').addEventListener('click', ()=>{
   if(inputLocked()) return;
   if(targetIsReady(selected)) setCommand('approach_target', { target: selected });
 });
-document.getElementById('btnOrbit').addEventListener('click', ()=>{
-  if(autopilot){ cancelAutopilot('MANUAL OVERRIDE'); return; }
-  if(inputLocked()) return;
-  if(targetIsReady(selected)){
-    // item 15: orbit distance selector -- CURRENT, 200m, 500m or 1000m. The asteroid
-    // mining-range clamp still applies on top of whichever choice was made, same
-    // safety reasoning as before (never let a picked distance put a mining orbit
-    // outside MINING_RANGE).
-    const distSel = document.getElementById('orbitDistanceSelect');
-    const choice = distSel ? distSel.value : 'current';
-    let desiredOffset;
-    if(choice === 'current'){
-      const curDist = shipState.pos.distanceTo(selected.mesh.position);
-      desiredOffset = Math.max(0, curDist - selected.radius);
-    } else {
-      desiredOffset = parseFloat(choice) || 260;
-    }
-    const wantOffset = (selected.type === 'asteroid') ? Math.min(desiredOffset, MINING_RANGE - 40) : desiredOffset;
-    setCommand('orbit', { target: selected, orbitOffset: wantOffset, radius: selected.radius + wantOffset });
+// item 7: the actual orbit-command execution, factored out of the click handler so
+// both "click ORBIT twice" (CURRENT) and picking 200/500/1000 M from the dropdown
+// can call it. choice is 'current' or a distance-in-meters string.
+function doOrbitCommand(choice){
+  if(!targetIsReady(selected)) return;
+  let desiredOffset;
+  if(choice === 'current'){
+    const curDist = shipState.pos.distanceTo(selected.mesh.position);
+    desiredOffset = Math.max(0, curDist - selected.radius);
+  } else {
+    desiredOffset = parseFloat(choice) || 260;
   }
+  // asteroid mining-range clamp still applies on top of whichever choice was made,
+  // same safety reasoning as before (never let a picked distance put a mining orbit
+  // outside MINING_RANGE)
+  const wantOffset = (selected.type === 'asteroid') ? Math.min(desiredOffset, MINING_RANGE - 40) : desiredOffset;
+  setCommand('orbit', { target: selected, orbitOffset: wantOffset, radius: selected.radius + wantOffset });
+}
+// item 7: single-button ORBIT control -- first click opens the 4-option dropdown
+// (CURRENT relabels #btnOrbit itself, in the exact spot ORBIT was; 200/500/1000 M
+// appear below via #orbitExtraOptions), second click on the SAME button (now
+// reading CURRENT) fires the orbit-at-current-distance command and closes it.
+let orbitMenuOpen = false;
+function openOrbitMenu(){
+  const btn = document.getElementById('btnOrbit');
+  if(!btn || btn.disabled) return;
+  orbitMenuOpen = true;
+  btn.textContent = 'CURRENT';
+  const opts = document.getElementById('orbitExtraOptions');
+  if(opts) opts.style.display = 'flex';
+}
+function closeOrbitMenu(){
+  orbitMenuOpen = false;
+  const btn = document.getElementById('btnOrbit');
+  if(btn) btn.textContent = 'ORBIT';
+  const opts = document.getElementById('orbitExtraOptions');
+  if(opts) opts.style.display = 'none';
+}
+document.getElementById('btnOrbit').addEventListener('click', ()=>{
+  if(autopilot){ cancelAutopilot('MANUAL OVERRIDE'); closeOrbitMenu(); return; }
+  if(inputLocked()) return;
+  if(!orbitMenuOpen){ openOrbitMenu(); return; }
+  doOrbitCommand('current');
+  closeOrbitMenu();
+});
+document.querySelectorAll('#orbitExtraOptions .orbitOpt').forEach(btn=>{
+  btn.addEventListener('click', (e)=>{
+    e.stopPropagation();
+    if(autopilot){ cancelAutopilot('MANUAL OVERRIDE'); closeOrbitMenu(); return; }
+    if(inputLocked()) return;
+    doOrbitCommand(btn.dataset.orbitDist);
+    closeOrbitMenu();
+  });
+});
+// clicking anywhere outside the orbit control while its dropdown is open just
+// closes it without issuing a command (a plain click-away, not a CURRENT pick)
+document.addEventListener('click', (e)=>{
+  if(!orbitMenuOpen) return;
+  if(e.target.closest('#orbitControl')) return;
+  closeOrbitMenu();
 });
 document.getElementById('btnKeepRange').addEventListener('click', ()=>{
   if(autopilot){ cancelAutopilot('MANUAL OVERRIDE'); return; }
@@ -11931,6 +12092,17 @@ document.getElementById('btnKeepRange').addEventListener('click', ()=>{
     const wantOffset = (selected.type === 'asteroid') ? Math.min(700, MINING_RANGE - 40) : 700;
     setCommand('keep_range', { target: selected, orbitOffset: wantOffset, radius: selected.radius + wantOffset });
   }
+});
+// item 8: DISENGAGE -- explicitly drops the current target/lock (selectTarget(null)
+// also closes the Target panel itself, see its own definition) and clears any
+// weapon-lock in progress. Deliberately does NOT touch throttle/command -- the ship
+// keeps whatever speed/heading it already had, exactly the inverse of STOP (which
+// kills speed but leaves the target alone).
+document.getElementById('btnDisengage').addEventListener('click', ()=>{
+  if(inputLocked()) return;
+  lockedId = null;
+  weaponsFree = false;
+  selectTarget(null);
 });
 document.getElementById('btnFire').addEventListener('click', ()=>{
   if(inputLocked()) return;
@@ -12174,6 +12346,11 @@ document.getElementById('btnDock').addEventListener('click', ()=>{
   if(dist > DOCK_RANGE) return;
   startDockingSequence(selected);
 });
+// item 8: STOP only ever zeroes the movement command (setCommand('idle') below) --
+// it never touches `selected`/`lockedId`. "Hitting the stop button should not
+// untarget you from something. that's just stop speed." was already true of this
+// handler; DISENGAGE (see the #btnDisengage handler further down) is the new,
+// explicit, separate action for actually dropping a target/lock.
 document.getElementById('btnStop').addEventListener('click', ()=>{
   if(autopilot){ cancelAutopilot('MANUAL STOP'); return; }
   if(inputLocked()) return;
@@ -12181,10 +12358,24 @@ document.getElementById('btnStop').addEventListener('click', ()=>{
 });
 // throttle is a persistent global speed cap applied to every movement command (see
 // effectiveMaxSpeed()/updateShip) -- clicking one of these never changes command.type,
-// so orbiting/approaching/holding range keeps doing exactly that, just faster or slower
-document.getElementById('btnThrottle25').addEventListener('click', ()=>{ setThrottle(0.25); });
-document.getElementById('btnThrottle50').addEventListener('click', ()=>{ setThrottle(0.5); });
-document.getElementById('btnThrottleFull').addEventListener('click', ()=>{ setThrottle(1.0); });
+// so orbiting/approaching/holding range keeps doing exactly that, just faster or slower.
+// item 8: "you should go forward if able, even if nothing is targeted" -- previously
+// these buttons ONLY ever changed the speed cap, so with no movement command active
+// (command.type==='idle', e.g. right after STOP, or simply never having targeted/
+// approached anything) the ship just sat still no matter which throttle was picked,
+// since 'idle' is the one command.type updateShip() never applies any thrust for.
+// Now: if there's no target-driven command already running, a throttle click also
+// starts a plain straight-ahead 'forward' burn (same command type already used by
+// undocking/warp-arrival/etc, see updateShip's 'forward' branch) so the ship
+// actually moves. An ALREADY-active command (approach/orbit/keep_range/forward
+// itself) is left completely alone, same as before -- only 'idle' is upgraded.
+function throttleClick(val){
+  if(command.type === 'idle') setCommand('forward');
+  setThrottle(val);
+}
+document.getElementById('btnThrottle25').addEventListener('click', ()=> throttleClick(0.25));
+document.getElementById('btnThrottle50').addEventListener('click', ()=> throttleClick(0.5));
+document.getElementById('btnThrottleFull').addEventListener('click', ()=> throttleClick(1.0));
 // ---------- Escape-triggered settings/pause menu ----------
 (function(){
   // the in-game settings menu no longer shows a credits/version line (removed
@@ -12331,6 +12522,65 @@ if(panelOpacitySlider){
     try{ localStorage.setItem('voidDriftPanelOpacity', String(panelBgOpacity)); }catch(err){}
   });
 }
+
+// ---------- item 4: saved custom HUD layouts (space + station) ----------
+// Two independent presets, one per panel group (see the group:'space'/'station'
+// tag each makePanelManageable() call carries -- default 'space' when omitted).
+// Built directly on top of the EXISTING panel-position mechanism rather than a new
+// one: makePanelManageable already tracks each panel's live position/size purely as
+// that DOM element's own inline `style` attribute (see lockPixelPosition/
+// lockPixelSize/resetLayout above) -- saving a layout is just snapshotting that
+// style string per panel id, loading is just re-applying it.
+// DESIGN NOTE (per the task's own guidance): this is a per-device UI preference,
+// not gameplay state, so it's localStorage-only -- it deliberately does NOT
+// round-trip through the Supabase player_saves cloud row the way real progress
+// does. That means a custom layout doesn't follow the player to a different
+// browser/device, which is the right tradeoff here (panel geometry is meaningful
+// only in pixels on THIS screen) and keeps this from bloating the cloud save.
+const HUD_LAYOUT_STORAGE_KEYS = { space: 'voidDriftHudLayoutSpace', station: 'voidDriftHudLayoutStation' };
+function saveHudLayout(group){
+  const data = {};
+  managedPanels.forEach(p=>{
+    if(p.group !== group) return;
+    data[p.panel.id] = p.panel.getAttribute('style') || '';
+  });
+  try{ localStorage.setItem(HUD_LAYOUT_STORAGE_KEYS[group], JSON.stringify(data)); }catch(err){}
+  flashMessage((group==='station' ? 'STATION' : 'SPACE') + ' HUD LAYOUT SAVED', 'good');
+}
+// applies a saved layout for `group` if one exists. `announce` controls whether it
+// flashes a confirmation/failure message -- used for the explicit LOAD button
+// clicks, but suppressed for the silent auto-load-on-login/on-dock calls below (a
+// player with no saved layout yet shouldn't see a warning every single login).
+function applyCustomHudLayout(group, announce){
+  let data = null;
+  try{
+    const raw = localStorage.getItem(HUD_LAYOUT_STORAGE_KEYS[group]);
+    if(raw) data = JSON.parse(raw);
+  }catch(err){ data = null; }
+  if(!data){
+    if(announce) flashMessage('NO SAVED ' + (group==='station' ? 'STATION' : 'SPACE') + ' HUD LAYOUT', 'warn');
+    return false;
+  }
+  managedPanels.forEach(p=>{
+    if(p.group !== group) return;
+    const styleText = data[p.panel.id];
+    if(styleText === undefined) return; // a panel added since this layout was saved -- leave it at its default
+    if(p.state.collapsed) p.expand();
+    if(styleText) p.panel.setAttribute('style', styleText);
+    else p.panel.removeAttribute('style');
+  });
+  if(announce) flashMessage((group==='station' ? 'STATION' : 'SPACE') + ' HUD LAYOUT LOADED', 'good');
+  return true;
+}
+const btnSaveHudSpace = document.getElementById('btnSaveHudSpace');
+const btnLoadHudSpace = document.getElementById('btnLoadHudSpace');
+const btnSaveHudStation = document.getElementById('btnSaveHudStation');
+const btnLoadHudStation = document.getElementById('btnLoadHudStation');
+if(btnSaveHudSpace) btnSaveHudSpace.addEventListener('click', ()=> saveHudLayout('space'));
+if(btnLoadHudSpace) btnLoadHudSpace.addEventListener('click', ()=> applyCustomHudLayout('space', true));
+if(btnSaveHudStation) btnSaveHudStation.addEventListener('click', ()=> saveHudLayout('station'));
+if(btnLoadHudStation) btnLoadHudStation.addEventListener('click', ()=> applyCustomHudLayout('station', true));
+
 async function afkAutoLogout(){
   if(afkLoggingOut) return;
   afkLoggingOut = true;
@@ -14234,6 +14484,15 @@ document.getElementById('btnSaveExit').addEventListener('click', async ()=>{
 // and the player has opened the settings menu), it's fully populated.
 document.getElementById('btnResetHud').addEventListener('click', ()=>{
   managedPanels.forEach(p=> p.resetLayout());
+  // item 2: RESET HUD LAYOUT now also resets panel background opacity back to its
+  // own default (PANEL_OPACITY_DEFAULT, 72% -- the same default the opacity slider
+  // itself falls back to when nothing's saved yet, see loadPanelOpacity() above) --
+  // it used to only touch position/size and leave a custom opacity value in place.
+  panelBgOpacity = PANEL_OPACITY_DEFAULT;
+  applyPanelOpacity(panelBgOpacity);
+  if(panelOpacitySlider) panelOpacitySlider.value = String(Math.round(panelBgOpacity*100));
+  if(panelOpacityReadout) panelOpacityReadout.textContent = String(Math.round(panelBgOpacity*100));
+  try{ localStorage.setItem('voidDriftPanelOpacity', String(panelBgOpacity)); }catch(err){}
   flashMessage('HUD LAYOUT RESET', 'good');
 });
 document.getElementById('btnCopyDbSetup').addEventListener('click', async ()=>{
@@ -16519,11 +16778,19 @@ function makePanelManageable(panel, opts){
     closeBtn.addEventListener('click', (e)=>{ e.stopPropagation(); opts.onClose(); });
     ctrls.appendChild(closeBtn);
   }
-  const collapseBtn = document.createElement('button');
-  collapseBtn.type = 'button';
-  collapseBtn.textContent = '−';
-  collapseBtn.title = 'Collapse to dock';
-  ctrls.appendChild(collapseBtn);
+  // item 1: station sub-panels (MARKET, FINANCE OFFICE, LIBRARY, etc. -- see
+  // opts.hideCollapse at their makePanelManageable call sites below) skip the
+  // minimize/collapse-to-dock button entirely -- "no reason to have a minimize
+  // button on station popup boxes" -- and keep only the close (X) button above.
+  // The main flight HUD panels (TELEMETRY, EVENT LOG, TARGET, etc.) are untouched.
+  let collapseBtn = null;
+  if(!opts.hideCollapse){
+    collapseBtn = document.createElement('button');
+    collapseBtn.type = 'button';
+    collapseBtn.textContent = '−';
+    collapseBtn.title = 'Collapse to dock';
+    ctrls.appendChild(collapseBtn);
+  }
   strip.appendChild(ctrls);
 
   const grip = document.createElement('div');
@@ -16553,9 +16820,15 @@ function makePanelManageable(panel, opts){
   }
 
   // --- drag-to-move ---
-  let dragging = false, dragStartX = 0, dragStartY = 0, startLeft = 0, startTop = 0;
+  // item 6: rewritten from mousedown/mousemove/mouseup to Pointer Events, which fire
+  // identically for mouse, touch and pen through the SAME handlers -- the previous
+  // mouse-only wiring meant a panel could never be dragged (or resized, below) at all
+  // on a touchscreen, since a touchstart/touchmove/touchend never fires a
+  // mousedown/mousemove/mouseup. setPointerCapture keeps this pointer's move/up
+  // events routed to `strip` even if a finger/cursor slides off it mid-drag.
+  let dragging = false, dragPointerId = null, dragStartX = 0, dragStartY = 0, startLeft = 0, startTop = 0;
   function onDragMove(e){
-    if(!dragging) return;
+    if(!dragging || e.pointerId !== dragPointerId) return;
     const dx = e.clientX - dragStartX, dy = e.clientY - dragStartY;
     const w = panel.offsetWidth, h = panel.offsetHeight;
     const minVisible = 40;
@@ -16565,21 +16838,29 @@ function makePanelManageable(panel, opts){
     panel.style.left = nl + 'px';
     panel.style.top = nt + 'px';
   }
-  function onDragUp(){
+  function onDragUp(e){
+    if(dragPointerId !== null && e.pointerId !== dragPointerId) return;
     dragging = false;
-    document.removeEventListener('mousemove', onDragMove);
-    document.removeEventListener('mouseup', onDragUp);
+    try{ strip.releasePointerCapture(dragPointerId); }catch(err){}
+    dragPointerId = null;
+    strip.removeEventListener('pointermove', onDragMove);
+    strip.removeEventListener('pointerup', onDragUp);
+    strip.removeEventListener('pointercancel', onDragUp);
   }
-  strip.addEventListener('mousedown', (e)=>{
+  strip.addEventListener('pointerdown', (e)=>{
     if(e.target.closest('.panelCtrls')) return;
+    if(e.button !== undefined && e.button !== 0) return; // ignore right/middle mouse click-drag
     e.preventDefault();
     lockPixelPosition();
     dragging = true;
+    dragPointerId = e.pointerId;
+    try{ strip.setPointerCapture(e.pointerId); }catch(err){}
     dragStartX = e.clientX; dragStartY = e.clientY;
     startLeft = parseFloat(panel.style.left) || 0;
     startTop = parseFloat(panel.style.top) || 0;
-    document.addEventListener('mousemove', onDragMove);
-    document.addEventListener('mouseup', onDragUp);
+    strip.addEventListener('pointermove', onDragMove);
+    strip.addEventListener('pointerup', onDragUp);
+    strip.addEventListener('pointercancel', onDragUp);
   });
 
   // --- content-fit guard (opt-in via opts.contentFitSelector) -----------------
@@ -16623,9 +16904,10 @@ function makePanelManageable(panel, opts){
   }
 
   // --- drag-to-resize (bottom-right grip) ---
-  let resizing = false, rsx = 0, rsy = 0, startW = 0, startH = 0;
+  // item 6: same Pointer Events rewrite as the drag strip above.
+  let resizing = false, resizePointerId = null, rsx = 0, rsy = 0, startW = 0, startH = 0;
   function onResizeMove(e){
-    if(!resizing) return;
+    if(!resizing || e.pointerId !== resizePointerId) return;
     const dx = e.clientX - rsx, dy = e.clientY - rsy;
     const nw = Math.max(minW, Math.min(maxW(), startW + dx));
     const nh = Math.max(minH, Math.min(maxH(), startH + dy));
@@ -16633,21 +16915,29 @@ function makePanelManageable(panel, opts){
     panel.style.height = nh + 'px';
     ensureContentFits();
   }
-  function onResizeUp(){
+  function onResizeUp(e){
+    if(resizePointerId !== null && e.pointerId !== resizePointerId) return;
     resizing = false;
-    document.removeEventListener('mousemove', onResizeMove);
-    document.removeEventListener('mouseup', onResizeUp);
+    try{ grip.releasePointerCapture(resizePointerId); }catch(err){}
+    resizePointerId = null;
+    grip.removeEventListener('pointermove', onResizeMove);
+    grip.removeEventListener('pointerup', onResizeUp);
+    grip.removeEventListener('pointercancel', onResizeUp);
   }
-  grip.addEventListener('mousedown', (e)=>{
+  grip.addEventListener('pointerdown', (e)=>{
+    if(e.button !== undefined && e.button !== 0) return;
     e.preventDefault(); e.stopPropagation();
     lockPixelPosition();
     lockPixelSize();
     resizing = true;
+    resizePointerId = e.pointerId;
+    try{ grip.setPointerCapture(e.pointerId); }catch(err){}
     rsx = e.clientX; rsy = e.clientY;
     startW = parseFloat(panel.style.width) || panel.offsetWidth;
     startH = parseFloat(panel.style.height) || panel.offsetHeight;
-    document.addEventListener('mousemove', onResizeMove);
-    document.addEventListener('mouseup', onResizeUp);
+    grip.addEventListener('pointermove', onResizeMove);
+    grip.addEventListener('pointerup', onResizeUp);
+    grip.addEventListener('pointercancel', onResizeUp);
   });
 
   // --- drag-to-resize, HEIGHT ONLY (bottom-edge grip, opt-in) ---
@@ -16655,27 +16945,36 @@ function makePanelManageable(panel, opts){
     const bgrip = document.createElement('div');
     bgrip.className = 'panelResizeGripBottom clickable';
     panel.appendChild(bgrip);
-    let bresizing = false, bry = 0, bStartH = 0;
+    // item 6: same Pointer Events rewrite as the other two grips above.
+    let bresizing = false, bResizePointerId = null, bry = 0, bStartH = 0;
     function onBResizeMove(e){
-      if(!bresizing) return;
+      if(!bresizing || e.pointerId !== bResizePointerId) return;
       const dy = e.clientY - bry;
       const nh = Math.max(minH, Math.min(maxH(), bStartH + dy));
       panel.style.height = nh + 'px';
     }
-    function onBResizeUp(){
+    function onBResizeUp(e){
+      if(bResizePointerId !== null && e.pointerId !== bResizePointerId) return;
       bresizing = false;
-      document.removeEventListener('mousemove', onBResizeMove);
-      document.removeEventListener('mouseup', onBResizeUp);
+      try{ bgrip.releasePointerCapture(bResizePointerId); }catch(err){}
+      bResizePointerId = null;
+      bgrip.removeEventListener('pointermove', onBResizeMove);
+      bgrip.removeEventListener('pointerup', onBResizeUp);
+      bgrip.removeEventListener('pointercancel', onBResizeUp);
     }
-    bgrip.addEventListener('mousedown', (e)=>{
+    bgrip.addEventListener('pointerdown', (e)=>{
+      if(e.button !== undefined && e.button !== 0) return;
       e.preventDefault(); e.stopPropagation();
       lockPixelPosition(); // switches off left:50%/transform onto explicit top/left,
       lockPixelSize();     // same as the corner grip -- width is left untouched below
       bresizing = true;
+      bResizePointerId = e.pointerId;
+      try{ bgrip.setPointerCapture(e.pointerId); }catch(err){}
       bry = e.clientY;
       bStartH = parseFloat(panel.style.height) || panel.offsetHeight;
-      document.addEventListener('mousemove', onBResizeMove);
-      document.addEventListener('mouseup', onBResizeUp);
+      bgrip.addEventListener('pointermove', onBResizeMove);
+      bgrip.addEventListener('pointerup', onBResizeUp);
+      bgrip.addEventListener('pointercancel', onBResizeUp);
     });
   }
 
@@ -16719,7 +17018,7 @@ function makePanelManageable(panel, opts){
     panel.style.display = panel.dataset.prevDisplay || '';
     if(state.dockTab){ state.dockTab.remove(); state.dockTab = null; }
   }
-  collapseBtn.addEventListener('click', (e)=>{ e.stopPropagation(); collapse(); });
+  if(collapseBtn) collapseBtn.addEventListener('click', (e)=>{ e.stopPropagation(); collapse(); });
 
   // restores the panel's exact original stylesheet-driven layout (position, size,
   // and un-collapses it if currently docked) -- see defaultStyleText above.
@@ -16729,7 +17028,11 @@ function makePanelManageable(panel, opts){
     else panel.removeAttribute('style');
   }
 
-  const api = { collapse, expand, resetLayout, state, panel, ensureContentFits };
+  // item 4: which custom-HUD-layout bucket this panel saves/loads under -- 'space'
+  // (the default, every main flight-HUD panel) or 'station' (the docked sub-panels,
+  // see group:'station' at their call sites below). See saveHudLayout/
+  // applyCustomHudLayout further down for how this is used.
+  const api = { collapse, expand, resetLayout, state, panel, ensureContentFits, group: opts.group || 'space' };
   managedPanels.push(api);
   return api;
 }
@@ -16781,18 +17084,18 @@ makePanelManageable(document.getElementById('skillsPanel'),     { title:'SKILLS'
 // regression fix (item E): station sub-panels are now independent floating windows,
 // draggable/resizable via the same makePanelManageable system as every other HUD
 // panel, each closing only itself (see closeDockSubPanel) rather than a shared modal.
-makePanelManageable(document.getElementById('dockCargoPanel'),       { title:'SELL CARGO',          minW:260, minH:220, onClose:()=> closeDockSubPanel('dockCargoPanel') });
-makePanelManageable(document.getElementById('dockMarketPanel'),      { title:'MARKET',              minW:260, minH:220, onClose:()=> closeDockSubPanel('dockMarketPanel') });
-makePanelManageable(document.getElementById('dockAuctionPanel'),     { title:'AUCTION HOUSE',       minW:280, minH:240, onClose:()=> closeDockSubPanel('dockAuctionPanel') });
-makePanelManageable(document.getElementById('dockGovPanel'),         { title:'SECTOR GOVERNMENT',   minW:260, minH:200, onClose:()=> closeDockSubPanel('dockGovPanel') });
-makePanelManageable(document.getElementById('dockFittingPanel'),     { title:'FITTING',             minW:260, minH:220, onClose:()=> closeDockSubPanel('dockFittingPanel') });
-makePanelManageable(document.getElementById('dockManufacturingPanel'), { title:'MANUFACTURING',     minW:260, minH:220, onClose:()=> closeDockSubPanel('dockManufacturingPanel') });
-makePanelManageable(document.getElementById('dockLibraryPanel'),     { title:'LIBRARY',             minW:280, minH:240, onClose:()=> closeDockSubPanel('dockLibraryPanel') });
-makePanelManageable(document.getElementById('dockStoragePanel'),     { title:'STORAGE',             minW:280, minH:240, onClose:()=> closeDockSubPanel('dockStoragePanel') });
-makePanelManageable(document.getElementById('dockShipyardPanel'),    { title:'FINANCE OFFICE',      minW:280, minH:260, onClose:()=> closeDockSubPanel('dockShipyardPanel') });
-makePanelManageable(document.getElementById('dockNavyPanel'),        { title:'GALACTIC NAVY OFFICE', minW:280, minH:240, onClose:()=> closeDockSubPanel('dockNavyPanel') });
-makePanelManageable(document.getElementById('dockMiningPanel'),      { title:'MINING CORP OFFICE',  minW:280, minH:240, onClose:()=> closeDockSubPanel('dockMiningPanel') });
-makePanelManageable(document.getElementById('dockTransportPanel'),   { title:'TRANSPORTATION GUILD', minW:280, minH:240, onClose:()=> closeDockSubPanel('dockTransportPanel') });
+makePanelManageable(document.getElementById('dockCargoPanel'),       { title:'SELL CARGO',          minW:260, minH:220, onClose:()=> closeDockSubPanel('dockCargoPanel') , hideCollapse:true, group:'station' });
+makePanelManageable(document.getElementById('dockMarketPanel'),      { title:'MARKET',              minW:260, minH:220, onClose:()=> closeDockSubPanel('dockMarketPanel') , hideCollapse:true, group:'station' });
+makePanelManageable(document.getElementById('dockAuctionPanel'),     { title:'AUCTION HOUSE',       minW:280, minH:240, onClose:()=> closeDockSubPanel('dockAuctionPanel') , hideCollapse:true, group:'station' });
+makePanelManageable(document.getElementById('dockGovPanel'),         { title:'SECTOR GOVERNMENT',   minW:260, minH:200, onClose:()=> closeDockSubPanel('dockGovPanel') , hideCollapse:true, group:'station' });
+makePanelManageable(document.getElementById('dockFittingPanel'),     { title:'FITTING',             minW:260, minH:220, onClose:()=> closeDockSubPanel('dockFittingPanel') , hideCollapse:true, group:'station' });
+makePanelManageable(document.getElementById('dockManufacturingPanel'), { title:'MANUFACTURING',     minW:260, minH:220, onClose:()=> closeDockSubPanel('dockManufacturingPanel') , hideCollapse:true, group:'station' });
+makePanelManageable(document.getElementById('dockLibraryPanel'),     { title:'LIBRARY',             minW:280, minH:240, onClose:()=> closeDockSubPanel('dockLibraryPanel') , hideCollapse:true, group:'station' });
+makePanelManageable(document.getElementById('dockStoragePanel'),     { title:'STORAGE',             minW:280, minH:240, onClose:()=> closeDockSubPanel('dockStoragePanel') , hideCollapse:true, group:'station' });
+makePanelManageable(document.getElementById('dockShipyardPanel'),    { title:'FINANCE OFFICE',      minW:280, minH:260, onClose:()=> closeDockSubPanel('dockShipyardPanel') , hideCollapse:true, group:'station' });
+makePanelManageable(document.getElementById('dockNavyPanel'),        { title:'GALACTIC NAVY OFFICE', minW:280, minH:240, onClose:()=> closeDockSubPanel('dockNavyPanel') , hideCollapse:true, group:'station' });
+makePanelManageable(document.getElementById('dockMiningPanel'),      { title:'MINING CORP OFFICE',  minW:280, minH:240, onClose:()=> closeDockSubPanel('dockMiningPanel') , hideCollapse:true, group:'station' });
+makePanelManageable(document.getElementById('dockTransportPanel'),   { title:'TRANSPORTATION GUILD', minW:280, minH:240, onClose:()=> closeDockSubPanel('dockTransportPanel') , hideCollapse:true, group:'station' });
 
 // ---------- H: hide/show all managed HUD panels at once ----------
 // toggles a top-level visibility flag over every managed panel (and the hudDock
@@ -16827,11 +17130,86 @@ function toggleHudVisibility(){
     if(dock) dock.style.display = '';
   }
 }
+// ---------- item 9: full keybinding scheme ----------
+// helper: nearest ALIVE contact matching a filter, by straight-line distance
+function nearestContactMatching(filterFn){
+  let best = null, bestD = Infinity;
+  allTargets.forEach(entry=>{
+    if(!entry.alive) return;
+    if(filterFn && !filterFn(entry)) return;
+    const d = shipState.pos.distanceTo(entry.mesh.position);
+    if(d < bestD){ bestD = d; best = entry; }
+  });
+  return best;
+}
+function keybindTargetClosest(){ const e = nearestContactMatching(null); if(e) selectTarget(e); }
+function keybindTargetClosestHostile(){ const e = nearestContactMatching(t=>t.hostile); if(e) selectTarget(e); }
+function keybindTargetClosestMinable(){ const e = nearestContactMatching(t=>t.type==='asteroid'); if(e) selectTarget(e); }
+function keybindTargetClosestSalvageable(){ const e = nearestContactMatching(t=>t.type==='wreck' || t.type==='cargopod'); if(e) selectTarget(e); }
+// Left/Right arrow cycle through every alive contact sorted nearest-first.
+// Interpretation of the (self-contradictory as literally written) request text: a
+// single distance-sorted list with a current index; Right arrow steps to the NEXT
+// entry in that list (farther away), Left arrow steps BACK to the PREVIOUS entry
+// (closer) -- so repeatedly pressing the same arrow walks monotonically outward/
+// inward. Clamps at both ends (does not wrap) so repeatedly pressing at a list
+// boundary is simply a no-op rather than jumping unpredictably from nearest to
+// farthest or vice versa.
+function cycleTargetByDistance(dir){
+  const alive = allTargets.filter(t=>t.alive);
+  if(!alive.length) return;
+  alive.sort((a,b)=> shipState.pos.distanceTo(a.mesh.position) - shipState.pos.distanceTo(b.mesh.position));
+  let idx = selected ? alive.findIndex(t=>t.id===selected.id) : -1;
+  if(idx === -1){ idx = dir > 0 ? 0 : alive.length-1; }
+  else { idx = Math.max(0, Math.min(alive.length-1, idx+dir)); }
+  selectTarget(alive[idx]);
+}
+// 'R' -- auto-equip the highest-value owned ammo stack. Only one ammo item type
+// exists in this build (AMMO_ITEM_TYPE) so "most expensive" degenerates to "largest
+// stack" (qty times a uniform per-round price is maximized by qty); this
+// generalizes correctly once multiple ammo tiers/prices exist later.
+function reloadMostExpensiveAmmo(){
+  const stacks = cargoStacks.filter(s=> s.itemType === AMMO_ITEM_TYPE && !s.guildQuestId);
+  if(!stacks.length){ flashMessage('NO AMMO IN CARGO', 'warn'); return; }
+  let best = stacks[0];
+  stacks.forEach(s=>{ if(s.qty > best.qty) best = s; });
+  if(best.stackId === equippedAmmoStackId){ flashMessage('ALREADY LOADED', 'good'); return; }
+  equipAmmoStack(best.stackId);
+}
+// Full keybinding scheme -- T/H/M/S target, E engage, arrows cycle target, 1-4
+// throttle, Z star map, R reload, C cargo, D data pad. Ignored while typing in any
+// text field/contenteditable (the same guard the pre-existing 'H' hide-HUD toggle
+// already used) and while inputLocked() (docked/warping/inspecting/menu open/etc),
+// same as the on-screen buttons most of these mirror via .click() (which correctly
+// no-ops on a disabled button, same as an actual click would).
 window.addEventListener('keydown', (e)=>{
-  if(e.key !== 'h' && e.key !== 'H') return;
   const active = document.activeElement;
   if(active && (active.tagName === 'INPUT' || active.tagName === 'TEXTAREA' || active.isContentEditable)) return;
-  toggleHudVisibility();
+  // 'h'/'H': a plain press now targets the closest hostile (new scheme, per user
+  // request). Shift/Ctrl/Alt/Meta+H keeps the ORIGINAL show/hide-all-HUD toggle this
+  // key already had before item 9, so that existing shortcut still has a key.
+  if(e.key === 'h' || e.key === 'H'){
+    if(e.shiftKey || e.ctrlKey || e.altKey || e.metaKey){ toggleHudVisibility(); }
+    else if(!inputLocked()){ keybindTargetClosestHostile(); }
+    return;
+  }
+  if(inputLocked()) return;
+  switch(e.key){
+    case 't': case 'T': keybindTargetClosest(); break;
+    case 'm': case 'M': keybindTargetClosestMinable(); break;
+    case 's': case 'S': keybindTargetClosestSalvageable(); break;
+    case 'e': case 'E': { const b = document.getElementById('btnFire'); if(b) b.click(); break; }
+    case 'ArrowRight': e.preventDefault(); cycleTargetByDistance(1); break;
+    case 'ArrowLeft': e.preventDefault(); cycleTargetByDistance(-1); break;
+    case '1': { const b = document.getElementById('btnThrottle25'); if(b) b.click(); break; }
+    case '2': { const b = document.getElementById('btnThrottle50'); if(b) b.click(); break; }
+    case '3': { const b = document.getElementById('btnThrottleFull'); if(b) b.click(); break; }
+    case '4': { const b = document.getElementById('btnStop'); if(b) b.click(); break; }
+    case 'z': case 'Z': { const b = document.getElementById('btnStarMap'); if(b) b.click(); break; }
+    case 'r': case 'R': reloadMostExpensiveAmmo(); break;
+    case 'c': case 'C': { const b = document.getElementById('btnInventory'); if(b) b.click(); break; }
+    case 'd': case 'D': { const b = document.getElementById('btnWallet'); if(b) b.click(); break; }
+    default: return;
+  }
 });
 
 // ---------- telemetry ----------
@@ -17214,6 +17592,10 @@ document.getElementById('startBtn').addEventListener('click', async ()=>{
   // cap and lock the nearest contact
   setCommand('forward');
   autoAcquireNearest();
+  // item 4: silently auto-apply a saved custom SPACE HUD layout on login, if one
+  // exists -- no LOAD click needed. `false` suppresses the flash message so a
+  // player with no saved layout yet (the common case, first login) sees nothing.
+  applyCustomHudLayout('space', false);
   gameLaunched = true;
   animate();
 });
