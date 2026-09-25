@@ -596,14 +596,24 @@
      multiple can be open at once (see showDockSubPanel/closeDockSubPanel below --
      opening one no longer force-closes any other). */
   @media (max-width:900px){
-    /* not enough width for a side-by-side column layout -- the nav column
-       drops to a top bar instead */
+    /* item 18 FIX: this used to drop the nav column to a full-width WRAPPED TOP BAR
+       (left:8px;right:8px, row-wrapping buttons) -- a visually "giant box" spanning
+       the whole screen width, nothing like the compact desktop side column the user
+       explicitly wants mirrored on mobile. Kept as a real LEFT-side column instead,
+       same vertical button stack as desktop, just narrower and left-anchored (not
+       vertically centered via transform, so it never runs taller than the viewport
+       on a short phone) -- its own overflow-y:auto (inherited from the base
+       #dockNavColumn rule below) scrolls internally if the button list is still
+       taller than available height instead of ever growing off-screen. */
     #dockNavColumn{
-      left:8px; right:8px; top:8px; bottom:auto; width:auto; max-height:none;
-      transform:none; padding:8px;
+      left:6px; top:6px; bottom:6px; right:auto; transform:none;
+      width:min(34vw,150px); max-height:none; height:auto;
+      padding:8px 6px;
     }
-    .dockNavList{ flex-direction:row; flex-wrap:wrap; }
-    .dockNavList .cmdbtn{ width:auto; flex:1 1 30%; text-align:center; }
+    #dockNavColumn h2{ font-size:14px; }
+    #dockNavColumn .sub{ font-size:9px; margin-bottom:6px; }
+    .dockNavList{ flex-direction:column; }
+    .dockNavList .cmdbtn{ width:100%; font-size:10px; padding:5px 5px; text-align:left; }
   }
   /* default size/position for a station floating sub-panel: ~half the old
      full-screen treatment, staggered per-panel (like a normal window cascade) so
@@ -634,20 +644,35 @@
   #dockMiningPanel{ left:400px; top:calc(370px + env(safe-area-inset-top,0px)); }
   #dockTransportPanel{ left:460px; top:calc(400px + env(safe-area-inset-top,0px)); }
   @media (max-width:900px){
-    /* regression fix (item F): on narrow/short mobile the nav column becomes a
-       wrapped top bar that can run 250-300px+ tall on its own (every station
-       option plus UNDOCK, wrapped across several rows) -- there is no top offset
-       that reliably clears it AND still leaves useful room for a sub-panel on a
-       short landscape phone. Rather than pushing sub-panels below an unpredictably
-       tall nav bar (which was the old, still-broken behavior), they start near the
-       top and simply lay OVER it -- exactly like the main flight HUD's own popups
-       already do on mobile. Being semi-transparent (not the old opaque full-screen
-       treatment) keeps the nav bar legible underneath, and the panel is still fully
-       draggable if the player wants it elsewhere. */
-    .popupPanel.dockFloatPanel{ left:8px; width:min(78vw,360px); top:calc(6px + env(safe-area-inset-top,0px)); max-height:min(80vh,320px); }
+    /* item 18 FIX: these used to all pin to a fixed top-left spot (left:8px, top:6px)
+       -- easy to reach ONCE, but landing right against the screen edge under the now-
+       narrower #dockNavColumn made them awkward to grab and drag further, and every
+       sub-panel opening in that exact same corner meant a second one popped up
+       directly on top of whichever was already there. Centered instead (left:50%/
+       top:50%/transform:translate(-50%,-50%) -- the same pattern #settingsMenu and
+       every other centered-modal panel in this game already uses, and confirmed safe
+       with the drag system: makePanelManageable's lockPixelPosition() reads the
+       panel's actual on-screen rect and swaps this transform for explicit pixel
+       left/top the instant a drag starts, so centering here never fights dragging
+       afterward), same as how a draggable panel is positioned on desktop, just
+       starting in the middle of the screen instead of a staggered offset (there's
+       rarely room to stagger multiple open panels side by side on a phone anyway).
+       The per-panel left/top overrides below the base .dockFloatPanel rule (for
+       staggering them on desktop) are intentionally NOT reproduced here -- every
+       mobile sub-panel now starts from this one shared centered position. */
+    .popupPanel.dockFloatPanel{
+      left:50%; top:50%; transform:translate(-50%,-50%);
+      width:min(90vw,360px); max-height:min(80vh,420px);
+    }
+    /* the per-panel ID rules above (desktop cascade stagger) are ID-specificity and
+       would otherwise still win over the class rule just above even inside this same
+       media query -- reproduced here, ID-for-ID, so every station sub-panel actually
+       gets the shared centered position on mobile instead of its desktop stagger spot. */
     #dockMarketPanel, #dockAuctionPanel, #dockGovPanel, #dockFittingPanel, #dockManufacturingPanel,
     #dockLibraryPanel, #dockStoragePanel, #dockShipyardPanel, #dockNavyPanel, #dockMiningPanel,
-    #dockTransportPanel{ left:8px; top:calc(6px + env(safe-area-inset-top,0px)); }
+    #dockTransportPanel{
+      left:50%; top:50%; transform:translate(-50%,-50%);
+    }
   }
   #dockedPanel h2{font-family:'VT323',monospace; font-size:28px; letter-spacing:3px; color:var(--amber); margin:0 0 4px; text-shadow:0 0 8px rgba(255,176,32,0.5);}
   #dockedPanel .sub{font-size:13px; color:var(--phosphor-dim); margin-bottom:16px; letter-spacing:1px;}
@@ -821,6 +846,17 @@
     background:rgba(0,0,0,0.35); max-width:100%; overflow:hidden;
   }
   #dockStorageMovePrompt.show{display:block;}
+  /* item 9: weapon/shield/mining-laser FITTING is no longer a single click on the
+     EQUIP row button -- that first click now just stages the action and opens this
+     small "EQUIP [item name]?" confirm bar; a second, explicit CONFIRM click is what
+     actually fits it. Same visual language as the other dp*/ds* prompt boxes above. */
+  #fitEquipConfirmPrompt{
+    display:none; margin-top:10px; padding:8px; border:1px solid var(--amber);
+    background:rgba(0,0,0,0.35); max-width:100%; overflow:hidden;
+  }
+  #fitEquipConfirmPrompt.show{display:block;}
+  #fitEquipConfirmPrompt .dpRow{ justify-content:space-between; }
+  #fitEquipConfirmLabel{ color:var(--amber); }
 
   /* station STORAGE / CARGO(sell) sub-panels -- same drow/dbtns visual language as
      the rest of the docking bay, one row per item type with a qty input + action
@@ -864,6 +900,15 @@
     display:none;
     top:50%; left:50%; transform:translate(-50%,-50%);
     width:min(90vw,260px);
+    /* item 17 FIX: this box had no max-height/overflow at all outside the
+       landscape-only (max-height:500px) breakpoint further below -- on a portrait
+       mobile screen its full content (AFK timeout, panel opacity, account, custom
+       HUD, hardcore toggle, SAVE & EXIT, etc) could run taller than the viewport
+       and, being centered via transform:translate(-50%,-50%), overflow off BOTH the
+       top and bottom equally with no way to scroll to the cut-off SAVE & EXIT/close
+       controls. max-height + overflow-y:auto here (not just in that one breakpoint)
+       means it always fits on screen and scrolls internally instead. */
+    max-height:90vh; overflow-y:auto;
     background:var(--panel-bg-solid); border:1px solid var(--panel-border);
     padding:14px 16px 16px; text-align:center; pointer-events:auto; z-index:71;
   }
@@ -1062,34 +1107,41 @@
   #shipChoicePanel{
     display:none;
     top:50%; left:50%; transform:translate(-50%,-50%);
-    width:min(94vw,720px); max-height:90vh; overflow-y:auto;
+    /* item 10 FIX: was min(94vw,720px)/max-height:90vh with overflow-y:auto, which
+       reliably overflowed and forced a scrollbar on normal desktop viewports once
+       both ship columns' stats+finance blocks were populated. Widened so the two
+       columns sit further apart (less wrap pressure) and every inner element below
+       was shrunk a notch (canvas height, line-heights, paddings) so the whole modal
+       now fits inside max-height without ever needing to scroll; overflow-y stays
+       auto only as a safety net for tiny/zoomed viewports, never triggered normally. */
+    width:min(96vw,820px); max-height:96vh; overflow-y:auto;
     background:var(--panel-bg-solid); border:1px solid var(--amber);
-    padding:18px 20px 20px; text-align:center; pointer-events:auto; z-index:130;
+    padding:14px 18px 16px; text-align:center; pointer-events:auto; z-index:130;
   }
   #shipChoicePanel.show{display:block;}
   #shipChoicePanel h2{
-    font-family:'VT323',monospace; font-size:24px; letter-spacing:3px; color:var(--amber);
-    margin:0 0 6px; text-shadow:0 0 8px rgba(255,176,32,0.5);
+    font-family:'VT323',monospace; font-size:22px; letter-spacing:3px; color:var(--amber);
+    margin:0 0 4px; text-shadow:0 0 8px rgba(255,176,32,0.5);
   }
-  #shipChoicePanel > p{ font-size:12px; color:var(--phosphor-dim); line-height:1.5; margin:0 0 14px; }
+  #shipChoicePanel > p{ font-size:11.5px; color:var(--phosphor-dim); line-height:1.4; margin:0 0 10px; }
   #shipChoiceGrid{ display:flex; gap:16px; flex-wrap:wrap; justify-content:center; }
   .shipChoiceCol{
-    flex:1 1 280px; max-width:320px; border:1px solid var(--panel-border);
-    background:rgba(0,20,14,0.35); padding:12px 14px 14px; text-align:left;
+    flex:1 1 280px; max-width:340px; border:1px solid var(--panel-border);
+    background:rgba(0,20,14,0.35); padding:10px 14px 12px; text-align:left;
   }
   .shipChoiceCol h3{
-    font-family:'VT323',monospace; font-size:19px; letter-spacing:2px; color:var(--phosphor);
-    margin:0 0 8px; text-align:center;
+    font-family:'VT323',monospace; font-size:18px; letter-spacing:2px; color:var(--phosphor);
+    margin:0 0 6px; text-align:center;
   }
-  .shipChoiceViewWrap{ width:100%; height:140px; margin:0 auto 10px; }
+  .shipChoiceViewWrap{ width:100%; height:108px; margin:0 auto 8px; }
   .shipChoiceViewWrap canvas{ width:100%; height:100%; display:block; }
-  .shipChoiceCol .scDesc{ font-size:12px; color:var(--phosphor-dim); line-height:1.5; margin:0 0 8px; }
-  .shipChoiceCol .scStats{ font-size:11.5px; margin:0 0 10px; }
-  .shipChoiceCol .scStats .prow{ display:flex; justify-content:space-between; padding:2px 0; }
+  .shipChoiceCol .scDesc{ font-size:11.5px; color:var(--phosphor-dim); line-height:1.35; margin:0 0 6px; }
+  .shipChoiceCol .scStats{ font-size:11px; margin:0 0 8px; }
+  .shipChoiceCol .scStats .prow{ display:flex; justify-content:space-between; padding:1px 0; }
   .shipChoiceCol .scStats .prow span:last-child{ color:var(--phosphor); }
   .shipChoiceCol .scFinance{
-    font-size:11.5px; color:var(--amber); border-top:1px solid rgba(255,176,32,0.25);
-    padding-top:8px; margin-bottom:10px; line-height:1.6;
+    font-size:11px; color:var(--amber); border-top:1px solid rgba(255,176,32,0.25);
+    padding-top:6px; margin-bottom:8px; line-height:1.4;
   }
   #shipChoicePanel .cmdbtn{ width:100%; }
 
@@ -1755,7 +1807,6 @@
       <div id="universeMapSelectionHint">—</div>
     </div>
     <button class="cmdbtn" id="btnUniverseMapWarp" style="display:none;">WARP</button>
-    <button class="cmdbtn" id="btnUniverseMapAutopilot" style="display:none;">AUTOPILOT</button>
   </div>
 </div>
 
@@ -2256,7 +2307,6 @@
   <div class="sub" id="dockedStationName">MERIDIAN STATION</div>
   <div class="dockNavList">
     <button class="cmdbtn" id="btnDockRepair">REPAIR HULL</button>
-    <button class="cmdbtn" id="btnDockCargoPanel">SELL CARGO</button>
     <button class="cmdbtn" id="btnDockMarketPanel">MARKET</button>
     <button class="cmdbtn" id="btnDockAuctionPanel">AUCTION HOUSE</button>
     <button class="cmdbtn" id="btnDockFittingPanel">FITTING</button>
@@ -2292,33 +2342,41 @@
 </div>
 
 <div id="dockedPanel">
-  <div id="dockCargoPanel" class="hud popupPanel dockFloatPanel">
-    <div class="popupBody">
-    <div class="sub" style="color:var(--amber); text-align:left;">SELL CARGO</div>
-    <div style="color:var(--phosphor-dim); font-size:11px; margin-top:2px;">CREDITS: <span id="dockCargoCreditsRead">0</span> cr</div>
-    <div id="dockCargoGrid" style="margin-top:6px;"></div>
-    <div id="dockCargoSellPrompt" style="display:none; margin-top:10px; padding:8px; border:1px solid var(--panel-border); background:rgba(0,0,0,0.35);">
-      <div class="dpRow" style="margin-bottom:6px;"><span id="dockCargoSellLabel">Sell item</span></div>
-      <div class="dpRow">
-        <input type="number" id="dockCargoSellQty" min="1" step="1" value="1">
-        <button class="cmdbtn" id="dockCargoSellConfirm">SELL</button>
-        <button class="cmdbtn" id="dockCargoSellCancel">CANCEL</button>
-      </div>
-    </div>
-    </div>
-  </div>
-
+  <!-- item 13: the standalone SELL CARGO box is gone -- selling now happens from the
+       MARKET panel's storage-sell column (item 12) or the STORAGE panel itself. -->
   <div id="dockMarketPanel" class="hud popupPanel dockFloatPanel">
     <div class="popupBody">
     <div class="sub" style="color:var(--amber); text-align:left;">STATION MARKET</div>
     <div style="color:var(--phosphor-dim); font-size:11px; margin-top:2px;">CREDITS: <span id="dockMarketCreditsRead">0</span> cr</div>
-    <div id="marketGrid" style="margin-top:6px;"></div>
+    <!-- item 12: two side-by-side sections -- items FOR SALE (buy, unchanged) and the
+         player's own STATION STORAGE (click to sell straight into this same market;
+         see renderDockMarketStorageColumn/marketStorageSellConfirm). A sale here uses
+         the exact restockMarket() mechanic the old standalone SELL CARGO panel used,
+         so the sold item is immediately buyable again on the FOR SALE side. -->
+    <div class="storageGridWrap">
+      <div>
+        <div class="storageGridHdr">FOR SALE</div>
+        <div id="marketGrid"></div>
+      </div>
+      <div>
+        <div class="storageGridHdr">YOUR STORAGE — CLICK TO SELL</div>
+        <div id="marketStorageSellGrid" class="miniCargoGrid"></div>
+      </div>
+    </div>
     <div id="marketBuyPrompt" style="display:none; margin-top:10px; padding:8px; border:1px solid var(--panel-border); background:rgba(0,0,0,0.35);">
       <div class="dpRow" style="margin-bottom:6px;"><span id="marketBuyLabel">Buy item</span></div>
       <div class="dpRow">
         <input type="number" id="marketBuyQty" min="1" step="1" value="1">
         <button class="cmdbtn" id="marketBuyConfirm">BUY</button>
         <button class="cmdbtn" id="marketBuyCancel">CANCEL</button>
+      </div>
+    </div>
+    <div id="marketStorageSellPrompt" style="display:none; margin-top:10px; padding:8px; border:1px solid var(--panel-border); background:rgba(0,0,0,0.35);">
+      <div class="dpRow" style="margin-bottom:6px;"><span id="marketStorageSellLabel">Sell item</span></div>
+      <div class="dpRow">
+        <input type="number" id="marketStorageSellQty" min="1" step="1" value="1">
+        <button class="cmdbtn" id="marketStorageSellConfirm">SELL</button>
+        <button class="cmdbtn" id="marketStorageSellCancel">CANCEL</button>
       </div>
     </div>
     </div>
@@ -2372,6 +2430,17 @@
     <div id="fitShieldList"></div>
     <div class="psection">MINING LASER</div>
     <div id="fitMiningList"></div>
+    <!-- item 9: explicit click + confirm before any weapon/shield/mining-laser
+         swap actually takes effect -- see renderFittingPanel's click handlers below -->
+    <div id="fitEquipConfirmPrompt">
+      <div class="dpRow">
+        <span id="fitEquipConfirmLabel">EQUIP?</span>
+        <span>
+          <button class="cmdbtn" id="fitEquipConfirmYes">CONFIRM</button>
+          <button class="cmdbtn" id="fitEquipConfirmNo">CANCEL</button>
+        </span>
+      </div>
+    </div>
     </div>
   </div>
 
@@ -2392,6 +2461,8 @@
       <div id="libraryCubeForm"></div>
       <div class="psection">SKILL BOOKS — unlock starting LV.2+ training in that skill when consumed</div>
       <div id="libraryBookForm"></div>
+      <div class="psection">MANUFACTURING BLUEPRINTS — LEARN at cargo/STORAGE to unlock that tier's smelting/crafting at MANUFACTURING (needs ACADEMICS LV.N per blueprint tier N)</div>
+      <div id="libraryBlueprintForm"></div>
     </div>
     </div>
   </div>
@@ -2399,6 +2470,13 @@
   <div id="dockStoragePanel" class="hud popupPanel dockFloatPanel">
     <div class="popupBody">
     <div class="sub" style="color:var(--amber); text-align:left;">CLICK AN ITEM TO MOVE IT</div>
+    <!-- items 14/15: STORE CURRENT SHIP lives here now (moved out of the FINANCE
+         OFFICE panel) -- storing your active ship is a storage action, consistent
+         with boarding one already being done by clicking a ship item below. -->
+    <div class="drow"><span>CURRENT VESSEL</span><span id="storageCurrentShipRead">—</span></div>
+    <div class="dbtns" style="margin-top:6px; margin-bottom:10px;">
+      <button class="cmdbtn" id="btnStoreShip">STORE CURRENT SHIP</button>
+    </div>
     <div class="storageGridWrap">
       <div>
         <div class="storageGridHdr">YOUR CARGO</div>
@@ -2418,6 +2496,12 @@
              openStorageMovePrompt) -- learns from whichever side (ship cargo or
              station storage) the stack was clicked from, see dsLearnBtn handler -->
         <button class="cmdbtn" id="dsLearnBtn" style="display:none;">LEARN</button>
+        <!-- item 11: combine duplicate stacks of the same item type into the fewest
+             possible stacks, right from this same move prompt -- see
+             combineStorageStack/dsCombineBtn handler below. Shown on either side
+             (ship cargo or station storage) whenever another combinable stack of the
+             same type exists on that same side. -->
+        <button class="cmdbtn" id="dsCombineBtn" style="display:none;">COMBINE STACKS</button>
         <button class="cmdbtn" id="dsMoveConfirm">MOVE</button>
         <button class="cmdbtn" id="dsMoveCancel">CANCEL</button>
       </div>
@@ -2430,15 +2514,17 @@
     <div class="sub" style="color:var(--amber); text-align:left;">FINANCE OFFICE</div>
     <div class="drow"><span>CURRENT VESSEL</span><span id="shipyardCurrentRead">—</span></div>
     <div class="drow"><span>YOUR CREDITS</span><span id="shipyardCreditsRead">0 cr</span></div>
-    <div class="dbtns" style="margin-top:10px;">
-      <button class="cmdbtn" id="btnStoreShip">STORE CURRENT SHIP</button>
-    </div>
     <div class="psection" style="margin-top:14px;">FINANCE A NEW SHIP — GOES TO STORAGE</div>
     <div id="shipyardBuyList"></div>
     <div class="psection">FINANCE STARTER GEAR — GOES TO STORAGE</div>
     <div id="shipyardFinanceGearList"></div>
-    <div class="psection">STORED SHIPS — BOARD OR SELL</div>
-    <div id="shipyardStoredShipsList"></div>
+    <!-- items 14/15: "STORE CURRENT SHIP" moved to the STORAGE panel (storing your
+         ship is now consistent with equipping one, which already happens by clicking
+         a ship item there) and the "STORED SHIPS — BOARD OR SELL" section removed
+         entirely -- owned ships already show up as ordinary item stacks in STORAGE
+         (click to board), and can be sold from there via the MARKET panel's new
+         storage-sell column (see item 12/renderDockMarketStorageColumn). See
+         dockStoragePanel below for both. -->
     <!-- item 16: the station's standalone LOAN button/section is gone -- its content is
          merged straight into the FINANCE OFFICE (this panel), since financing and
          managing/paying down that same financing belong in one place. The Data Pad's
@@ -2560,9 +2646,9 @@
 // compatibility depends on it. Add new keys, don't rename old ones.
 
 // ---------- version / build info (shown in the ESC settings menu) ----------
-const GAME_VERSION = "0.25.1";
+const GAME_VERSION = "0.27.0";
 const GAME_LAST_EDITED = "2026-09-25";
-const GAME_BUILD_TIME = "14:05 PT"; // wall-clock time this build was published, not just the date
+const GAME_BUILD_TIME = "09:17 PT"; // wall-clock time this build was published, not just the date
 
 // ---------- update-available banner ----------
 // Periodically re-fetches this very page (same-origin -- works identically whether
@@ -4470,7 +4556,7 @@ buildAsteroids();
 
 // ---------- asteroid depletion + respawn ----------
 const ASTEROID_RESPAWN_MIN = 300, ASTEROID_RESPAWN_MAX = 600; // 5-10 minutes, same window as pirates
-const MINING_RANGE = 400; // surface-distance, same scale as LOOT_RANGE/weapon ranges
+const MINING_RANGE = 500; // surface-distance, same scale as LOOT_RANGE/weapon ranges (bumped 400->500m)
 const MINING_INTERVAL = 1.5; // seconds between extraction ticks, similar cadence to weapon fire
 const MINING_YIELD_PER_TICK = 6;
 // depleted asteroid is hidden and pulled out of the overview/selection state (mirrors
@@ -7091,25 +7177,125 @@ const AMMO_ITEM_TYPE = 'ammo_iron_bullets';
 const AMMO_MAX_STACK = 500;
 const AMMO_BUY_UNIT_PRICE = 3;   // cr/bullet at the station MARKET
 const AMMO_SELL_UNIT_PRICE = 1;  // cr/bullet when sold back to the station from cargo
+// (v0.26.0 material-tier economy) three additional ammo colors, craftable only (never
+// sold at the MARKET/Finance Office -- see MANUFACTURING_RECIPES below), each keyed
+// per NAMING STABILITY (never rename once introduced). They're functionally
+// interchangeable with Iron Bullets in combat (no damage difference -- this update
+// adds material-tier PROGRESSION/FLAVOR, not a combat rebalance); the point is the
+// crafting chain (ore -> ingot -> bullets) and the escalating ingot cost per tier.
+// See isAmmoItemType()/AMMO_ITEM_TYPES below -- every piece of ammo-equip/stack/cap
+// logic in the file reads through that helper now instead of a single hardcoded
+// AMMO_ITEM_TYPE comparison, so all four colors interchange cleanly.
+const AMMO_ITEM_TYPE_COPPER = 'ammo_copper_bullets';
+const AMMO_ITEM_TYPE_SILVER = 'ammo_silver_bullets';
+const AMMO_ITEM_TYPE_GOLD = 'ammo_gold_bullets';
+const AMMO_ITEM_TYPES = [AMMO_ITEM_TYPE, AMMO_ITEM_TYPE_COPPER, AMMO_ITEM_TYPE_SILVER, AMMO_ITEM_TYPE_GOLD];
+function isAmmoItemType(t){ return AMMO_ITEM_TYPES.indexOf(t) >= 0; }
 // item 6: Iron Bullet Blueprint -- a fresh item-type key per the NAMING STABILITY
 // rule, never rename once introduced. A consumable: LEARN-ing it (see dpLearn in
 // openCargoActionPrompt) removes 1 from the stack and permanently unlocks the Iron
 // Bullet Manufacturing recipe (see MANUFACTURING_RECIPES below) via knownBlueprints.
 const BLUEPRINT_IRON_BULLETS = 'blueprint_iron_bullets';
 const BLUEPRINT_IRON_BULLETS_PRICE = 800; // cr at the station MARKET -- same order of magnitude as a weapon tier (500/1200/2500)
-const ITEM_WEIGHTS = { scrap:1, blackBox:2, blackBoxCaptain:2, iron:1, copper:2, silver:3, gold:4, ammo_iron_bullets:0.05, blueprint_iron_bullets:1, memory_cube:1, skill_book:1 };
-// item 7: manufacturing recipes -- keyed by blueprint item type so a future second
-// recipe just needs one more entry here (see dockManufacturingPanel/renderManufacturingPanel
-// below, which already loops over knownBlueprints generically rather than hardcoding
-// this one recipe). Iron Bullet Manufacturing: 2 Iron Ore + 1 credit per bullet built,
-// clearly cheaper than the 3cr/bullet MARKET price (the iron ore itself is normally
-// mined for free, so the only real cash outlay is the 1cr/unit) -- each unit takes
-// exactly CRAFT_SECONDS_PER_UNIT real seconds to build (see updateManufacturingQueue).
+// (v0.26.0) material-tier Manufacturing blueprints, scribed at the LIBRARY (never
+// sold at the MARKET) -- see startBlueprintScribe()/BLUEPRINT_TIER_DEFS below. Each
+// one is a permanent unlock (same LEARN-and-consume flow as BLUEPRINT_IRON_BULLETS,
+// generalized -- see BLUEPRINT_ITEM_TYPES/learnBlueprint()) that opens up a whole
+// batch of MANUFACTURING_RECIPES entries at once (see requiresBlueprint on each
+// recipe below) rather than one blueprint per recipe -- see the design-decision
+// comment above MANUFACTURING_RECIPES for exactly which recipes each tier unlocks.
+const BLUEPRINT_MFG_LV1 = 'blueprint_mfg_lv1';
+const BLUEPRINT_MFG_LV2 = 'blueprint_mfg_lv2';
+const BLUEPRINT_MFG_LV3 = 'blueprint_mfg_lv3';
+// every LEARN-able blueprint item type in the game -- generic list so dpLearn/
+// dsLearnBtn/learnBlueprint don't need a per-blueprint hardcoded branch (see
+// openCargoActionPrompt/openStorageMovePrompt below)
+const BLUEPRINT_ITEM_TYPES = [BLUEPRINT_IRON_BULLETS, BLUEPRINT_MFG_LV1, BLUEPRINT_MFG_LV2, BLUEPRINT_MFG_LV3];
+// (v0.26.0) Refined Ingots -- smelted from raw ore at MANUFACTURING (see the
+// mfg_smelt_* recipes below), one per ore/material tier. NAMING STABILITY: these are
+// brand-new keys, chosen to be permanent -- 'ingot_<ore>', matching the existing
+// 'ammo_<metal>_bullets'/'ore' naming style used elsewhere in the file. Ingots are
+// the actual crafting currency for every tiered blueprint below (mining laser/
+// weapon/shield tiers, and the copper/silver/gold ammo tiers) -- raw ore itself is
+// never a direct input to anything above tier 0.
+const INGOT_IRON = 'ingot_iron';
+const INGOT_COPPER = 'ingot_copper';
+const INGOT_SILVER = 'ingot_silver';
+const INGOT_GOLD = 'ingot_gold';
+// ore-type key -> its ingot's item type, and the reverse -- used generically by the
+// MANUFACTURING panel's "SMELT" row (one unified action across all 4 ore types, per
+// the design-decision comment above) instead of 4 separate hardcoded branches
+const INGOT_FOR_ORE = { iron:INGOT_IRON, copper:INGOT_COPPER, silver:INGOT_SILVER, gold:INGOT_GOLD };
+const ORE_PER_INGOT = 5; // flat ratio across every material tier -- keeps the smelting math simple and consistent
+// smelting fee (credits/ingot) scales with the ore's own market value (same ~2x
+// multiplier across all four tiers, mirroring ORE_PRICES' own escalation)
+const SMELT_FEE_PER_INGOT = { iron:2, copper:10, silver:25, gold:60 };
+const SMELT_SECONDS_PER_INGOT = { iron:5, copper:8, silver:12, gold:20 };
+const ITEM_WEIGHTS = {
+  scrap:1, blackBox:2, blackBoxCaptain:2, iron:1, copper:2, silver:3, gold:4,
+  ammo_iron_bullets:0.05, ammo_copper_bullets:0.05, ammo_silver_bullets:0.05, ammo_gold_bullets:0.05,
+  blueprint_iron_bullets:1, blueprint_mfg_lv1:1, blueprint_mfg_lv2:1, blueprint_mfg_lv3:1,
+  memory_cube:1, skill_book:1,
+  ingot_iron:1, ingot_copper:2, ingot_silver:3, ingot_gold:4
+};
+// item 7 / (v0.26.0 material-tier economy rework): manufacturing recipes -- now keyed
+// by an arbitrary recipe id (was: 1:1 with the unlocking blueprint's item type) since
+// a single blueprint now unlocks SEVERAL recipes at once (see requiresBlueprint on
+// each entry, checked generically against knownBlueprints -- see startManufacturing/
+// renderManufacturingPanel below, which loop over MANUFACTURING_RECIPES and filter by
+// requiresBlueprint rather than hardcoding). `inputs` is a generic [{type,qty}] list
+// (replaces the old single-material ironPerUnit field -- BLUEPRINT_IRON_BULLETS below
+// keeps its original 2-iron-ore-per-bullet cost, just reshaped into the new generic
+// field) so a recipe can require any mix of ore/ingots. `minSkill` (optional) additionally
+// gates BUILDING (not just knowing the blueprint) on a skill level, same convention as
+// weapon/shield tier EQUIP gating.
+//
+// DESIGN DECISION (documented per the task's ambiguity note): the user's spec says
+// "level 1 needs iron ingots, level 2 copper, level 3 silver, level 4 gold" but ALSO
+// only ever asks for 3 craftable gear tiers (LV.1-3, matching the existing LV.0-3
+// weapon/shield system -- grep for SKILL_MAX_LEVEL in equipWeaponTier/equipShieldTier
+// confirms gear gating never goes past tier 3 anywhere in this file). There is no
+// LV.4 gear tier to consume Gold Ingots. Resolution used here: gear tiers 1/2/3 use
+// iron/copper/silver ingots respectively (exactly as specified), and "level 4 = gold
+// ingots" is satisfied by the 4th AMMO tier instead (Gold Bullets) -- ammo naturally
+// has a 4th rung since there are 4 bullet colors total (iron/copper/silver/gold).
+// Silver+Gold Bullets are both bundled under the LV.3 blueprint (the highest tier
+// that exists) since there's no LV.4 blueprint to gate a LV.4 recipe on.
 const MANUFACTURING_RECIPES = {
   [BLUEPRINT_IRON_BULLETS]: {
+    requiresBlueprint: BLUEPRINT_IRON_BULLETS,
     outputType: AMMO_ITEM_TYPE, outputQtyPerUnit: 1, label: 'Iron Bullet Manufacturing',
-    ironPerUnit: 2, creditsPerUnit: 1, craftSeconds: 3
-  }
+    inputs: [{ type:'iron', qty:2 }], creditsPerUnit: 1, craftSeconds: 3
+  },
+  // ---- SMELTING (unlocked by the LV.1 blueprint -- foundational, needed before any
+  // tiered gear can be built at all) -- one recipe per ore type, ORE_PER_INGOT ore ->
+  // 1 ingot + a small per-ingot smelting fee. See also smeltOre() below, a thin
+  // convenience wrapper around startManufacturing that lets the MANUFACTURING panel
+  // offer a single "SMELT" row with an ore-type picker instead of 4 separate BUILD
+  // rows -- satisfies both "one blueprint per ore type" (these ARE 4 distinct
+  // recipes/blueprint-gated unlocks) and "one for all ores" (one unified UI action)
+  // from the task at once.
+  mfg_smelt_iron:   { requiresBlueprint: BLUEPRINT_MFG_LV1, outputType: INGOT_IRON,   outputQtyPerUnit: 1, label: 'Smelt Iron Ore',   inputs: [{ type:'iron',   qty:ORE_PER_INGOT }], creditsPerUnit: SMELT_FEE_PER_INGOT.iron,   craftSeconds: SMELT_SECONDS_PER_INGOT.iron },
+  mfg_smelt_copper: { requiresBlueprint: BLUEPRINT_MFG_LV1, outputType: INGOT_COPPER, outputQtyPerUnit: 1, label: 'Smelt Copper Ore', inputs: [{ type:'copper', qty:ORE_PER_INGOT }], creditsPerUnit: SMELT_FEE_PER_INGOT.copper, craftSeconds: SMELT_SECONDS_PER_INGOT.copper },
+  mfg_smelt_silver: { requiresBlueprint: BLUEPRINT_MFG_LV1, outputType: INGOT_SILVER, outputQtyPerUnit: 1, label: 'Smelt Silver Ore', inputs: [{ type:'silver', qty:ORE_PER_INGOT }], creditsPerUnit: SMELT_FEE_PER_INGOT.silver, craftSeconds: SMELT_SECONDS_PER_INGOT.silver },
+  mfg_smelt_gold:   { requiresBlueprint: BLUEPRINT_MFG_LV1, outputType: INGOT_GOLD,   outputQtyPerUnit: 1, label: 'Smelt Gold Ore',   inputs: [{ type:'gold',   qty:ORE_PER_INGOT }], creditsPerUnit: SMELT_FEE_PER_INGOT.gold,   craftSeconds: SMELT_SECONDS_PER_INGOT.gold },
+  // ---- LV.1 gear (Iron Ingots, gated on the matching skill at level 1 to BUILD --
+  // same as the EQUIP gate, so you can't stockpile gear you can't yet mount either) ----
+  mfg_mining_laser_1: { requiresBlueprint: BLUEPRINT_MFG_LV1, outputType: 'miningLaserTier1', outputQtyPerUnit: 1, label: 'Mining Laser LV.1', inputs: [{ type:INGOT_IRON, qty:8 }],  creditsPerUnit: 300,  craftSeconds: 30, minSkill: { key:'mining', level:1 } },
+  mfg_weapon_1:       { requiresBlueprint: BLUEPRINT_MFG_LV1, outputType: 'weaponTier1',      outputQtyPerUnit: 1, label: 'Weapon LV.1 (Crafted)', inputs: [{ type:INGOT_IRON, qty:8 }],  creditsPerUnit: 250, craftSeconds: 30, minSkill: { key:'weapon_upgrades', level:1 } },
+  mfg_shield_1:       { requiresBlueprint: BLUEPRINT_MFG_LV1, outputType: 'shieldTier1',      outputQtyPerUnit: 1, label: 'Shield LV.1 (Crafted)', inputs: [{ type:INGOT_IRON, qty:8 }],  creditsPerUnit: 250, craftSeconds: 30, minSkill: { key:'shield_upgrades', level:1 } },
+  // ---- LV.2 gear + Copper Bullets (Copper Ingots) ----
+  mfg_mining_laser_2: { requiresBlueprint: BLUEPRINT_MFG_LV2, outputType: 'miningLaserTier2', outputQtyPerUnit: 1, label: 'Mining Laser LV.2', inputs: [{ type:INGOT_COPPER, qty:12 }], creditsPerUnit: 700, craftSeconds: 60, minSkill: { key:'mining', level:2 } },
+  mfg_weapon_2:       { requiresBlueprint: BLUEPRINT_MFG_LV2, outputType: 'weaponTier2',      outputQtyPerUnit: 1, label: 'Weapon LV.2 (Crafted)', inputs: [{ type:INGOT_COPPER, qty:12 }], creditsPerUnit: 600, craftSeconds: 60, minSkill: { key:'weapon_upgrades', level:2 } },
+  mfg_shield_2:       { requiresBlueprint: BLUEPRINT_MFG_LV2, outputType: 'shieldTier2',      outputQtyPerUnit: 1, label: 'Shield LV.2 (Crafted)', inputs: [{ type:INGOT_COPPER, qty:12 }], creditsPerUnit: 600, craftSeconds: 60, minSkill: { key:'shield_upgrades', level:2 } },
+  mfg_copper_bullets: { requiresBlueprint: BLUEPRINT_MFG_LV2, outputType: AMMO_ITEM_TYPE_COPPER, outputQtyPerUnit: 5, label: 'Copper Bullet Manufacturing', inputs: [{ type:INGOT_COPPER, qty:1 }], creditsPerUnit: 8, craftSeconds: 4 },
+  // ---- LV.3 gear + Silver Bullets (Silver Ingots) + Gold Bullets (Gold Ingots --
+  // see the DESIGN DECISION comment above for why Gold Bullets live here) ----
+  mfg_mining_laser_3: { requiresBlueprint: BLUEPRINT_MFG_LV3, outputType: 'miningLaserTier3', outputQtyPerUnit: 1, label: 'Mining Laser LV.3', inputs: [{ type:INGOT_SILVER, qty:16 }], creditsPerUnit: 1500, craftSeconds: 90, minSkill: { key:'mining', level:3 } },
+  mfg_weapon_3:       { requiresBlueprint: BLUEPRINT_MFG_LV3, outputType: 'weaponTier3',      outputQtyPerUnit: 1, label: 'Weapon LV.3 (Crafted)', inputs: [{ type:INGOT_SILVER, qty:16 }], creditsPerUnit: 1300, craftSeconds: 90, minSkill: { key:'weapon_upgrades', level:3 } },
+  mfg_shield_3:       { requiresBlueprint: BLUEPRINT_MFG_LV3, outputType: 'shieldTier3',      outputQtyPerUnit: 1, label: 'Shield LV.3 (Crafted)', inputs: [{ type:INGOT_SILVER, qty:16 }], creditsPerUnit: 1300, craftSeconds: 90, minSkill: { key:'shield_upgrades', level:3 } },
+  mfg_silver_bullets: { requiresBlueprint: BLUEPRINT_MFG_LV3, outputType: AMMO_ITEM_TYPE_SILVER, outputQtyPerUnit: 5, label: 'Silver Bullet Manufacturing', inputs: [{ type:INGOT_SILVER, qty:1 }], creditsPerUnit: 20, craftSeconds: 5 },
+  mfg_gold_bullets:   { requiresBlueprint: BLUEPRINT_MFG_LV3, outputType: AMMO_ITEM_TYPE_GOLD,   outputQtyPerUnit: 5, label: 'Gold Bullet Manufacturing',   inputs: [{ type:INGOT_GOLD,   qty:1 }], creditsPerUnit: 45, craftSeconds: 6 }
 };
 const CARGO_CAPACITY = 500; // base capacity of the normal ship -- see effectiveCargoCapacity()
 // the escape pod carries zero cargo capacity (see item 5c) -- every capacity check and
@@ -7173,8 +7359,8 @@ function isStackEquipped(stack){
   if(stack.guildQuestId) return false; // guild delivery cargo is never mounted
   if(stack.itemType.indexOf('weaponTier') === 0) return parseInt(stack.itemType.slice(10),10) === equippedWeaponTier;
   if(stack.itemType.indexOf('shieldTier') === 0) return parseInt(stack.itemType.slice(10),10) === equippedShieldTier;
-  if(stack.itemType === 'miningLaser') return miningLaserEquipped;
-  if(stack.itemType === AMMO_ITEM_TYPE) return stack.stackId === equippedAmmoStackId;
+  if(stack.itemType === 'miningLaser' || stack.itemType.indexOf('miningLaserTier') === 0) return miningLaserEquipped;
+  if(isAmmoItemType(stack.itemType)) return stack.stackId === equippedAmmoStackId;
   return false;
 }
 function updateInventoryPanel(){
@@ -7227,16 +7413,17 @@ function openCargoActionPrompt(stackId){
   // sense -- there'd be nothing left in either half -- so hide SPLIT for those
   if(splitBtn) splitBtn.style.display = stack.qty > 1 ? '' : 'none';
   const equipBtn = document.getElementById('dpEquip');
-  if(equipBtn) equipBtn.style.display = (stack.itemType === AMMO_ITEM_TYPE && stack.stackId !== equippedAmmoStackId && !stack.guildQuestId) ? '' : 'none';
+  if(equipBtn) equipBtn.style.display = (isAmmoItemType(stack.itemType) && stack.stackId !== equippedAmmoStackId && !stack.guildQuestId) ? '' : 'none';
   // ammo, specifically, can be un-equipped straight from the cargo hold in space too
   // (not just re-equipped) -- see unequipAmmoStack
   const unequipBtn = document.getElementById('dpUnequip');
-  if(unequipBtn) unequipBtn.style.display = (stack.itemType === AMMO_ITEM_TYPE && stack.stackId === equippedAmmoStackId) ? '' : 'none';
-  // item 6: LEARN only shows for the Iron Bullet Blueprint, and only while it hasn't
-  // already been learned -- once knownBlueprints has it, hides for good (owning extra
-  // copies afterward is just wasted cargo, see MANUFACTURING_RECIPES comment above)
+  if(unequipBtn) unequipBtn.style.display = (isAmmoItemType(stack.itemType) && stack.stackId === equippedAmmoStackId) ? '' : 'none';
+  // item 6/(v0.26.0): LEARN shows for any known blueprint item type (generalized from
+  // a single hardcoded Iron Bullet Blueprint check -- see BLUEPRINT_ITEM_TYPES) while
+  // it hasn't already been learned -- once knownBlueprints has it, hides for good
+  // (owning extra copies afterward is just wasted cargo)
   const learnBtn = document.getElementById('dpLearn');
-  if(learnBtn) learnBtn.style.display = (stack.itemType === BLUEPRINT_IRON_BULLETS && !knownBlueprints.has(BLUEPRINT_IRON_BULLETS) && !stack.guildQuestId) ? '' : 'none';
+  if(learnBtn) learnBtn.style.display = (BLUEPRINT_ITEM_TYPES.indexOf(stack.itemType) >= 0 && !knownBlueprints.has(stack.itemType) && !stack.guildQuestId) ? '' : 'none';
   // COMBINE merges this stack into any other stack(s) of the same item type --
   // only worth showing when another such stack actually exists (see combineCargoStack)
   const combineBtn = document.getElementById('dpCombine');
@@ -7263,18 +7450,25 @@ document.getElementById('dpUnequip').addEventListener('click', ()=>{
   unequipAmmoStack();
   closeCargoActionPrompt();
 });
-// item 6: consumes 1 Iron Bullet Blueprint from the clicked stack and permanently
-// unlocks Iron Bullet Manufacturing (see MANUFACTURING_RECIPES/knownBlueprints)
+// item 6 / (v0.26.0) generalized: consumes 1 copy of ANY known-blueprint item type
+// (see BLUEPRINT_ITEM_TYPES) from the clicked stack and permanently unlocks
+// whatever it unlocks -- BLUEPRINT_IRON_BULLETS maps 1:1 to a single recipe;
+// BLUEPRINT_MFG_LV1/2/3 each unlock a whole batch of MANUFACTURING_RECIPES entries
+// at once (every recipe whose requiresBlueprint matches -- see startManufacturing/
+// renderManufacturingPanel). Uses itemDisplayDef's label for the message rather
+// than a single recipe's label, since a tier blueprint doesn't map to just one.
 function learnBlueprint(stackId){
   const stack = cargoStacks.find(s=>s.stackId===stackId);
-  if(!stack || stack.itemType !== BLUEPRINT_IRON_BULLETS) return;
+  if(!stack || BLUEPRINT_ITEM_TYPES.indexOf(stack.itemType) < 0) return;
   if(stack.guildQuestId){ flashMessage('GUILD DELIVERY CARGO — CANNOT BE LEARNED', 'warn'); return; }
-  if(knownBlueprints.has(BLUEPRINT_IRON_BULLETS)){ flashMessage('ALREADY KNOWN', 'warn'); return; }
+  if(knownBlueprints.has(stack.itemType)){ flashMessage('ALREADY KNOWN', 'warn'); return; }
+  const label = itemDisplayDef(stack.itemType).label;
   jettisonFromStack(stackId, 1); // consumes 1 copy (not jettisoned into space -- just removed from cargo)
-  knownBlueprints.add(BLUEPRINT_IRON_BULLETS);
-  flashMessage('LEARNED: ' + MANUFACTURING_RECIPES[BLUEPRINT_IRON_BULLETS].label.toUpperCase(), 'good');
-  logEvent('LEARNED MANUFACTURING PLAN — ' + MANUFACTURING_RECIPES[BLUEPRINT_IRON_BULLETS].label.toUpperCase(), 'good');
+  knownBlueprints.add(stack.itemType);
+  flashMessage('LEARNED: ' + label.toUpperCase(), 'good');
+  logEvent('LEARNED MANUFACTURING PLAN — ' + label.toUpperCase(), 'good');
   updateCargoUI();
+  if(typeof renderManufacturingPanel === 'function') renderManufacturingPanel();
 }
 document.getElementById('dpLearn').addEventListener('click', ()=>{
   if(cargoActionStackId == null) return;
@@ -7289,14 +7483,16 @@ document.getElementById('dpLearn').addEventListener('click', ()=>{
 function learnBlueprintFrom(from, stackId){
   if(from === 'ship'){ learnBlueprint(stackId); return; }
   const stack = stationStorage().find(s=>s.stackId===stackId);
-  if(!stack || stack.itemType !== BLUEPRINT_IRON_BULLETS) return;
-  if(knownBlueprints.has(BLUEPRINT_IRON_BULLETS)){ flashMessage('ALREADY KNOWN', 'warn'); return; }
+  if(!stack || BLUEPRINT_ITEM_TYPES.indexOf(stack.itemType) < 0) return;
+  if(knownBlueprints.has(stack.itemType)){ flashMessage('ALREADY KNOWN', 'warn'); return; }
+  const label = itemDisplayDef(stack.itemType).label;
   stack.qty -= 1;
   if(stack.qty <= 0) removeStationStorageStackRef(stack);
-  knownBlueprints.add(BLUEPRINT_IRON_BULLETS);
-  flashMessage('LEARNED: ' + MANUFACTURING_RECIPES[BLUEPRINT_IRON_BULLETS].label.toUpperCase(), 'good');
-  logEvent('LEARNED MANUFACTURING PLAN — ' + MANUFACTURING_RECIPES[BLUEPRINT_IRON_BULLETS].label.toUpperCase(), 'good');
+  knownBlueprints.add(stack.itemType);
+  flashMessage('LEARNED: ' + label.toUpperCase(), 'good');
+  logEvent('LEARNED MANUFACTURING PLAN — ' + label.toUpperCase(), 'good');
   renderDockStorageRows();
+  if(typeof renderManufacturingPanel === 'function') renderManufacturingPanel();
 }
 document.getElementById('dsLearnBtn').addEventListener('click', ()=>{
   if(!storageMoveCtx) return;
@@ -7314,7 +7510,7 @@ function combineCargoStack(stackId){
   const stack = cargoStacks.find(s=>s.stackId===stackId);
   if(!stack) return;
   const itemType = stack.itemType;
-  const cap = itemType === AMMO_ITEM_TYPE ? AMMO_MAX_STACK : Infinity;
+  const cap = isAmmoItemType(itemType) ? AMMO_MAX_STACK : Infinity;
   const wasEquippedAmmo = stackId === equippedAmmoStackId;
   // guild delivery cargo only ever combines with the SAME delivery's cargo (and owned
   // cargo never with guild cargo) so the earmark can't leak either way
@@ -7507,18 +7703,19 @@ function updateDockedPanel(){
 // its own independent floating window (.dockFloatPanel, see CSS) that opens/closes
 // on its own -- opening MARKET no longer touches LIBRARY if it's already open, and
 // any number can be open together, exactly like the main HUD's own floating panels.
-const DOCK_SUBPANEL_IDS = ['dockCargoPanel','dockStoragePanel','dockShipyardPanel','dockMarketPanel',
+const DOCK_SUBPANEL_IDS = ['dockStoragePanel','dockShipyardPanel','dockMarketPanel',
   'dockAuctionPanel','dockGovPanel','dockFittingPanel','dockManufacturingPanel','dockLibraryPanel',
   'dockNavyPanel','dockMiningPanel','dockTransportPanel'];
-// item 13: highlight whichever nav-column option(s) correspond to currently-open sub-panels
-const DOCK_NAV_BTN_ID = { dockCargoPanel:'btnDockCargoPanel', dockStoragePanel:'btnDockStoragePanel',
+// item 13: highlight whichever nav-column option(s) correspond to currently-open sub-panels.
+// (item 13: dockCargoPanel/SELL CARGO removed -- selling now happens from the MARKET
+// panel's storage-sell column, see item 12.)
+const DOCK_NAV_BTN_ID = { dockStoragePanel:'btnDockStoragePanel',
   dockShipyardPanel:'btnDockShipyardPanel', dockMarketPanel:'btnDockMarketPanel',
   dockAuctionPanel:'btnDockAuctionPanel', dockGovPanel:'btnDockGovPanel',
   dockFittingPanel:'btnDockFittingPanel', dockManufacturingPanel:'btnDockManufacturingPanel',
   dockLibraryPanel:'btnDockLibraryPanel', dockNavyPanel:'btnDockNavyPanel',
   dockMiningPanel:'btnDockMiningPanel', dockTransportPanel:'btnDockTransportPanel' };
 function renderDockSubPanelContent(name){
-  if(name === 'dockCargoPanel') renderDockCargoPanel();
   if(name === 'dockStoragePanel') renderDockStorageRows();
   if(name === 'dockShipyardPanel') renderDockShipyardPanel(); // item 16: renders STATION LOAN too
   if(name === 'dockMarketPanel') renderMarketPanel();
@@ -7558,12 +7755,13 @@ function closeDockSubPanel(name){
   // way out (SELL CARGO's qty prompt, STORAGE's move prompt) -- folded that
   // cleanup in here so it still runs no matter which of the two remaining paths
   // closes the panel, instead of only running on a click that no longer exists.
-  if(name === 'dockCargoPanel'){
-    const prompt = document.getElementById('dockCargoSellPrompt');
+  if(name === 'dockMarketPanel'){
+    const prompt = document.getElementById('marketStorageSellPrompt');
     if(prompt) prompt.style.display = 'none';
-    dockSellActionStackId = null;
+    marketStorageSellStackId = null;
   }
   if(name === 'dockStoragePanel' && typeof closeStorageMovePrompt === 'function') closeStorageMovePrompt();
+  if(name === 'dockFittingPanel' && typeof closeFitEquipConfirm === 'function') closeFitEquipConfirm();
 }
 // item 3: clicking a nav-column button a SECOND time (while its own sub-panel is
 // already open) now closes that panel instead of just re-focusing/re-rendering it --
@@ -7744,93 +7942,10 @@ document.getElementById('btnDockRepair').addEventListener('click', ()=>{
 });
 document.getElementById('btnUndock').addEventListener('click', ()=>{ exitDock(); });
 
-// ---------- item 9 (v2): SELL CARGO -- an embedded dockSubPanel styled exactly like
-// the MARKET panel (a cargoTile grid + a qty prompt box), instead of popping open the
-// separate floating/draggable cargo-hold popup -- keeps every docking-bay sub-panel
-// (MARKET, FITTING, STORAGE, SELL CARGO) visually consistent with each other. ----------
-document.getElementById('btnDockCargoPanel').addEventListener('click', ()=> toggleDockSubPanel('dockCargoPanel'));
-let dockSellActionStackId = null;
-function renderDockCargoPanel(){
-  const grid = document.getElementById('dockCargoGrid');
-  if(!grid) return;
-  const credEl = document.getElementById('dockCargoCreditsRead');
-  if(credEl) credEl.textContent = Math.round(bountyCredits).toLocaleString();
-  grid.innerHTML = cargoStacks.length === 0
-    ? '<div class="cargoTile empty">EMPTY</div>'
-    : cargoStacks.map(stack=>{
-        const def = itemDisplayDef(stack.itemType);
-        const sellable = def.sellPrice != null;
-        return '<div class="cargoTile' + (sellable?'':' empty') + '" data-sell-stack-id="' + stack.stackId + '">'
-          + '<div class="swatch' + (def.round?' round':'') + '" style="background:' + def.color + ';"></div>'
-          + '<div class="tname">' + def.label + '</div>'
-          + '<div class="qty">' + stack.qty + '</div>'
-          + (isStackEquipped(stack) ? '<div class="eqTag">EQUIPPED</div>' : '')
-          + (stack.guildQuestId ? '<div class="eqTag guildTag">GUILD DELIVERY</div>' : '')
-          + '</div>';
-      }).join('');
-  document.getElementById('dockCargoSellPrompt').style.display = 'none';
-  dockSellActionStackId = null;
-}
-document.getElementById('dockCargoGrid').addEventListener('click', (e)=>{
-  const tile = e.target.closest('.cargoTile');
-  if(!tile || !tile.dataset.sellStackId) return;
-  const stack = cargoStacks.find(s=>s.stackId===parseInt(tile.dataset.sellStackId,10));
-  if(!stack) return;
-  const def = itemDisplayDef(stack.itemType);
-  if(def.sellPrice == null){ flashMessage('NOT SELLABLE', 'warn'); return; }
-  dockSellActionStackId = stack.stackId;
-  document.getElementById('dockCargoSellLabel').textContent = stack.guildQuestId
-    ? def.label + ' ×' + stack.qty + ' — GUILD DELIVERY CARGO: selling forfeits it and fails the contract'
-    : def.label + ' ×' + stack.qty + ' — ' + def.sellPrice + ' cr each';
-  const input = document.getElementById('dockCargoSellQty');
-  input.min = 1; input.max = stack.qty; input.value = stack.qty;
-  document.getElementById('dockCargoSellPrompt').style.display = 'block';
-});
-document.getElementById('dockCargoSellCancel').addEventListener('click', ()=>{
-  dockSellActionStackId = null;
-  document.getElementById('dockCargoSellPrompt').style.display = 'none';
-});
-// item 12: selling a stack pays the player, logs a ledger entry, and restocks that
-// exact item on the station MARKET at 120% of the price just paid
-document.getElementById('dockCargoSellConfirm').addEventListener('click', ()=>{
-  if(dockSellActionStackId == null) return;
-  const stack = cargoStacks.find(s=>s.stackId===dockSellActionStackId);
-  if(!stack) return;
-  const def = itemDisplayDef(stack.itemType);
-  if(def.sellPrice == null) return;
-  // (v0.11.0) selling Transportation Guild delivery cargo isn't a sale -- the guild
-  // confiscates the goods (no proceeds) and the delivery contract fails
-  if(stack.guildQuestId){
-    forfeitGuildStack(stack, 'CARGO SOLD');
-    dockSellActionStackId = null;
-    document.getElementById('dockCargoSellPrompt').style.display = 'none';
-    updateDockedPanel();
-    renderDockCargoPanel();
-    return;
-  }
-  let amt = Math.round(parseFloat(document.getElementById('dockCargoSellQty').value) || 0);
-  amt = Math.max(1, Math.min(stack.qty, amt));
-  // selling the very last unit of an equipped weapon/shield (including the starting
-  // tier-0 gear) is allowed -- jettisonFromStack's equip-fallback logic auto-drops
-  // equippedWeaponTier/equippedShieldTier to -1 ("nothing mounted") rather than
-  // blocking the sale, same as unequipping at FITTING would
-  const grossProceeds = amt * def.sellPrice;
-  const tax = Math.ceil(grossProceeds * STATION_SALES_TAX);
-  const proceeds = grossProceeds - tax;
-  jettisonFromStack(stack.stackId, amt);
-  bountyCredits += proceeds;
-  addLedgerEntry(proceeds, 'Sold ' + def.label + ' x' + amt + ' (' + tax + ' cr tax)');
-  restockMarket(stack.itemType, amt, Math.max(1, Math.round(def.sellPrice * 1.2)));
-  flashMessage('SOLD ' + amt + ' ' + def.label.toUpperCase() + ' — +' + proceeds + ' CR (' + tax + ' CR TAX)', 'good');
-  logEvent('SOLD ' + amt + ' ' + def.label.toUpperCase() + ' — +' + proceeds + ' CR — ' + tax + ' CR STATION TAX', 'good');
-  dockSellActionStackId = null;
-  document.getElementById('dockCargoSellPrompt').style.display = 'none';
-  updateCargoUI();
-  refreshEquipmentPanel();
-  updateDockedPanel();
-  renderDockCargoPanel();
-  addStationTax(activeStationEntry().id, tax);
-});
+// item 13: the old standalone SELL CARGO dockSubPanel (renderDockCargoPanel etc) is
+// removed -- selling now happens via the MARKET panel's storage-sell column (item 12,
+// see renderDockMarketStorageColumn/marketStorageSellConfirm above) and the STORAGE
+// panel's move-to-storage flow, rather than a separate dedicated cargo-hold sell UI.
 
 // ---------- item 8: station MARKET -- replaces the old per-item OUTFITTING buy
 // buttons. Styled/rendered exactly like the cargo hold box (#marketGrid reuses the
@@ -7948,7 +8063,107 @@ function renderMarketPanel(){
       }).join('');
   document.getElementById('marketBuyPrompt').style.display = 'none';
   marketActionId = null;
+  renderDockMarketStorageColumn();
 }
+// item 12: the MARKET panel's "YOUR STORAGE — CLICK TO SELL" column -- lists every
+// stack currently in THIS station's storage, clickable to sell straight into this
+// same market. Reuses the exact restockMarket()-based mechanic the old standalone
+// SELL CARGO panel used (see the now-removed dockCargoSellConfirm), so a sold item
+// is immediately buyable again on the FOR SALE side -- ships route to the existing
+// dedicated sellStoredShip() instead (see items 14/15), since they can't re-enter
+// marketStock/cargo like an ordinary material/equipment item.
+let marketStorageSellStackId = null;
+function renderDockMarketStorageColumn(){
+  const grid = document.getElementById('marketStorageSellGrid');
+  if(!grid) return;
+  const stacks = stationStorage();
+  grid.innerHTML = stacks.length === 0
+    ? '<div class="cargoTile empty">EMPTY</div>'
+    : stacks.map(stack=>{
+        const def = itemDisplayDef(stack.itemType);
+        const isShip = isShipItemType(stack.itemType);
+        let label = def.label, qtyText = stack.qty;
+        if(stack.itemType === 'memory_cube'){ label = 'Memory Cube'; qtyText = (stack.cubeKnowledge||0) + ' KNOWLEDGE'; }
+        else if(stack.itemType === 'skill_book'){
+          const skDef = SKILL_DEFS[stack.bookSkill];
+          label = (skDef?skDef.name:stack.bookSkill) + ' Book'; qtyText = 'LV.' + stack.bookLevel;
+        } else if(isShip){ label = stack.shipName + ' — ' + def.label; qtyText = 'CLICK TO SELL'; }
+        const sellable = def.sellPrice != null;
+        return '<div class="cargoTile' + (sellable?'':' empty') + '" data-mstn-stack-id="' + stack.stackId + '"'
+          + (isShip ? ' data-mstn-ship-inst-id="' + stack.shipInstId + '"' : '') + '>'
+          + '<div class="swatch' + (def.round?' round':'') + '" style="background:' + def.color + ';"></div>'
+          + '<div class="tname">' + label + '</div>'
+          + '<div class="qty">' + qtyText + '</div>'
+          + (stack.guildQuestId ? '<div class="eqTag guildTag">GUILD DELIVERY</div>' : '')
+          + '</div>';
+      }).join('');
+  document.getElementById('marketStorageSellPrompt').style.display = 'none';
+  marketStorageSellStackId = null;
+}
+document.getElementById('marketStorageSellGrid').addEventListener('click', (e)=>{
+  const tile = e.target.closest('.cargoTile');
+  if(!tile || !tile.dataset.mstnStackId) return;
+  const stack = stationStorage().find(s=>s.stackId===parseInt(tile.dataset.mstnStackId,10));
+  if(!stack) return;
+  // ships sell instantly through the existing dedicated flow -- no qty to pick,
+  // there's only ever one of any given ship instance
+  if(tile.dataset.mstnShipInstId){
+    sellStoredShip(parseInt(tile.dataset.mstnShipInstId, 10));
+    renderDockMarketStorageColumn();
+    return;
+  }
+  const def = itemDisplayDef(stack.itemType);
+  if(def.sellPrice == null){ flashMessage('NOT SELLABLE', 'warn'); return; }
+  marketStorageSellStackId = stack.stackId;
+  document.getElementById('marketStorageSellLabel').textContent = stack.guildQuestId
+    ? def.label + ' ×' + stack.qty + ' — GUILD DELIVERY CARGO: selling forfeits it and fails the contract'
+    : def.label + ' ×' + stack.qty + ' — ' + def.sellPrice + ' cr each';
+  const input = document.getElementById('marketStorageSellQty');
+  input.min = 1; input.max = stack.qty; input.value = stack.qty;
+  document.getElementById('marketStorageSellPrompt').style.display = 'block';
+});
+document.getElementById('marketStorageSellCancel').addEventListener('click', ()=>{
+  marketStorageSellStackId = null;
+  document.getElementById('marketStorageSellPrompt').style.display = 'none';
+});
+document.getElementById('marketStorageSellConfirm').addEventListener('click', ()=>{
+  if(marketStorageSellStackId == null) return;
+  const stack = stationStorage().find(s=>s.stackId===marketStorageSellStackId);
+  if(!stack) return;
+  const def = itemDisplayDef(stack.itemType);
+  if(def.sellPrice == null) return;
+  if(stack.guildQuestId){
+    forfeitGuildStack(stack, 'STORAGE ITEM SOLD');
+    marketStorageSellStackId = null;
+    document.getElementById('marketStorageSellPrompt').style.display = 'none';
+    updateDockedPanel();
+    renderDockMarketStorageColumn();
+    renderDockStorageRows();
+    return;
+  }
+  let amt = Math.round(parseFloat(document.getElementById('marketStorageSellQty').value) || 0);
+  amt = Math.max(1, Math.min(stack.qty, amt));
+  const grossProceeds = amt * def.sellPrice;
+  const tax = Math.ceil(grossProceeds * STATION_SALES_TAX);
+  const proceeds = grossProceeds - tax;
+  stack.qty -= amt;
+  if(stack.qty <= 0) removeStationStorageStackRef(stack);
+  bountyCredits += proceeds;
+  addLedgerEntry(proceeds, 'Sold ' + def.label + ' x' + amt + ' (' + tax + ' cr tax)');
+  // item 12: this is the actual live station_market inventory (see marketStock/
+  // pushStationMarketToCloud) -- restocking it here, not just crediting an abstract
+  // sale, is what makes the item immediately buyable again on the FOR SALE side
+  restockMarket(stack.itemType, amt, Math.max(1, Math.round(def.sellPrice * 1.2)));
+  flashMessage('SOLD ' + amt + ' ' + def.label.toUpperCase() + ' — +' + proceeds + ' CR (' + tax + ' CR TAX)', 'good');
+  logEvent('SOLD ' + amt + ' ' + def.label.toUpperCase() + ' FROM STORAGE — +' + proceeds + ' CR — ' + tax + ' CR STATION TAX', 'good');
+  marketStorageSellStackId = null;
+  document.getElementById('marketStorageSellPrompt').style.display = 'none';
+  updateCargoUI();
+  updateDockedPanel();
+  renderMarketPanel();
+  renderDockStorageRows();
+  addStationTax(activeStationEntry().id, tax);
+});
 document.getElementById('marketGrid').addEventListener('click', (e)=>{
   const tile = e.target.closest('.cargoTile');
   if(!tile || !tile.dataset.marketId) return;
@@ -8572,24 +8787,68 @@ function renderFittingPanel(){
   if(!cls.canMining){
     mList.innerHTML = '<div class="peq"><span style="color:var(--danger);">THIS VESSEL CANNOT MOUNT A MINING LASER</span><span></span></div>';
   } else {
-    // the mining laser has always been a single, un-tiered item -- LV.0, no skill
-    // needed to equip it (Mining skill only affects yield/speed once it's running)
+    // (v0.26.0) the mining laser still mounts as a single slot (no per-tier EQUIP
+    // list like weapon/shield) -- the highest tier OWNED auto-runs, capped by the
+    // trained Mining skill level (see effectiveMiningLaserTier). LV.0 needs no skill
+    // at all; LV.1-3 need the matching Mining skill level to actually take effect.
+    const ownedLaserTier = maxOwnedMiningLaserTier();
+    // effective tier if it WERE mounted right now, regardless of current equip state --
+    // a straight preview of what Math.min(owned, trained Mining skill) would run at
+    const effLaserTier = Math.max(0, Math.min(ownedLaserTier, skillLevels.mining||0));
+    const laserSkillLocked = ownedLaserTier > 0 && (skillLevels.mining||0) < ownedLaserTier;
     mList.innerHTML = !hasMiningLaser
       ? '<div class="peq"><span>NOT OWNED</span><span></span></div>'
-      : '<div class="peq"><span>MINING LASER LV.0</span><button class="peqBtn'+(miningLaserEquipped?' equipped':'')+'" id="btnFitMining">'+(miningLaserEquipped?'UNEQUIP':'EQUIP')+'</button></div>';
+      : '<div class="peq"><span>MINING LASER LV.'+ownedLaserTier
+        + (laserSkillLocked ? ' <span style="font-size:10px; color:var(--danger);">(RUNS AT LV.'+effLaserTier+' — NEEDS MINING LV.'+ownedLaserTier+')</span>' : '')
+        + '</span><button class="peqBtn'+(miningLaserEquipped?' equipped':'')+'" id="btnFitMining">'+(miningLaserEquipped?'UNEQUIP':'EQUIP')+'</button></div>';
   }
+}
+// item 9: staged fitting action -- set by a first click on a fitting-list row
+// button, cleared/executed by the confirm prompt's CONFIRM/CANCEL buttons below.
+// { kind:'weapon'|'shield'|'mining', target } (target unused for 'mining', it's a
+// plain toggle)
+let pendingFitAction = null;
+function openFitEquipConfirm(kind, target, label){
+  pendingFitAction = { kind, target };
+  const prompt = document.getElementById('fitEquipConfirmPrompt');
+  const labelEl = document.getElementById('fitEquipConfirmLabel');
+  if(labelEl) labelEl.textContent = label + '?';
+  if(prompt) prompt.classList.add('show');
+}
+function closeFitEquipConfirm(){
+  pendingFitAction = null;
+  const prompt = document.getElementById('fitEquipConfirmPrompt');
+  if(prompt) prompt.classList.remove('show');
 }
 document.getElementById('fitWeaponList').addEventListener('click', (e)=>{
   const btn = e.target.closest('[data-weapon-tier]');
-  if(btn){ equipWeaponTier(parseInt(btn.dataset.weaponTier,10), true); renderFittingPanel(); }
+  if(!btn) return;
+  const target = parseInt(btn.dataset.weaponTier,10);
+  const label = target === -1 ? 'UNEQUIP WEAPON' : 'EQUIP WEAPON LV.' + target;
+  openFitEquipConfirm('weapon', target, label);
 });
 document.getElementById('fitShieldList').addEventListener('click', (e)=>{
   const btn = e.target.closest('[data-shield-tier]');
-  if(btn){ equipShieldTier(parseInt(btn.dataset.shieldTier,10), true); renderFittingPanel(); }
+  if(!btn) return;
+  const target = parseInt(btn.dataset.shieldTier,10);
+  const label = target === -1 ? 'UNEQUIP SHIELD' : 'EQUIP SHIELD LV.' + target;
+  openFitEquipConfirm('shield', target, label);
 });
 document.getElementById('fitMiningList').addEventListener('click', (e)=>{
-  if(e.target.closest('#btnFitMining')){ toggleMiningLaserEquip(); renderFittingPanel(); }
+  if(!e.target.closest('#btnFitMining')) return;
+  const label = miningLaserEquipped ? 'UNEQUIP MINING LASER' : 'EQUIP MINING LASER';
+  openFitEquipConfirm('mining', null, label);
 });
+document.getElementById('fitEquipConfirmYes').addEventListener('click', ()=>{
+  if(!pendingFitAction) return;
+  const { kind, target } = pendingFitAction;
+  if(kind === 'weapon') equipWeaponTier(target, true);
+  else if(kind === 'shield') equipShieldTier(target, true);
+  else if(kind === 'mining') toggleMiningLaserEquip();
+  closeFitEquipConfirm();
+  renderFittingPanel();
+});
+document.getElementById('fitEquipConfirmNo').addEventListener('click', ()=> closeFitEquipConfirm());
 document.getElementById('btnDockFittingPanel').addEventListener('click', ()=> toggleDockSubPanel('dockFittingPanel'));
 
 // ---------- item 7: MANUFACTURING -- queue-built items from known blueprints ----------
@@ -8623,21 +8882,32 @@ function getManufacturingQueue(bpType, stationId){
   if(!manufacturingQueues[stationId][bpType]) manufacturingQueues[stationId][bpType] = { total:0, completed:0, startedAtMs:0, unitMs:0 };
   return manufacturingQueues[stationId][bpType];
 }
-// checks the FULL batch is affordable (iron ore + credits) before deducting anything
-// or queueing anything -- refuses outright rather than silently building a partial
-// batch and stopping partway
+// checks the FULL batch is affordable (every listed input + credits) before deducting
+// anything or queueing anything -- refuses outright rather than silently building a
+// partial batch and stopping partway. (v0.26.0) generalized from a single hardcoded
+// iron-ore input to recipe.inputs (a [{type,qty}] list), plus an optional recipe.minSkill
+// gate (mining/weapon_upgrades/shield_upgrades tiered gear can't be BUILT below the
+// matching skill level, same as it can't be EQUIPPED below it).
 function startManufacturing(bpType, qty){
   const recipe = MANUFACTURING_RECIPES[bpType];
-  if(!recipe || !knownBlueprints.has(bpType)) return;
+  if(!recipe || !knownBlueprints.has(recipe.requiresBlueprint)) return;
+  if(recipe.minSkill && (skillLevels[recipe.minSkill.key]||0) < recipe.minSkill.level){
+    flashMessage('NEEDS ' + SKILL_DEFS[recipe.minSkill.key].name.toUpperCase() + ' LV.' + recipe.minSkill.level + ' TO BUILD', 'warn');
+    return;
+  }
   qty = Math.max(1, Math.min(100, Math.round(qty) || 0));
   const stationId = activeStationEntry().id;
   const q = getManufacturingQueue(bpType, stationId);
   if(q.total > 0){ flashMessage('ALREADY BUILDING A BATCH', 'warn'); return; }
-  const ironNeeded = recipe.ironPerUnit * qty;
   const creditsNeeded = recipe.creditsPerUnit * qty;
-  if(totalOfType('iron') < ironNeeded){ flashMessage('NOT ENOUGH IRON ORE FOR FULL BATCH', 'warn'); return; }
+  for(const inp of recipe.inputs){
+    if(totalOfType(inp.type) < inp.qty * qty){
+      flashMessage('NOT ENOUGH ' + itemDisplayDef(inp.type).label.toUpperCase() + ' FOR FULL BATCH', 'warn');
+      return;
+    }
+  }
   if(bountyCredits < creditsNeeded){ flashMessage('NOT ENOUGH CREDITS FOR FULL BATCH', 'warn'); return; }
-  removeFromCargo('iron', ironNeeded);
+  recipe.inputs.forEach(inp=> removeFromCargo(inp.type, inp.qty * qty));
   bountyCredits -= creditsNeeded;
   addLedgerEntry(-creditsNeeded, 'Manufacturing: ' + recipe.label + ' x' + qty);
   q.total = qty;
@@ -8649,6 +8919,12 @@ function startManufacturing(bpType, qty){
   updateCargoUI();
   renderManufacturingPanel();
 }
+// NOTE on the task's "one blueprint per ore type... then also one for all ores":
+// resolved by having all 4 mfg_smelt_* recipes share ONE requiresBlueprint
+// (BLUEPRINT_MFG_LV1) -- scribing/learning that single blueprint unlocks smelting
+// for every ore type at once (the "works for any ore" convenience), while each ore
+// still gets its own distinct recipe/BUILD row in the MANUFACTURING panel (the
+// "one per ore type" requirement) rather than a single opaque merged action.
 // wall-clock catch-up, exactly like checkLibraryCraftCompletion() -- call this
 // whenever the player might have missed completions (panel open, load, periodic
 // safety net) rather than relying on a per-frame timer that only ran while docked
@@ -8681,14 +8957,20 @@ function checkManufacturingCompletion(){
 // MANUFACTURING panel at that station again, same convention as claimAuctionPayouts'
 // own periodic poll
 setInterval(()=>{ if(typeof checkManufacturingCompletion === 'function') checkManufacturingCompletion(); }, 30000);
+// generic "cost per unit" readout string from a recipe's inputs list + credits --
+// replaces the old hardcoded "N IRON ORE + M CR" text
+function mfgCostLine(recipe){
+  return recipe.inputs.map(inp=> inp.qty + ' ' + itemDisplayDef(inp.type).label.toUpperCase()).join(' + ')
+    + ' + ' + recipe.creditsPerUnit + ' CR';
+}
 function renderManufacturingPanel(){
   const wrap = document.getElementById('mfgRecipeList');
   if(!wrap) return;
   checkManufacturingCompletion();
   const stationId = activeStationEntry().id;
-  const known = Object.keys(MANUFACTURING_RECIPES).filter(k=>knownBlueprints.has(k));
+  const known = Object.keys(MANUFACTURING_RECIPES).filter(k=>knownBlueprints.has(MANUFACTURING_RECIPES[k].requiresBlueprint));
   if(known.length === 0){
-    wrap.innerHTML = '<div class="drow"><span>NO MANUFACTURING PLANS KNOWN — LEARN A BLUEPRINT FROM YOUR CARGO HOLD</span></div>';
+    wrap.innerHTML = '<div class="drow"><span>NO MANUFACTURING PLANS KNOWN — SCRIBE OR LEARN A BLUEPRINT</span></div>';
     return;
   }
   wrap.innerHTML = known.map(bpType=>{
@@ -8698,9 +8980,12 @@ function renderManufacturingPanel(){
     const elapsedInUnit = q.total > 0 ? (Date.now() - q.startedAtMs) - (q.completed * q.unitMs) : 0;
     const pct = q.total > 0 ? Math.min(100, (elapsedInUnit / q.unitMs) * 100) : 0;
     const building = q.total > 0;
+    const locked = !!(recipe.minSkill && (skillLevels[recipe.minSkill.key]||0) < recipe.minSkill.level);
+    const lockNote = locked ? '<div class="drow" style="font-size:10px; color:var(--danger);"><span>NEEDS ' + SKILL_DEFS[recipe.minSkill.key].name.toUpperCase() + ' LV.' + recipe.minSkill.level + ' TO BUILD</span></div>' : '';
     return '<div class="mfgCard">'
-      + '<div class="drow"><span>' + recipe.label + '</span><span>' + def.label + '</span></div>'
-      + '<div class="drow"><span>COST PER UNIT</span><span>' + recipe.ironPerUnit + ' IRON ORE + ' + recipe.creditsPerUnit + ' CR</span></div>'
+      + '<div class="drow"><span>' + recipe.label + '</span><span>' + def.label + ' x' + recipe.outputQtyPerUnit + '</span></div>'
+      + '<div class="drow"><span>COST PER UNIT</span><span>' + mfgCostLine(recipe) + '</span></div>'
+      + lockNote
       + (building
         ? '<div class="drow"><span>CRAFTING</span><span>' + (q.completed + 1) + ' / ' + q.total + '</span></div>'
         + '<div class="drow"><span>QUEUE REMAINING</span><span>' + (q.total - q.completed) + '</span></div>'
@@ -8709,14 +8994,14 @@ function renderManufacturingPanel(){
         : '<div class="dockSubRow">'
           + '<span class="dsName">Quantity</span>'
           + '<input type="number" min="1" max="100" step="1" value="10" data-mfg-qty="' + bpType + '">'
-          + '<button class="cmdbtn" data-mfg-build="' + bpType + '">BUILD</button>'
+          + '<button class="cmdbtn" data-mfg-build="' + bpType + '"' + (locked ? ' disabled style="opacity:0.4;"' : '') + '>BUILD</button>'
           + '</div>')
       + '</div>';
   }).join('');
 }
 document.getElementById('mfgRecipeList').addEventListener('click', (e)=>{
   const btn = e.target.closest('[data-mfg-build]');
-  if(!btn) return;
+  if(!btn || btn.disabled) return;
   const bpType = btn.dataset.mfgBuild;
   const input = document.querySelector('[data-mfg-qty="' + bpType + '"]');
   const qty = input ? parseInt(input.value, 10) : 1;
@@ -8768,6 +9053,29 @@ function libraryBookCreditsCost(level){ return libraryBookBaseCreditsCost(level)
 // modified by Academics -- e.g. a Level-2 book (1 in-game day to TRAIN) takes 1/6 of an
 // in-game day of real wall-clock time to SCRIBE
 function libraryBookDurationMs(level){ return Math.round((SKILL_LEVEL_DURATION_MS[level] / 6) * academicsCraftTimeMultiplier()); }
+// (v0.26.0) item 5: Manufacturing Blueprint scribing -- same escalating-cost SHAPE as
+// Skill Books (Knowledge doubles, credits double, per tier) but its OWN table/gate:
+// blueprint tier N requires Academics LV.N to scribe (not a "book required" gate --
+// Academics is a basic skill with no prerequisite, so this is the only gate). Tier 1
+// = 8 Knowledge + 1500 cr, tier 2 = 16 Knowledge + 3000 cr, tier 3 = 32 Knowledge +
+// 6000 cr -- pitched a bit above the equivalent-level Skill Book since a blueprint is
+// a permanent, one-time, account-wide unlock (vs. a book, consumed once per skill
+// level-up) whose payoff compounds over every future craft.
+const BLUEPRINT_ITEM_TYPE_FOR_LEVEL = { 1:BLUEPRINT_MFG_LV1, 2:BLUEPRINT_MFG_LV2, 3:BLUEPRINT_MFG_LV3 };
+function libraryBlueprintKnowledgeCost(level){ return 8 * Math.pow(2, level - 1); }
+function libraryBlueprintBaseCreditsCost(level){ return 1500 * Math.pow(2, level - 1); }
+function libraryBlueprintTax(level){ return Math.ceil(libraryBlueprintBaseCreditsCost(level) * STATION_SALES_TAX); }
+function libraryBlueprintCreditsCost(level){ return libraryBlueprintBaseCreditsCost(level) + libraryBlueprintTax(level); }
+// scribing time: flat 1/4 in-game day per tier (unlike books, blueprints have no
+// underlying skill-training duration to derive a fraction of), modified by Academics
+function libraryBlueprintDurationMs(level){ return Math.round(SKILL_REAL_SECONDS_PER_INGAME_DAY * 0.25 * level * 1000 * academicsCraftTimeMultiplier()); }
+// which blueprint tiers are currently scribable: tier N needs Academics LV.N, and
+// (like books) each already-scribed tier doesn't block re-scribing more copies
+function libraryScribableBlueprintLevels(){
+  const out = [];
+  for(let l=1; l<=3; l++){ if((skillLevels.academics||0) >= l) out.push(l); }
+  return out;
+}
 function libraryCraftState(stationId){ return libraryCrafting[stationId] || null; }
 function libraryCraftElapsedMs(stationId){
   const c = libraryCrafting[stationId];
@@ -8897,16 +9205,51 @@ function startBookScribe(key, level){
   updateDockedPanel();
   renderLibraryPanel();
 }
+// (v0.26.0) item 5: Manufacturing Blueprint scribing -- gated on Academics LV.N for
+// tier N (see libraryScribableBlueprintLevels), same wall-clock craft pattern as
+// Memory Cubes/Skill Books (libraryCrafting[stationId], kind:'blueprint'), completes
+// into STATION STORAGE as a BLUEPRINT_MFG_LVn item (see checkLibraryCraftCompletion).
+function startBlueprintScribe(level){
+  if(!docked || !dockedStation) return;
+  if(libraryCraftState(dockedStation.id)){ flashMessage('ALREADY CRAFTING SOMETHING HERE', 'warn'); return; }
+  if(libraryScribableBlueprintLevels().indexOf(level) < 0){ flashMessage('REQUIRES ACADEMICS LV.' + level + ' TO SCRIBE', 'warn'); return; }
+  const knowledgeCost = libraryBlueprintKnowledgeCost(level);
+  const creditsCost = libraryBlueprintCreditsCost(level);
+  if(knowledge < knowledgeCost){ flashMessage('NOT ENOUGH KNOWLEDGE', 'warn'); return; }
+  if(bountyCredits < creditsCost){ flashMessage('NOT ENOUGH CREDITS', 'warn'); return; }
+  knowledge -= knowledgeCost;
+  bountyCredits -= creditsCost;
+  const bpTaxAmt = libraryBlueprintTax(level);
+  addLedgerEntry(-creditsCost, 'Manufacturing Blueprint LV.' + level + ' scribing (' + bpTaxAmt + ' cr tax)');
+  addStationTax(dockedStation.id, bpTaxAmt);
+  libraryCrafting[dockedStation.id] = {
+    kind:'blueprint', startedAtMs: Date.now(), durationMs: libraryBlueprintDurationMs(level),
+    costKnowledge: knowledgeCost, costCredits: creditsCost, blueprintLevel: level
+  };
+  flashMessage('SCRIBING MANUFACTURING BLUEPRINT LV.' + level, 'good');
+  logEvent('LIBRARY: STARTED SCRIBING MANUFACTURING BLUEPRINT LV.' + level + ' AT ' + dockedStation.name.toUpperCase(), 'good');
+  updateKnowledgeUI();
+  updateDockedPanel();
+  renderLibraryPanel();
+}
 // cancel confirmation is a real in-page modal (see #libraryCancelConfirmPanel) --
 // window.confirm() is suppressed by the Artifact viewer sandbox, same reasoning as
 // #hardcoreConfirmPanel above
 let libraryCancelStationId = null;
+// shared description-string builder for a libraryCrafting entry, covering all three
+// kinds (cube/book/blueprint) -- factored out so openLibraryCancelConfirm/
+// checkLibraryCraftCompletion/renderLibraryPanel don't triplicate the same ternary
+function libraryCraftDesc(c){
+  if(c.kind === 'cube') return c.cubeKnowledge + '-KNOWLEDGE MEMORY CUBE';
+  if(c.kind === 'blueprint') return 'MANUFACTURING BLUEPRINT LV.' + c.blueprintLevel;
+  return SKILL_DEFS[c.bookSkill].name.toUpperCase() + ' LV.' + c.bookLevel + ' BOOK';
+}
 function openLibraryCancelConfirm(){
   if(!docked || !dockedStation) return;
   const c = libraryCraftState(dockedStation.id);
   if(!c) return;
   libraryCancelStationId = dockedStation.id;
-  const desc = c.kind === 'cube' ? (c.cubeKnowledge + '-KNOWLEDGE MEMORY CUBE') : (SKILL_DEFS[c.bookSkill].name.toUpperCase() + ' LV.' + c.bookLevel + ' BOOK');
+  const desc = libraryCraftDesc(c);
   document.getElementById('libraryCancelConfirmDesc').textContent = 'Cancel crafting the ' + desc + '? You will lose all progress. Your ' + c.costKnowledge + ' knowledge and ' + c.costCredits + ' credits WILL be refunded.';
   document.getElementById('libraryCancelConfirmPanel').classList.add('show');
 }
@@ -8947,6 +9290,11 @@ function checkLibraryCraftCompletion(){
       stationStorage(stationId).push({ stackId: nextStorageStackId++, itemType:'memory_cube', qty:1, cubeKnowledge: c.cubeKnowledge });
       logEvent('LIBRARY: MEMORY CUBE (' + c.cubeKnowledge + ' KNOWLEDGE) COMPLETE AT ' + stationNameById(stationId).toUpperCase() + ' — DEPOSITED TO STORAGE', 'good');
       flashMessage('MEMORY CUBE COMPLETE AT ' + stationNameById(stationId).toUpperCase(), 'good');
+    } else if(c.kind === 'blueprint'){
+      const bpType = BLUEPRINT_ITEM_TYPE_FOR_LEVEL[c.blueprintLevel];
+      stationStorage(stationId).push({ stackId: nextStorageStackId++, itemType:bpType, qty:1 });
+      logEvent('LIBRARY: MANUFACTURING BLUEPRINT LV.' + c.blueprintLevel + ' COMPLETE AT ' + stationNameById(stationId).toUpperCase() + ' — DEPOSITED TO STORAGE', 'good');
+      flashMessage('MANUFACTURING BLUEPRINT LV.' + c.blueprintLevel + ' COMPLETE', 'good');
     } else {
       stationStorage(stationId).push({ stackId: nextStorageStackId++, itemType:'skill_book', qty:1, bookSkill: c.bookSkill, bookLevel: c.bookLevel });
       logEvent('LIBRARY: ' + SKILL_DEFS[c.bookSkill].name.toUpperCase() + ' LV.' + c.bookLevel + ' BOOK COMPLETE AT ' + stationNameById(stationId).toUpperCase() + ' — DEPOSITED TO STORAGE', 'good');
@@ -8974,7 +9322,7 @@ function renderLibraryPanel(){
   const formsWrap = document.getElementById('libraryCraftForms');
   if(c){
     const pct = Math.min(100, (libraryCraftElapsedMs(stationId) / c.durationMs) * 100);
-    const desc = c.kind === 'cube' ? (c.cubeKnowledge + '-KNOWLEDGE MEMORY CUBE') : (SKILL_DEFS[c.bookSkill].name.toUpperCase() + ' LV.' + c.bookLevel + ' BOOK');
+    const desc = libraryCraftDesc(c);
     activeWrap.innerHTML = '<div class="mfgCard">'
       + '<div class="drow"><span>CRAFTING</span><span>' + desc + '</span></div>'
       + '<div class="drow"><span>TIME REMAINING</span><span>' + fmtLibraryDuration(libraryCraftRemainingMs(stationId)) + '</span></div>'
@@ -9036,6 +9384,24 @@ function renderLibraryPanel(){
               + '</div>';
           }).join('');
     }
+    // Manufacturing Blueprint form -- one row per tier gated on Academics LV.N (item 5)
+    const bpWrap = document.getElementById('libraryBlueprintForm');
+    if(bpWrap){
+      const bpLevels = libraryScribableBlueprintLevels();
+      bpWrap.innerHTML = !bpLevels.length
+        ? '<div class="drow"><span>REQUIRES ACADEMICS LV.1 TO SCRIBE A LV.1 BLUEPRINT</span></div>'
+        : [1,2,3].map(l=>{
+            const scribable = bpLevels.indexOf(l) >= 0;
+            const label = itemDisplayDef(BLUEPRINT_ITEM_TYPE_FOR_LEVEL[l]).label;
+            return '<div class="dockSubRow">'
+              + '<span class="dsName">' + label + (scribable ? '' : ' — NEEDS ACADEMICS LV.' + l) + '</span>'
+              + (scribable
+                ? '<span style="font-size:10px; color:var(--phosphor-dim); margin-right:6px;">' + libraryBlueprintKnowledgeCost(l) + ' KN + ' + libraryBlueprintCreditsCost(l) + ' CR</span>'
+                  + '<button class="cmdbtn" data-blueprint-scribe="' + l + '">SCRIBE</button>'
+                : '<button class="cmdbtn" disabled style="opacity:0.4;">LOCKED</button>')
+              + '</div>';
+          }).join('');
+    }
   }
 }
 document.getElementById('btnDockLibraryPanel').addEventListener('click', ()=> toggleDockSubPanel('dockLibraryPanel'));
@@ -9054,6 +9420,11 @@ document.getElementById('dockLibraryPanel').addEventListener('click', (e)=>{
     const select = document.querySelector('select[data-book-level-select="' + key + '"]');
     const level = select ? parseInt(select.value, 10) : 0;
     startBookScribe(key, level);
+    return;
+  }
+  const bpScribeBtn = e.target.closest('button[data-blueprint-scribe]');
+  if(bpScribeBtn){
+    startBlueprintScribe(parseInt(bpScribeBtn.dataset.blueprintScribe, 10));
   }
 });
 document.getElementById('btnLibraryCancelConfirmYes').addEventListener('click', confirmLibraryCancel);
@@ -9096,6 +9467,7 @@ function renderDockStorageRows(){
   const shipGrid = document.getElementById('dockStorageShipGrid');
   const stnGrid = document.getElementById('dockStorageStationGrid');
   if(!shipGrid) return;
+  if(typeof updateStoreShipButton === 'function') updateStoreShipButton();
   const hdr = document.getElementById('dockStorageStationHdr');
   if(hdr) hdr.textContent = activeStationEntry().name.toUpperCase() + ' STORAGE';
   shipGrid.innerHTML = cargoStacks.length === 0
@@ -9149,7 +9521,7 @@ function addToStationStorage(itemType, qty, stationId){
   if(qty <= 0) return;
   // mirror addToCargo's per-stack cap for ammo so a stored ammo stack can't exceed
   // what could ever be re-equipped from it
-  const cap = itemType === AMMO_ITEM_TYPE ? AMMO_MAX_STACK : Infinity;
+  const cap = isAmmoItemType(itemType) ? AMMO_MAX_STACK : Infinity;
   const arr = stationStorage(stationId);
   const stack = arr.find(s => s.itemType === itemType && s.qty < cap);
   if(stack) stack.qty += qty;
@@ -9170,9 +9542,14 @@ function openStorageMovePrompt(from, stackId){
   const input = document.getElementById('dsMoveQty');
   input.min = 1; input.max = stack.qty; input.value = stack.qty;
   // item: LEARN available here too, same gating as the ship cargo hold's dpLearn
-  // (see openCargoActionPrompt) -- shown for the Iron Bullet Blueprint while unlearned
+  // (see openCargoActionPrompt) -- shown for any known-blueprint item type while unlearned
   const learnBtn = document.getElementById('dsLearnBtn');
-  if(learnBtn) learnBtn.style.display = (stack.itemType === BLUEPRINT_IRON_BULLETS && !knownBlueprints.has(BLUEPRINT_IRON_BULLETS) && !stack.guildQuestId) ? '' : 'none';
+  if(learnBtn) learnBtn.style.display = (BLUEPRINT_ITEM_TYPES.indexOf(stack.itemType) >= 0 && !knownBlueprints.has(stack.itemType) && !stack.guildQuestId) ? '' : 'none';
+  // item 11: COMBINE STACKS -- only worth showing when another stack of the exact
+  // same item type (and same guild-delivery earmark) actually exists on this same side
+  const combineBtn = document.getElementById('dsCombineBtn');
+  if(combineBtn) combineBtn.style.display = list.some(s => s !== stack && s.itemType === stack.itemType
+    && (s.guildQuestId||null) === (stack.guildQuestId||null)) ? '' : 'none';
   document.getElementById('dockStorageMovePrompt').classList.add('show');
 }
 function closeStorageMovePrompt(){
@@ -9195,6 +9572,51 @@ document.getElementById('dockStorageStationGrid').addEventListener('click', (e)=
     return;
   }
   openStorageMovePrompt('station', parseInt(tile.dataset.stnStackId,10));
+});
+// item 11: combines every stack of the SAME item type (and same guild-delivery
+// earmark) on the given side into as few stacks as possible -- mirrors
+// combineCargoStack's shape/behavior exactly, just generalized to also run against
+// stationStorage() when from==='station'. Ammo (and anything else with a per-stack
+// cap) still respects that cap; everything else has no cap and ends up as one stack.
+function combineStorageStack(from, stackId){
+  const list = from === 'ship' ? cargoStacks : stationStorage();
+  const stack = list.find(s=>s.stackId===stackId);
+  if(!stack) return;
+  const itemType = stack.itemType;
+  const cap = isAmmoItemType(itemType) ? AMMO_MAX_STACK : Infinity;
+  const wasEquippedAmmo = from === 'ship' && stackId === equippedAmmoStackId;
+  const others = list.filter(s => s.itemType === itemType && s.stackId !== stackId && s.qty < cap
+    && (s.guildQuestId||null) === (stack.guildQuestId||null));
+  if(others.length === 0){ flashMessage('NO OTHER STACK TO COMBINE INTO', 'warn'); return; }
+  let remaining = stack.qty;
+  let lastReceiver = null;
+  for(const other of others){
+    if(remaining <= 0) break;
+    const room = cap - other.qty;
+    if(room <= 0) continue;
+    const add = Math.min(room, remaining);
+    other.qty += add; remaining -= add;
+    lastReceiver = other;
+  }
+  const merged = stack.qty - remaining;
+  if(merged <= 0){ flashMessage('OTHER STACKS ALREADY FULL', 'warn'); return; }
+  stack.qty = remaining;
+  if(stack.qty <= 0){
+    if(from === 'ship') cargoStacks = cargoStacks.filter(s => s !== stack);
+    else removeStationStorageStackRef(stack);
+  }
+  if(wasEquippedAmmo && stack.qty <= 0 && lastReceiver) equippedAmmoStackId = lastReceiver.stackId;
+  if(from === 'ship') syncFlatCargoMirrors();
+  const def = itemDisplayDef(itemType);
+  flashMessage('COMBINED ' + merged + ' ' + def.label.toUpperCase(), 'good');
+  logEvent('COMBINED ' + merged + ' ' + def.label.toUpperCase() + (from==='ship'?' IN CARGO':' IN STORAGE'), 'good');
+  if(from === 'ship'){ updateCargoUI(); refreshEquipmentPanel(); }
+}
+document.getElementById('dsCombineBtn').addEventListener('click', ()=>{
+  if(!storageMoveCtx) return;
+  combineStorageStack(storageMoveCtx.from, storageMoveCtx.stackId);
+  closeStorageMovePrompt();
+  renderDockStorageRows();
 });
 document.getElementById('dsMoveCancel').addEventListener('click', closeStorageMovePrompt);
 document.getElementById('dsMoveConfirm').addEventListener('click', ()=>{
@@ -9256,10 +9678,6 @@ function renderDockShipyardPanel(){
     : (activeShipInstance ? activeShipInstance.name + ' (' + SHIP_CLASSES[activeShipInstance.classKey].label + ')' : '—');
   document.getElementById('shipyardCreditsRead').textContent = Math.round(bountyCredits) + ' cr';
 
-  const storeBtn = document.getElementById('btnStoreShip');
-  storeBtn.disabled = inEscapePod || !activeShipInstance;
-  storeBtn.textContent = (inEscapePod || !activeShipInstance) ? 'NO SHIP TO STORE' : 'STORE ' + activeShipInstance.name;
-
   // item 9: this is FINANCING, not buying -- wording fixed throughout (was "BUY"),
   // and the fee shown is exactly what's deducted (cls.cost), not a "shortfall"
   const buyList = document.getElementById('shipyardBuyList');
@@ -9283,28 +9701,30 @@ function renderDockShipyardPanel(){
     // ammo -- same price as the existing outright MARKET purchase (MINING_LASER_COST)
     + '<div class="peq"><span>Mining Laser LV.0 — ' + FINANCE_GEAR_COST.miningLaser + ' cr (financed)</span>' + gearBtn('miningLaser') + '</div>';
 
-  // item 4a: stored ships are now real item stacks at THIS station's storage (see
-  // addShipToStationStorage) instead of the old flat storedShipInstances array
-  const stnList = document.getElementById('shipyardStoredShipsList');
-  const shipStacksHere = stationStorage().filter(s=> isShipItemType(s.itemType));
-  stnList.innerHTML = shipStacksHere.length === 0
-    ? '<div class="peq"><span>NO SHIPS IN STORAGE</span><span></span></div>'
-    : shipStacksHere.map(stack=>{
-        const classKey = SHIP_CLASS_FOR_ITEM_TYPE[stack.itemType];
-        const cls = SHIP_CLASSES[classKey];
-        const sellPrice = Math.round(cls.cost * 0.4);
-        return '<div class="peq"><span>' + stack.shipName + ' (' + cls.label + ')</span>'
-          + '<span style="display:flex; gap:4px;">'
-          + '<button class="peqBtn" data-board-ship="' + stack.shipInstId + '">BOARD</button>'
-          + '<button class="peqBtn" data-sell-ship="' + stack.shipInstId + '">SELL ' + sellPrice + 'cr</button>'
-          + '</span></div>';
-      }).join('');
+  // items 14/15: the old "STORED SHIPS — BOARD OR SELL" section is gone from this
+  // panel -- owned ships are ordinary storage stacks now (see renderDockStorageRows,
+  // click-to-board) and sell through the MARKET panel's storage-sell column instead.
   // item 16: STATION LOAN section is now part of this panel -- render it here too
   if(typeof renderDockLoanPanel === 'function') renderDockLoanPanel();
 }
+// items 14/15: STORE CURRENT SHIP now lives in the STORAGE panel -- this updates the
+// button's enabled/label state and is called from renderDockStorageRows below
+// (as well as once up front so it's never left showing stale text).
+function updateStoreShipButton(){
+  const storeBtn = document.getElementById('btnStoreShip');
+  if(!storeBtn) return;
+  storeBtn.disabled = inEscapePod || !activeShipInstance;
+  storeBtn.textContent = (inEscapePod || !activeShipInstance) ? 'NO SHIP TO STORE' : 'STORE ' + activeShipInstance.name;
+  const curEl = document.getElementById('storageCurrentShipRead');
+  if(curEl) curEl.textContent = inEscapePod
+    ? 'ESCAPE POD (UNARMED)'
+    : (activeShipInstance ? activeShipInstance.name + ' (' + SHIP_CLASSES[activeShipInstance.classKey].label + ')' : '—');
+}
 document.getElementById('btnStoreShip').addEventListener('click', ()=>{
   storeCurrentShipAndPod();
-  renderDockShipyardPanel();
+  updateStoreShipButton();
+  renderDockStorageRows();
+  if(typeof renderDockShipyardPanel === 'function') renderDockShipyardPanel();
   updateDockedPanel();
 });
 document.getElementById('shipyardBuyList').addEventListener('click', (e)=>{
@@ -9316,12 +9736,6 @@ document.getElementById('shipyardFinanceGearList').addEventListener('click', (e)
   const btn = e.target.closest('[data-finance-gear]');
   if(!btn) return;
   financeStarterGear(btn.dataset.financeGear);
-});
-document.getElementById('shipyardStoredShipsList').addEventListener('click', (e)=>{
-  const boardBtn = e.target.closest('[data-board-ship]');
-  if(boardBtn){ boardStoredShip(parseInt(boardBtn.dataset.boardShip, 10)); return; }
-  const sellBtn = e.target.closest('[data-sell-ship]');
-  if(sellBtn){ sellStoredShip(parseInt(sellBtn.dataset.sellShip, 10)); }
 });
 
 // ---------- station LOAN section (item 16: now embedded in dockShipyardPanel) ----------
@@ -9599,6 +10013,39 @@ function toggleMiningLaserEquip(){
   refreshCmdButtons();
 }
 const MINING_LASER_COST = 600;
+// (v0.26.0) Mining Laser tiers -- the base 'miningLaser' item (kept as its original
+// NAMING-STABLE key, never renamed) is now displayed as LV.0 (see itemDisplayDef) and
+// three new craft-only tiers exist above it: 'miningLaserTier1'/'miningLaserTier2'/
+// 'miningLaserTier3', built at MANUFACTURING (see mfg_mining_laser_1/2/3 in
+// MANUFACTURING_RECIPES), never sold at the MARKET/Finance Office. The ship still has
+// only ONE mining-laser mount (unlike weapon/shield, which get a full per-tier
+// EQUIP/UNEQUIP list at FITTING) -- owning a higher tier automatically improves the
+// mount's yield/speed once the matching Mining skill level is trained, exactly
+// mirroring how the Mining skill itself already boosted yield/interval before this
+// update (see currentMiningYieldPerTick/currentMiningInterval below).
+const MINING_LASER_TIER_BONUS = [
+  { yield:0, intervalCut:0 },    // LV.0 -- starter, no bonus
+  { yield:2, intervalCut:0.10 }, // LV.1
+  { yield:4, intervalCut:0.20 }, // LV.2
+  { yield:6, intervalCut:0.30 }  // LV.3
+];
+// highest mining-laser tier actually OWNED (in cargo or this station's storage doesn't
+// matter -- only cargo counts as "mounted", same as weapon/shield), or -1 if none owned
+function maxOwnedMiningLaserTier(){
+  let best = -1;
+  if(totalOfType('miningLaser') > 0) best = 0;
+  for(let t=1; t<=3; t++){ if(totalOfType('miningLaserTier'+t) > 0) best = Math.max(best, t); }
+  return best;
+}
+// the tier actually IN EFFECT right now: capped by both what's owned AND the trained
+// Mining skill level (owning a LV.3 laser with untrained Mining just runs it at
+// whatever tier the skill supports) -- -1 if nothing is equipped/owned at all
+function effectiveMiningLaserTier(){
+  if(!miningLaserActive()) return -1;
+  const owned = maxOwnedMiningLaserTier();
+  if(owned <= 0) return owned;
+  return Math.min(owned, skillLevels.mining||0);
+}
 initMarketStock(); // deferred call -- see the NOTE by initMarketStock's definition above
 let oreCargo = { iron:0, copper:0, silver:0, gold:0 };
 
@@ -9610,8 +10057,15 @@ let miningLevel = 1;
 let miningXP = 0;
 function miningXpToNext(level){ return Math.round(90 * Math.pow(level, 1.35)); }
 // +1 ore/tick every 2 Mining skill levels, interval shrinks 0.08s/level down to a 0.6s floor
-function currentMiningYieldPerTick(){ return MINING_YIELD_PER_TICK + Math.floor((skillLevels.mining||0) / 2); }
-function currentMiningInterval(){ return Math.max(0.6, MINING_INTERVAL - (skillLevels.mining||0)*0.08); }
+// (v0.26.0) plus whatever bonus the EQUIPPED mining laser's effective tier adds on
+// top (see MINING_LASER_TIER_BONUS/effectiveMiningLaserTier above) -- a LV.0 laser
+// (or Mining skill untrained past the owned tier) contributes nothing extra.
+function currentMiningLaserTierBonus(){
+  const t = Math.max(0, effectiveMiningLaserTier());
+  return MINING_LASER_TIER_BONUS[Math.min(3,t)] || MINING_LASER_TIER_BONUS[0];
+}
+function currentMiningYieldPerTick(){ return MINING_YIELD_PER_TICK + Math.floor((skillLevels.mining||0) / 2) + currentMiningLaserTierBonus().yield; }
+function currentMiningInterval(){ return Math.max(0.6, MINING_INTERVAL - (skillLevels.mining||0)*0.08 - currentMiningLaserTierBonus().intervalCut); }
 // ore mined still counts toward the lifetime wallet stat and quest/achievement
 // tracking -- it just no longer grants mining XP or levels (see SKILLS above)
 function gainMiningXP(amount){
@@ -9666,9 +10120,33 @@ function itemDisplayDef(itemType){
     const sell = t === 0 ? TIER0_GEAR_SELL_PRICE : Math.max(1, Math.round(SHIELD_TIER_COST[t]*0.4));
     return { key:itemType, label:'Shield LV.'+t, color:'#5cc9ff', round:false, sellPrice:sell };
   }
-  if(itemType === 'miningLaser') return { key:itemType, label:'Mining Laser', color:'#6dffc2', round:false, sellPrice:Math.round(MINING_LASER_COST*0.4) };
+  // (v0.26.0) item 3: the starter mining laser is now consistently labeled LV.0
+  // everywhere (matches WEAPON LV.0/SHIELD LV.0 naming) now that tiers 1-3 exist
+  // above it -- see 'miningLaserTier' branch just below for those.
+  if(itemType === 'miningLaser') return { key:itemType, label:'Mining Laser LV.0', color:'#6dffc2', round:false, sellPrice:Math.round(MINING_LASER_COST*0.4) };
+  if(itemType.indexOf('miningLaserTier') === 0){
+    const t = parseInt(itemType.slice('miningLaserTier'.length), 10);
+    const sell = Math.round([MINING_LASER_COST, 1200, 2800, 6000][t] * 0.4);
+    return { key:itemType, label:'Mining Laser LV.'+t, color:'#6dffc2', round:false, sellPrice:sell };
+  }
   if(itemType === AMMO_ITEM_TYPE) return { key:itemType, label:'Iron Bullets', color:'#c9a227', round:false, sellPrice:AMMO_SELL_UNIT_PRICE };
+  if(itemType === AMMO_ITEM_TYPE_COPPER) return { key:itemType, label:'Copper Bullets', color:'#e08a3c', round:false, sellPrice:2 };
+  if(itemType === AMMO_ITEM_TYPE_SILVER) return { key:itemType, label:'Silver Bullets', color:'#d7dbe0', round:false, sellPrice:5 };
+  if(itemType === AMMO_ITEM_TYPE_GOLD) return { key:itemType, label:'Gold Bullets', color:'#d4af37', round:false, sellPrice:12 };
   if(itemType === BLUEPRINT_IRON_BULLETS) return { key:itemType, label:'Iron Bullet Blueprint', color:'#c98cff', round:false, sellPrice:Math.round(BLUEPRINT_IRON_BULLETS_PRICE*0.4) };
+  // (v0.26.0) item 5: Manufacturing blueprint tiers -- scribed at the LIBRARY (see
+  // startBlueprintScribe below), LEARN-consumed the same way BLUEPRINT_IRON_BULLETS is
+  if(itemType === BLUEPRINT_MFG_LV1) return { key:itemType, label:'Manufacturing Blueprint LV.1', color:'#c98cff', round:false, sellPrice:null };
+  if(itemType === BLUEPRINT_MFG_LV2) return { key:itemType, label:'Manufacturing Blueprint LV.2', color:'#b06cff', round:false, sellPrice:null };
+  if(itemType === BLUEPRINT_MFG_LV3) return { key:itemType, label:'Manufacturing Blueprint LV.3', color:'#9040ff', round:false, sellPrice:null };
+  // (v0.26.0) item 4: Refined Ingots -- smelted from raw ore at MANUFACTURING, the
+  // actual crafting currency for every tiered blueprint. Sellable (unlike blueprints/
+  // books) at a modest markup over the raw ore's own price, same convention as every
+  // other tradeable material.
+  if(itemType === INGOT_IRON)   return { key:itemType, label:'Iron Ingot',   color:hexToCss(ORE_COLORS.iron),   round:false, sellPrice:ORE_PRICES.iron*4 };
+  if(itemType === INGOT_COPPER) return { key:itemType, label:'Copper Ingot', color:hexToCss(ORE_COLORS.copper), round:false, sellPrice:ORE_PRICES.copper*4 };
+  if(itemType === INGOT_SILVER) return { key:itemType, label:'Silver Ingot', color:hexToCss(ORE_COLORS.silver), round:false, sellPrice:ORE_PRICES.silver*4 };
+  if(itemType === INGOT_GOLD)   return { key:itemType, label:'Gold Ingot',   color:hexToCss(ORE_COLORS.gold),   round:false, sellPrice:ORE_PRICES.gold*4 };
   // (Library update) Memory Cube / Skill Book -- crafted at the station LIBRARY panel
   // (see LIBRARY section below). Neither is directly sellable (sellPrice:null, same
   // convention as blackBox/blackBoxCaptain) -- their value is in consuming them, not
@@ -10413,10 +10891,10 @@ function addToCargo(itemType, qty){
   if(qty <= 0) return;
   // ammo stacks cap at AMMO_MAX_STACK per stack (item 4) -- spill into new stacks
   // instead of merging past the cap the way every other item type does
-  if(itemType === AMMO_ITEM_TYPE){
+  if(isAmmoItemType(itemType)){
     let remaining = qty;
     while(remaining > 0){
-      let stack = cargoStacks.find(s => s.itemType === AMMO_ITEM_TYPE && s.qty < AMMO_MAX_STACK && !s.guildQuestId);
+      let stack = cargoStacks.find(s => s.itemType === itemType && s.qty < AMMO_MAX_STACK && !s.guildQuestId);
       if(!stack){ stack = { stackId: nextStackId++, itemType, qty:0 }; cargoStacks.push(stack); }
       const room = AMMO_MAX_STACK - stack.qty;
       const add = Math.min(room, remaining);
@@ -10478,10 +10956,10 @@ function jettisonFromStack(stackId, qty){
       equipShieldTier(fallback, true);
     }
   }
-  if(s.itemType === 'miningLaser' && totalOfType('miningLaser') <= 0){
+  if((s.itemType === 'miningLaser' || s.itemType.indexOf('miningLaserTier') === 0) && maxOwnedMiningLaserTier() < 0){
     hasMiningLaser = false; miningLaserEquipped = false;
   }
-  if(emptied && s.itemType === AMMO_ITEM_TYPE && equippedAmmoStackId === stackId) equippedAmmoStackId = null;
+  if(emptied && isAmmoItemType(s.itemType) && equippedAmmoStackId === stackId) equippedAmmoStackId = null;
   return amt;
 }
 // peels `amount` off an existing stack into a brand-new stack of the same item type
@@ -10516,7 +10994,7 @@ function syncFlatCargoMirrors(){
   const sTiers = [...new Set(cargoStacks.filter(s=>s.itemType.indexOf('shieldTier')===0 && !s.guildQuestId)
     .map(s=>parseInt(s.itemType.slice('shieldTier'.length),10)))];
   ownedShieldTiers = sTiers;
-  hasMiningLaser = totalOfType('miningLaser') > 0;
+  hasMiningLaser = maxOwnedMiningLaserTier() >= 0;
   // (v0.11.0) any accepted Transportation Guild delivery whose tagged cargo just left
   // the hold (jettison, sale, storage, ship loss...) fails right here
   checkGuildCargoIntegrity();
@@ -10548,14 +11026,15 @@ syncFlatCargoMirrors(); // establish the mirrors from the starting-gear stacks a
 // time in space (no docking requirement) via the EQUIPMENT popup's AMMO section or
 // straight from a cargo-hold ammo tile -- see refreshEquipmentPanel/openCargoActionPrompt.
 let equippedAmmoStackId = startingAmmoStack.stackId;
-function equippedAmmoStack(){ return cargoStacks.find(s=>s.stackId===equippedAmmoStackId && s.itemType===AMMO_ITEM_TYPE); }
+function equippedAmmoStack(){ return cargoStacks.find(s=>s.stackId===equippedAmmoStackId && isAmmoItemType(s.itemType)); }
 function equipAmmoStack(stackId){
-  const s = cargoStacks.find(x=>x.stackId===stackId && x.itemType===AMMO_ITEM_TYPE);
+  const s = cargoStacks.find(x=>x.stackId===stackId && isAmmoItemType(x.itemType));
   if(!s) return;
   if(s.guildQuestId){ flashMessage('GUILD DELIVERY CARGO — CANNOT BE EQUIPPED', 'warn'); return; }
   equippedAmmoStackId = stackId;
-  flashMessage('IRON BULLETS EQUIPPED — ' + s.qty + ' ROUNDS', 'good');
-  logEvent('EQUIPPED AMMO STACK — ' + s.qty + ' IRON BULLETS', 'good');
+  const ammoLabel = itemDisplayDef(s.itemType).label;
+  flashMessage(ammoLabel.toUpperCase() + ' EQUIPPED — ' + s.qty + ' ROUNDS', 'good');
+  logEvent('EQUIPPED AMMO STACK — ' + s.qty + ' ' + ammoLabel.toUpperCase(), 'good');
   refreshEquipmentPanel();
   updateInventoryPanel();
 }
@@ -10948,13 +11427,13 @@ function refreshEquipmentPanel(){
   sList.innerHTML = '<div class="peq"><span>'+(equippedShieldTier===-1?'NONE MOUNTED':'SHIELD LV.'+equippedShieldTier)+'</span><span></span></div>';
   mList.innerHTML = !hasMiningLaser
     ? '<div class="peq"><span>NOT OWNED</span><span></span></div>'
-    : '<div class="peq"><span>MINING LASER — ' + (miningLaserEquipped?'EQUIPPED':'STOWED') + '</span><span></span></div>';
-  const ammoStacks = cargoStacks.filter(s=>s.itemType===AMMO_ITEM_TYPE && !s.guildQuestId);
+    : '<div class="peq"><span>MINING LASER LV.' + maxOwnedMiningLaserTier() + ' — ' + (miningLaserEquipped?'EQUIPPED':'STOWED') + '</span><span></span></div>';
+  const ammoStacks = cargoStacks.filter(s=>isAmmoItemType(s.itemType) && !s.guildQuestId);
   aList.innerHTML = ammoStacks.length === 0
     ? '<div class="peq"><span>NO AMMO IN CARGO</span><span></span></div>'
     : ammoStacks.map(s=>{
         const eq = s.stackId === equippedAmmoStackId;
-        return '<div class="peq"><span>'+s.qty+' ROUNDS'+(eq?' (EQUIPPED)':'')+'</span>'
+        return '<div class="peq"><span>'+s.qty+' '+itemDisplayDef(s.itemType).label.toUpperCase()+(eq?' (EQUIPPED)':'')+'</span>'
           + '<button class="peqBtn'+(eq?' equipped':'')+'" data-ammo-stack="'+s.stackId+'">'+(eq?'UNEQUIP':'EQUIP')+'</button></div>';
       }).join('');
 }
@@ -10983,10 +11462,51 @@ function findTarget(id){ return allTargets.find(a=>a.id===id); }
 
 // warp through a gate: drop the ship ~200m clear of the gate's paired exit in the
 // other zone, already oriented and moving toward that zone's point of interest
+// item 8: arriving at the STATION zone used to always land on the exact same spot
+// (gateEntry.destination + exitDir*200) regardless of what NPC traffic (cargo
+// transports patrolling the station<->belt-gate lane) happened to be sitting right
+// there -- warping in could drop the player directly on top of / overlapping one.
+// This nudges the landing spot along a small ring of candidate offsets, perpendicular
+// to the approach direction, picking the first one clear of every nearby cargo ship
+// (and falling back to whichever candidate is furthest from the closest one, if
+// somehow all of them are still within the clearance radius).
+const STATION_ARRIVAL_CLEARANCE = 260; // must clear this distance from any cargo ship
+function findClearStationArrivalPos(basePos, exitDir){
+  const traffic = (typeof cargoShips !== 'undefined' ? cargoShips : [])
+    .concat(typeof greenRouteCargoShips !== 'undefined' ? greenRouteCargoShips : [])
+    .filter(c => c && c.alive !== false && c.mesh);
+  if(traffic.length === 0) return basePos;
+  // build two axes perpendicular to the approach direction so candidate offsets stay
+  // roughly in the same "in front of the gate" plane rather than drifting behind it
+  const up = Math.abs(exitDir.y) > 0.9 ? new THREE.Vector3(1,0,0) : new THREE.Vector3(0,1,0);
+  const right = new THREE.Vector3().crossVectors(exitDir, up).normalize();
+  const trueUp = new THREE.Vector3().crossVectors(right, exitDir).normalize();
+  const closestDist = (p)=> traffic.reduce((min,c)=> Math.min(min, p.distanceTo(c.mesh.position)), Infinity);
+  if(closestDist(basePos) >= STATION_ARRIVAL_CLEARANCE) return basePos;
+  const RINGS = [220, 380, 540, 720];
+  const STEPS = 8;
+  let best = basePos, bestDist = closestDist(basePos);
+  for(const ring of RINGS){
+    for(let i=0;i<STEPS;i++){
+      const ang = (i/STEPS) * Math.PI*2;
+      const cand = basePos.clone()
+        .addScaledVector(right, Math.cos(ang)*ring)
+        .addScaledVector(trueUp, Math.sin(ang)*ring);
+      const d = closestDist(cand);
+      if(d >= STATION_ARRIVAL_CLEARANCE) return cand;
+      if(d > bestDist){ bestDist = d; best = cand; }
+    }
+  }
+  return best; // no fully-clear ring found -- use whichever candidate was clearest
+}
 function doWarp(gateEntry){
   timesWarpedTotal++; // wallet stat (item 3b)
   const exitDir = (gateEntry.exitDirection ? gateEntry.exitDirection.clone() : new THREE.Vector3(0,0,-1)).normalize();
-  shipState.pos.copy(gateEntry.destination.clone().add(exitDir.clone().multiplyScalar(200)));
+  const baseArrivalPos = gateEntry.destination.clone().add(exitDir.clone().multiplyScalar(200));
+  // item 8: only the STATION zone actually has cargo-ship traffic to dodge -- other
+  // arrival points (the belt-side gate, inter-galaxy gates) are left exactly as before
+  const arrivesAtStation = gateEntry === gateToStationEntry || gateEntry.arrivesAtStation;
+  shipState.pos.copy(arrivesAtStation ? findClearStationArrivalPos(baseArrivalPos, exitDir) : baseArrivalPos);
   shipState.vel.set(0,0,0);
   shipState.invuln = 1.5;
   ship.position.copy(shipState.pos);
@@ -11542,14 +12062,16 @@ function refreshWalletPanel(){
     // levels a player has actually reached IS the count of books they've learned from
     const booksEl = document.getElementById('statBooksLearned');
     if(booksEl) booksEl.textContent = SKILL_ORDER.reduce((sum,k)=> sum + Math.max(0, (skillLevels[k]||0) - 1), 0);
-    // item 6: manufacturing plans known -- generic over MANUFACTURING_RECIPES so a
-    // future second recipe shows up here automatically
+    // item 6 / (v0.26.0): manufacturing plans known -- generic over BLUEPRINT_ITEM_TYPES
+    // (was: over MANUFACTURING_RECIPES 1:1 with the blueprint, back when every recipe
+    // WAS its own blueprint -- now a single tier blueprint unlocks several recipes, so
+    // this lists the actual LEARNED blueprint items, not individual recipes)
     const bpEl = document.getElementById('statBlueprints');
     if(bpEl){
-      const known = Object.keys(MANUFACTURING_RECIPES).filter(k=>knownBlueprints.has(k));
+      const known = BLUEPRINT_ITEM_TYPES.filter(t=>knownBlueprints.has(t));
       bpEl.innerHTML = known.length === 0
         ? '<div class="prow"><span>NONE KNOWN</span><span></span></div>'
-        : known.map(k=> '<div class="prow"><span>' + MANUFACTURING_RECIPES[k].label + '</span><span style="color:var(--phosphor);">KNOWN</span></div>').join('');
+        : known.map(t=> '<div class="prow"><span>' + itemDisplayDef(t).label + '</span><span style="color:var(--phosphor);">KNOWN</span></div>').join('');
     }
   }
   if(walletTab === 'medals') renderMedals();
@@ -12146,16 +12668,9 @@ function updateUniverseMapSelectionBar(){
   const isHere = key === currentZoneKey();
   const sameGalaxy = !zone.galaxy || zone.galaxy === currentGalaxyKey();
   const warpBtn = document.getElementById('btnUniverseMapWarp');
-  const autopilotBtn = document.getElementById('btnUniverseMapAutopilot');
-  // item 4 FIX: this was backwards -- it showed AUTOPILOT exactly for out-of-galaxy
-  // destinations, which autopilot can never actually reach (it never uses gates, and
-  // long-range warp/autopilot both only travel within the current galaxy -- see the
-  // comments on beginStarMapWarp/computeAutopilotRoute), and hid it for same-galaxy
-  // destinations, the only place it can ever do anything. AUTOPILOT now only offers
-  // itself alongside WARP for same-galaxy destinations; a different-galaxy selection
-  // gets neither button, just a message pointing at a gate instead.
+  // item 7: AUTOPILOT button removed from the star/universe map entirely (it did
+  // nothing useful from here) -- only WARP is offered, for same-galaxy destinations.
   if(warpBtn) warpBtn.style.display = (!isHere && sameGalaxy) ? '' : 'none';
-  if(autopilotBtn) autopilotBtn.style.display = (!isHere && sameGalaxy) ? '' : 'none';
   const hintEl = document.getElementById('universeMapSelectionHint');
   if(hintEl) hintEl.textContent = isHere ? 'YOU ARE HERE' : (sameGalaxy ? 'WITHIN WARP RANGE' : 'ANOTHER GALAXY — TRAVEL VIA A GALAXY GATE');
 }
@@ -12181,12 +12696,6 @@ document.getElementById('btnUniverseMapWarp').addEventListener('click', ()=>{
   universeMapSelectedKey = null;
   toggleUniverseMapPanel(false);
   beginStarMapWarp(zone);
-});
-document.getElementById('btnUniverseMapAutopilot').addEventListener('click', ()=>{
-  const key = universeMapSelectedKey;
-  if(!key) return;
-  universeMapSelectedKey = null;
-  startAutopilotTo(key);
 });
 window.addEventListener('resize', ()=>{
   const panel = document.getElementById('universeMapPanel');
@@ -13151,6 +13660,14 @@ function getPlayerSaveData(){
     mutedPlayers: mutedPlayers.slice(),
     lastSeenNoticeId: lastSeenNoticeId,
     welcomeEmailSent: welcomeEmailSent,
+    // item 16: whether the player was docked (and at which station) when they last
+    // saved -- restored on next LAUNCH so a returning player who logged out inside a
+    // station's docking bay lands right back there instead of adrift in open space
+    // near their last flight position (see applyPlayerSaveData/the LAUNCH handler's
+    // auto-redock below). Deliberately does NOT cover the brand-new-character or
+    // starter-ship-confiscated onboarding flows -- those already force their own
+    // dock via enterDock(chosenStation)/enterDock(fallbackStation) regardless.
+    dockedStationId: docked ? activeStationEntry().id : null,
     // item 6 FIX: the WALLET LEDGER's transaction history (creditLedger) was never
     // included in the save data at all, so it started empty on every fresh load and
     // looked "wiped" on every login even though nothing was actually resetting it in
@@ -17003,12 +17520,18 @@ function buildCargoPreviewMesh(itemType){
     geo = new THREE.ConeGeometry(0.85, 2.2, 4);
   } else if(itemType.indexOf('shieldTier') === 0){
     geo = new THREE.OctahedronGeometry(1.25, 0);
-  } else if(itemType === 'miningLaser'){
+  } else if(itemType === 'miningLaser' || itemType.indexOf('miningLaserTier') === 0){
     geo = new THREE.CylinderGeometry(0.4, 0.75, 2.1, 6);
   } else if(itemType === 'memory_cube'){
     geo = new THREE.OctahedronGeometry(1.2, 0); // crystalline "data cube"
   } else if(itemType === 'skill_book'){
     geo = new THREE.BoxGeometry(1.5, 1.9, 0.35); // flat, book-proportioned
+  } else if(BLUEPRINT_ITEM_TYPES.indexOf(itemType) >= 0){
+    geo = new THREE.BoxGeometry(1.5, 1.9, 0.1); // flat, rolled/printed schematic
+  } else if(itemType===INGOT_IRON || itemType===INGOT_COPPER || itemType===INGOT_SILVER || itemType===INGOT_GOLD){
+    geo = new THREE.BoxGeometry(1.6, 0.7, 0.9); // ingot brick
+  } else if(isAmmoItemType(itemType)){
+    geo = new THREE.CylinderGeometry(0.5, 0.5, 1.6, 6); // bullet-stack canister
   } else {
     geo = new THREE.BoxGeometry(1.4, 1.4, 1.4);
   }
@@ -17231,9 +17754,22 @@ const ITEM_FLAVOR = {
   shieldTier2: 'High-capacity shielding favored by bounty hunters and long-haul freighters.',
   shieldTier3: 'The best deflector money can buy out here — absorbs a serious beating.',
   miningLaser: 'A focused thermal laser for cracking ore loose from an asteroid\'s crust.',
+  miningLaserTier1: 'An upgraded mining laser with a tighter focus and hotter cut — needs Mining LV.1 to run at full strength.',
+  miningLaserTier2: 'A higher-output thermal cutter favored by dedicated belt runners — needs Mining LV.2 to run at full strength.',
+  miningLaserTier3: 'The strongest mining rig money (and ingots) can buy — needs Mining LV.3 to run at full strength.',
   ammo_iron_bullets: 'Standard kinetic rounds for the ship\'s gun mount. Equip a stack from here or the EQUIPMENT popup to reload in the field — no docking required.',
+  ammo_copper_bullets: 'Copper-cased kinetic rounds, manufactured from smelted Copper Ingots. Interchangeable with any other bullet color.',
+  ammo_silver_bullets: 'Silver-cased kinetic rounds, manufactured from smelted Silver Ingots. Interchangeable with any other bullet color.',
+  ammo_gold_bullets: 'Gold-cased kinetic rounds, manufactured from smelted Gold Ingots — the priciest ammo color in the belt. Interchangeable with any other bullet color.',
   memory_cube: 'A crystalline data store crafted at a LIBRARY. Consume it from the SKILLS panel to instantly advance whatever skill is currently training.',
-  skill_book: 'A scribed training manual crafted at a LIBRARY. Consumed automatically the moment you start training the level it covers.'
+  skill_book: 'A scribed training manual crafted at a LIBRARY. Consumed automatically the moment you start training the level it covers.',
+  blueprint_mfg_lv1: 'A LIBRARY-scribed Manufacturing plan. LEARN it at your cargo hold or a station STORAGE panel to permanently unlock LV.1 smelting and crafting at MANUFACTURING.',
+  blueprint_mfg_lv2: 'A LIBRARY-scribed Manufacturing plan. LEARN it to permanently unlock LV.2 crafting (Copper Ingot gear + Copper Bullets) at MANUFACTURING.',
+  blueprint_mfg_lv3: 'A LIBRARY-scribed Manufacturing plan. LEARN it to permanently unlock LV.3 crafting (Silver Ingot gear, Silver Bullets, and Gold Bullets) at MANUFACTURING.',
+  ingot_iron: 'Iron Ore smelted down into a refined ingot at MANUFACTURING — the base crafting material for LV.1 gear.',
+  ingot_copper: 'Copper Ore smelted down into a refined ingot at MANUFACTURING — the crafting material for LV.2 gear and Copper Bullets.',
+  ingot_silver: 'Silver Ore smelted down into a refined ingot at MANUFACTURING — the crafting material for LV.3 gear and Silver Bullets.',
+  ingot_gold: 'Gold Ore smelted down into a refined ingot at MANUFACTURING — the crafting material for Gold Bullets.'
 };
 // rebuildMesh=true (selection just changed) swaps in a fresh preview mesh; called
 // with false every frame just to keep the live numeric readouts (range/hp/ore %)
@@ -17741,7 +18277,6 @@ makePanelManageable(document.getElementById('skillsPanel'),     { title:'SKILLS'
 // regression fix (item E): station sub-panels are now independent floating windows,
 // draggable/resizable via the same makePanelManageable system as every other HUD
 // panel, each closing only itself (see closeDockSubPanel) rather than a shared modal.
-makePanelManageable(document.getElementById('dockCargoPanel'),       { title:'SELL CARGO',          minW:260, minH:220, onClose:()=> closeDockSubPanel('dockCargoPanel') , hideCollapse:true, group:'station' });
 makePanelManageable(document.getElementById('dockMarketPanel'),      { title:'MARKET',              minW:260, minH:220, onClose:()=> closeDockSubPanel('dockMarketPanel') , hideCollapse:true, group:'station' });
 makePanelManageable(document.getElementById('dockAuctionPanel'),     { title:'AUCTION HOUSE',       minW:280, minH:240, onClose:()=> closeDockSubPanel('dockAuctionPanel') , hideCollapse:true, group:'station' });
 makePanelManageable(document.getElementById('dockGovPanel'),         { title:'SECTOR GOVERNMENT',   minW:260, minH:200, onClose:()=> closeDockSubPanel('dockGovPanel') , hideCollapse:true, group:'station' });
@@ -18213,6 +18748,17 @@ document.getElementById('startBtn').addEventListener('click', async ()=>{
       // nothing more useful to do than let normal play/the FINANCE OFFICE take over
       // from here rather than re-prompting on every single future login)
       starterShipConfiscatedPendingChoice = false;
+    } else if(savedGame.dockedStationId && activeShipInstance && !inEscapePod){
+      // item 16: an ordinary returning player who was docked at logout goes straight
+      // back into that station's docking bay -- skips the "arrive in open space near
+      // the last flight position" default entirely. Only runs when a real station id
+      // matches (an unrecognized/stale id just leaves the player in open space at
+      // their restored pos/quat, same as before this existed) and the player actually
+      // has a ship to fly (the confiscated/shipless branch above already handles that
+      // case with its own forced dock, so this is deliberately mutually exclusive
+      // with it via the else-if).
+      const savedStation = stationById(savedGame.dockedStationId);
+      if(savedStation) enterDock(savedStation);
     }
   } else {
     // item 4d: brand-new character -- no save at all means no ship either, just the
