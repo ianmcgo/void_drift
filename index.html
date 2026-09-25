@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
-<title>VOID DRIFT // Belt Runner</title>
+<title>VOID DRIFT</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=VT323&family=Share+Tech+Mono&display=swap" rel="stylesheet">
@@ -276,12 +276,26 @@
   #targetPanel{
     left:50%; bottom:calc(16px + env(safe-area-inset-bottom,0px)); transform:translateX(-50%);
     /* item 13: TARGET is the one HUD box deliberately wider than the rest (it needs
-       the room for weapon/command controls). item 2 bugfix: it used to share a
-       min-height:280px with #eventLog/#itemInspector, which left a big blank strip
-       below its actual (shorter) content and kept it from sitting flush with the
-       bottom of the screen -- shrunk back down to hug its content; still matches
-       #eventLog's own (also-shrunk) default height, see the comment there. */
-    width:min(92vw,580px); min-height:210px; box-sizing:border-box;
+       the room for weapon/command controls). item 2 bugfix (round 1): it used to
+       share a min-height:280px with #eventLog/#itemInspector -- shrunk to 210px to
+       "match" them. item 7 ROOT CAUSE (round 2, found during the item 7/8
+       investigation): 210px was STILL taller than this panel's actual content --
+       measured with Playwright at a real 1400x900 viewport, the drag strip + name
+       row + button row alone (no lock in progress, #lockWrap/#lockLabel hidden via
+       skipLock -- see selectTarget) only reach ~156px total including this panel's
+       own padding, and even with #lockWrap/#lockLabel showing (the taller, more
+       typical locked-on-a-hostile case) it's only ~165-170px -- either way, nowhere
+       close to the old 210/280px, leaving a genuine ~45-90px blank strip below the
+       button row no matter what any saved HUD layout does. This was a real,
+       independent CSS bug the earlier "matches #eventLog" pass never actually
+       measured against real rendered content -- it just matched a NUMBER, not the
+       content. Now set to the shorter (no-lock-row) content's real measured
+       height -- min-height is a FLOOR, not a cap, so the panel still grows
+       naturally past this for the taller locked-target case, it just never sits
+       taller than its content needs in EITHER case. Not matched to #eventLog/
+       #itemInspector's height -- there's no requirement that TARGET share their
+       height, only that it not have dead space below its own content. */
+    width:min(92vw,580px); min-height:158px; box-sizing:border-box;
     background:var(--panel-bg); border:1px solid var(--panel-border);
     padding:10px 16px 14px; display:none;
   }
@@ -391,11 +405,17 @@
      on the panel itself is a hard backstop against any residual bleed. */
   #itemInspector{
     bottom:calc(14px + env(safe-area-inset-bottom,0px)); right:14px;
-    /* item 13: same width as every other non-target HUD box, same starting
-       min-height as #eventLog/#targetPanel. item 2/4: shrunk along with those two
-       (kept just above its own makePanelManageable minH:246 floor) so none of the
-       three is stretched taller than its content needs. */
-    width:min(78vw,270px); min-height:250px;
+    /* item 13/7/8: same width as every other non-target HUD box, same starting
+       min-height as #eventLog/#targetPanel -- item 2/4 previously said this was
+       already true but had actually left it at 250px against their 210px (a real
+       CSS bug found during the item 7/8 investigation: this box defaulted 40px
+       taller than Event Log on every fresh load, no saved layout involved at
+       all). Now genuinely 210px, matching both. Note makePanelManageable's own
+       minH:246 floor (a DRAG-resize lower bound only, see its call site) can
+       still be below this CSS default without conflict -- that floor just stops
+       a player from manually resizing it smaller than 246px, it never forces the
+       panel to start there. */
+    width:min(78vw,270px); min-height:210px;
     /* regression fix (item D): ensureContentFits (see makePanelManageable) grows
        this panel upward from its bottom-right anchor to fit a long item
        description, but had no ceiling of its own on desktop (only a touch-device
@@ -405,13 +425,28 @@
        edge (54px top offset + ~36px header + its list's 38vh) with a safety
        margin; #inspectorText's own overflow-y:auto (already set) takes over for
        any text that still doesn't fit once the panel hits this ceiling. */
-    max-height:max(250px, calc(62vh - 130px));
+    max-height:max(210px, calc(62vh - 130px));
     background:var(--panel-bg); border:1px solid var(--panel-border);
     padding:8px 10px 10px; font-size:12px;
     display:flex; flex-direction:column; overflow:hidden;
   }
+  /* item 8 ROOT CAUSE: unlike #eventLog (whose ONLY flexible child, .list, simply
+     fills whatever's left of the panel's own min-height, so its rendered height
+     always equals the panel's CSS min-height exactly, even empty), #itemInspector's
+     two children below are BOTH effectively fixed-size (this preview box at a flat
+     pixel height, #inspectorText held to its own min-height floor) -- their combined
+     intrinsic size was 110+90=200px of content alone, which on top of the drag
+     strip + this panel's own padding forced the panel to render taller than its
+     210px min-height (measured ~238-246px) NO MATTER what min-height was set on the
+     panel itself. This is why "match Event Log's height" kept not sticking even
+     independent of the localStorage issue: the panel's min-height was never actually
+     the thing controlling its rendered size. Preview box height reduced from 110 to
+     86px (still enough for the item icon/model, just less generous) so that
+     strip(~16) + this box + its 6px margin + #inspectorText's own floor + this
+     panel's 18px total padding sums to Event Log's real 210px, measured and
+     verified with Playwright -- see the item 7/8 test. */
   #inspectorViewWrap{
-    width:100%; height:110px; position:relative; margin-bottom:6px; flex:0 0 auto;
+    width:100%; height:86px; position:relative; margin-bottom:6px; flex:0 0 auto;
     border:1px solid rgba(109,255,194,0.25); background:rgba(0,0,0,0.35);
     display:flex; align-items:center; justify-content:center; overflow:hidden;
   }
@@ -421,17 +456,18 @@
     text-align:center; font-family:'VT323',monospace; letter-spacing:1px; font-size:13px;
     color:var(--phosphor-dim);
   }
-  /* min-height:90px (not 0) is the fix -- with min-height:0 the resize grip could
-     squeeze this flex item down to almost nothing (the fixed-size preview box above
-     ate the space first), so the name/weight/hull lines that matter most got pushed
-     out of the visible area with only a near-invisible auto-scrollbar as an escape
-     hatch, which read as the text just being hidden/lost. A 90px floor guarantees the
-     name + both stat lines always stay on-screen without scrolling even at the
-     panel's smallest allowed size (see minH:246 on makePanelManageable's itemInspector
-     call, sized to fit this plus the preview box, strip and padding); only the long
-     flavor-text line can still need the scrollbar, same as before. */
+  /* min-height:80px (not 0, and reduced from a previous 90px -- see #inspectorViewWrap's
+     comment just above for why 90+110 was the actual root cause of the panel
+     overshooting Event Log's height) is still the fix for the ORIGINAL problem this
+     value was chosen for -- with min-height:0 the resize grip could squeeze this flex
+     item down to almost nothing (the fixed-size preview box above ate the space
+     first), so the name/weight/hull lines that matter most got pushed out of the
+     visible area with only a near-invisible auto-scrollbar as an escape hatch, which
+     read as the text just being hidden/lost. An 80px floor still comfortably fits the
+     name + a couple of stat lines without scrolling at the panel's default size;
+     only a long flavor-text line still needs the scrollbar, same as before. */
   #inspectorText{
-    color:var(--phosphor-dim); line-height:1.5; flex:1 1 auto; min-height:90px;
+    color:var(--phosphor-dim); line-height:1.5; flex:1 1 auto; min-height:80px;
     width:100%; max-width:100%; overflow-y:auto; overflow-wrap:break-word; word-wrap:break-word;
   }
   #inspectorName{
@@ -666,6 +702,16 @@
   .popupPanel .prow{display:flex; justify-content:space-between; gap:10px; font-size:13px; color:var(--phosphor-dim); margin:4px 0;}
   .popupPanel .prow span:last-child{color:var(--phosphor);}
   .popupPanel .psection{font-size:12px; letter-spacing:1px; color:var(--amber); margin-top:10px;}
+  /* item 5 REWORK: #allMedalsPanel keeps the .popupPanel class (so it inherits
+     .prow/.psection/.popupBody's scroll styling above, same as every Data-Pad-style
+     panel) but overrides the base .popupPanel corner-docked position with the same
+     centered-modal geometry as #helpMenu -- it's reached by swapping Help's own
+     content out (see openAllMedalsPanel/closeAllMedalsPanel), not opened alongside
+     it, so it needs to actually sit where Help was, not in the corner. */
+  #allMedalsPanel{
+    top:50%; left:50%; transform:translate(-50%,-50%);
+    width:min(92vw,560px); max-height:82vh; z-index:76;
+  }
   .popupPanel .peq{display:flex; justify-content:space-between; align-items:center; gap:8px; font-size:13px; padding:5px 0; border-bottom:1px solid rgba(109,255,194,0.12);}
   .popupPanel .peq .peqBtn{
     font-family:'VT323',monospace; font-size:13px; letter-spacing:1px; padding:3px 10px; cursor:pointer;
@@ -828,6 +874,21 @@
   .settingsRow input[type=range]{width:100%; accent-color:var(--phosphor);}
   #settingsMenu .dbtns{display:flex; flex-direction:column; gap:6px; margin-top:4px;}
   #settingsMenu .dbtns .cmdbtn{font-size:13px; padding:6px 8px;}
+  /* item 3 REWORK: #customHudPanel is the same centered modal language as
+     #settingsMenu (it's reached from there, and directly from #dockNavColumn
+     while docked -- see openCustomHudPanel) -- z-index above #settingsMenu so it
+     visually sits "in front of" it on the way there, same as #helpMenu already does. */
+  #customHudPanel{
+    display:none;
+    top:50%; left:50%; transform:translate(-50%,-50%);
+    width:min(90vw,260px);
+    background:var(--panel-bg-solid); border:1px solid var(--panel-border);
+    padding:14px 16px 16px; text-align:center; pointer-events:auto; z-index:72;
+  }
+  #customHudPanel.show{display:block;}
+  #customHudPanel h2{font-family:'VT323',monospace; font-size:19px; letter-spacing:2px; color:var(--amber); margin:0 0 8px; text-shadow:0 0 8px rgba(255,176,32,0.5);}
+  #customHudPanel .dbtns{display:flex; flex-direction:column; gap:6px; margin-top:4px;}
+  #customHudPanel .dbtns .cmdbtn{font-size:13px; padding:6px 8px;}
   #settingsBackdrop{
     display:none; position:fixed; inset:0; z-index:70;
     background:rgba(0,0,0,0.45); pointer-events:auto;
@@ -991,6 +1052,46 @@
      language as the docking bay/wallet .psection headers elsewhere */
   #helpMenu .psection{font-size:12px; letter-spacing:1px; color:var(--amber); margin-top:12px; text-align:left;}
   #helpMenu .keys > div{margin-bottom:4px;}
+
+  /* item: forced starter-ship-choice modal -- shown exactly once, immediately after
+     a brand-new character picks their starting station and is auto-docked there (see
+     forceInitialShipChoice()). Same centered, solid-background modal language as
+     #hardcoreConfirmPanel/#helpMenu, but wide enough for two side-by-side ship
+     columns, and deliberately has NO close/skip button anywhere in its markup --
+     the only way out is picking one of the two CONFIRM buttons. */
+  #shipChoicePanel{
+    display:none;
+    top:50%; left:50%; transform:translate(-50%,-50%);
+    width:min(94vw,720px); max-height:90vh; overflow-y:auto;
+    background:var(--panel-bg-solid); border:1px solid var(--amber);
+    padding:18px 20px 20px; text-align:center; pointer-events:auto; z-index:130;
+  }
+  #shipChoicePanel.show{display:block;}
+  #shipChoicePanel h2{
+    font-family:'VT323',monospace; font-size:24px; letter-spacing:3px; color:var(--amber);
+    margin:0 0 6px; text-shadow:0 0 8px rgba(255,176,32,0.5);
+  }
+  #shipChoicePanel > p{ font-size:12px; color:var(--phosphor-dim); line-height:1.5; margin:0 0 14px; }
+  #shipChoiceGrid{ display:flex; gap:16px; flex-wrap:wrap; justify-content:center; }
+  .shipChoiceCol{
+    flex:1 1 280px; max-width:320px; border:1px solid var(--panel-border);
+    background:rgba(0,20,14,0.35); padding:12px 14px 14px; text-align:left;
+  }
+  .shipChoiceCol h3{
+    font-family:'VT323',monospace; font-size:19px; letter-spacing:2px; color:var(--phosphor);
+    margin:0 0 8px; text-align:center;
+  }
+  .shipChoiceViewWrap{ width:100%; height:140px; margin:0 auto 10px; }
+  .shipChoiceViewWrap canvas{ width:100%; height:100%; display:block; }
+  .shipChoiceCol .scDesc{ font-size:12px; color:var(--phosphor-dim); line-height:1.5; margin:0 0 8px; }
+  .shipChoiceCol .scStats{ font-size:11.5px; margin:0 0 10px; }
+  .shipChoiceCol .scStats .prow{ display:flex; justify-content:space-between; padding:2px 0; }
+  .shipChoiceCol .scStats .prow span:last-child{ color:var(--phosphor); }
+  .shipChoiceCol .scFinance{
+    font-size:11.5px; color:var(--amber); border-top:1px solid rgba(255,176,32,0.25);
+    padding-top:8px; margin-bottom:10px; line-height:1.6;
+  }
+  #shipChoicePanel .cmdbtn{ width:100%; }
 
   /* chat input docked to the bottom of the event log panel -- same panel border
      language, styled to look attached rather than floating separately. flex:0 0 auto
@@ -1284,13 +1385,13 @@
     #dockedPanel .dbtns{ gap:7px; margin-top:12px; }
     #dockedPanel .dbtns .cmdbtn{ font-size:14px; padding:7px 8px; }
     #dockedPanel .psection{ font-size:11px; margin-top:8px; }
-    #settingsMenu{ width:min(88vw,260px); padding:12px 14px 14px; }
+    #settingsMenu, #customHudPanel{ width:min(88vw,260px); padding:12px 14px 14px; }
     #helpMenu{ width:min(94vw,360px); max-height:88vh; padding:14px 16px 16px; }
-    #settingsMenu h2, #helpMenu h2{ font-size:18px; margin-bottom:8px; }
+    #settingsMenu h2, #helpMenu h2, #customHudPanel h2{ font-size:18px; margin-bottom:8px; }
     .settingsRow{ margin:8px 0; }
     .settingsRow label{ font-size:11px; }
-    #settingsMenu .dbtns, #helpMenu .dbtns{ gap:6px; margin-top:4px; }
-    #settingsMenu .dbtns .cmdbtn, #helpMenu .dbtns .cmdbtn{ font-size:13px; padding:6px 8px; }
+    #settingsMenu .dbtns, #helpMenu .dbtns, #customHudPanel .dbtns{ gap:6px; margin-top:4px; }
+    #settingsMenu .dbtns .cmdbtn, #helpMenu .dbtns .cmdbtn, #customHudPanel .dbtns .cmdbtn{ font-size:13px; padding:6px 8px; }
     #helpMenu p{ font-size:12px; }
     .keys{ font-size:12px; margin-top:12px; line-height:1.5; }
     .popupPanel{ max-height:78vh; }
@@ -1364,7 +1465,7 @@
     .popupPanel .phdr{font-size:15px; margin-bottom:3px; padding-bottom:3px;}
     #dockedPanel{max-height:94vh; padding:12px 16px 14px;}
     #dockedPanel h2{font-size:21px;}
-    #settingsMenu, #helpMenu{max-height:90vh; padding:12px 16px 14px;}
+    #settingsMenu, #helpMenu, #customHudPanel{max-height:90vh; padding:12px 16px 14px;}
     /* width matches CLOCK/OVERVIEW (34vw/170px max, from the general block above,
        unchanged here); max-height matches EVENT LOG's own cap just above (same
        reasoning: a forced fixed height here would just push EVENT LOG's forced
@@ -1774,6 +1875,7 @@
       <div class="psection">EQUIPMENT / GEAR LOAN</div>
       <div class="prow"><span>Principal Owed</span><span id="loansGearPrincipalRead">0 cr</span></div>
       <div class="prow"><span>Next Payment Due</span><span id="loansGearDueRead">—</span></div>
+      <div class="prow"><span>Payment Amount</span><span id="loansGearAmountRead">—</span></div>
       <div class="psection">STATUS</div>
       <div class="prow"><span>Missed Payments</span><span id="loansMissedRead">0 / 3</span></div>
       <div class="prow"><span>Bounty Status</span><span id="loansBountyRead">CLEAR</span></div>
@@ -1850,32 +1952,20 @@
     <label>PANEL BACKGROUND OPACITY (<span id="panelOpacityReadout">72</span>%)</label>
     <input type="range" id="panelOpacitySlider" min="20" max="100" step="1" value="72">
   </div>
-  <!-- item 4: two independent saved custom HUD layouts -- one for the main
-       space/flight HUD panel set, one for the station/docked panel set (different
-       panels are relevant/visible in each context, see group:'space'/'station' at
-       each panel's makePanelManageable call site). Stored under distinct
-       localStorage keys (see HUD_LAYOUT_STORAGE_KEYS) -- a per-device UI
-       preference, not gameplay state, so this deliberately does NOT round-trip
-       through the Supabase cloud save the way actual progress does; a saved
-       layout auto-applies on LAUNCH (space) and on docking (station) without
-       needing LOAD clicked every time -- see applyCustomHudLayout's call sites.
-       Only the SPACE controls live here -- openSettingsMenu() refuses to open at
-       all while docked (see its own guard just above), so a Settings-menu button
-       could never actually be reached while station panels are even visible. The
-       STATION controls live in #dockNavColumn instead (see its own SAVE/LOAD
-       STATION HUD LAYOUT buttons), the one place that's genuinely on screen
-       whenever those panels are. -->
-  <div class="settingsRow" style="flex-direction:column; align-items:stretch; gap:6px;">
-    <label>CUSTOM SPACE HUD LAYOUT (auto-loads on login)</label>
-    <div class="dbtns" style="margin-top:0;">
-      <button class="cmdbtn" id="btnSaveHudSpace">SAVE SPACE HUD LAYOUT</button>
-      <button class="cmdbtn" id="btnLoadHudSpace">LOAD SPACE HUD LAYOUT</button>
-    </div>
-  </div>
+  <!-- item 3 REWORK: every HUD-layout-related control (save/load space, save/load
+       station, reset) used to be scattered across this Settings menu AND
+       #dockNavColumn -- "it takes up too much room in the settings menu... have
+       one button for custom huds and then have all the buttons for this there".
+       Just one entry point here; see #customHudPanel below for where they all
+       actually live, and openCustomHudPanel()/closeCustomHudPanel() for how it's
+       reached. #dockNavColumn used to also carry its own standalone CUSTOM HUD
+       quick-access button (from back when this Settings menu refused to open at
+       all while docked), but that duplicate entry point was removed once Settings
+       itself became reachable while docked -- this is the only way in now. -->
   <div class="dbtns">
+    <button class="cmdbtn" id="btnOpenCustomHud">CUSTOM HUD</button>
     <button class="cmdbtn" id="btnOpenHelp">HELP</button>
     <button class="cmdbtn" id="btnToggleFullscreen">⛶ FULL SCREEN</button>
-    <button class="cmdbtn" id="btnResetHud">RESET HUD LAYOUT</button>
     <!-- item: this used to start hidden and only reveal itself when the
          player_saves fetch specifically failed (see the cloudSyncError check
          further down) -- but a table added later (auction_listings, say) can be
@@ -1892,8 +1982,44 @@
 </div>
 <!-- click-blocking backdrop behind #settingsMenu -- see openSettingsMenu()/
      closeSettingsMenu() -- so nothing under the menu (ship controls, other HUD
-     panels) can be interacted with while it's open, only the menu itself. -->
+     panels) can be interacted with while it's open, only the menu itself.
+     #customHudPanel is only ever opened while #settingsMenu is already open (see
+     openCustomHudPanel), so this backdrop stays up under it too without needing
+     its own show/hide handling for that panel. -->
 <div id="settingsBackdrop"></div>
+
+<!-- item 3 REWORK: every HUD-layout-related control, consolidated into one place --
+     reached exclusively from Settings' single CUSTOM HUD button (see
+     openCustomHudPanel). Two independent saved layouts -- one for the main
+     space/flight HUD panel set, one for the station/docked panel
+     set (see group:'space'/'station' at each panel's makePanelManageable call site).
+     Stored under distinct localStorage keys (see HUD_LAYOUT_STORAGE_KEYS) -- a
+     per-device UI preference, not gameplay state, so this deliberately does NOT
+     round-trip through the Supabase cloud save the way actual progress does; the
+     SPACE layout auto-applies on LAUNCH and the STATION layout auto-applies on
+     docking, without needing LOAD clicked every time -- see applyCustomHudLayout's
+     call sites. -->
+<div class="hud" id="customHudPanel">
+  <h2>CUSTOM HUD</h2>
+  <div class="settingsRow" style="flex-direction:column; align-items:stretch; gap:6px;">
+    <label>SPACE HUD LAYOUT (auto-loads on login)</label>
+    <div class="dbtns" style="margin-top:0;">
+      <button class="cmdbtn" id="btnSaveHudSpace">SAVE SPACE HUD LAYOUT</button>
+      <button class="cmdbtn" id="btnLoadHudSpace">LOAD SPACE HUD LAYOUT</button>
+    </div>
+  </div>
+  <div class="settingsRow" style="flex-direction:column; align-items:stretch; gap:6px;">
+    <label>STATION HUD LAYOUT (auto-loads on docking)</label>
+    <div class="dbtns" style="margin-top:0;">
+      <button class="cmdbtn" id="btnSaveHudStation">SAVE STATION HUD LAYOUT</button>
+      <button class="cmdbtn" id="btnLoadHudStation">LOAD STATION HUD LAYOUT</button>
+    </div>
+  </div>
+  <div class="dbtns">
+    <button class="cmdbtn" id="btnResetHud">RESET HUD LAYOUT</button>
+    <button class="cmdbtn" id="btnCloseCustomHud">◀ BACK</button>
+  </div>
+</div>
 
 <div class="hud" id="helpMenu">
   <h2>HOW TO PLAY</h2>
@@ -1981,25 +2107,39 @@
     <div>A brand-new character starts with no ship at all, just an escape pod — finance your first hull at any FINANCE OFFICE</div>
   </div>
 
-  <!-- item 1: reachable from Help regardless of earned status, separate from the
-       in-panel MEDALS tab's earned/ongoing-only view -- see openAllMedalsPanel -->
+  <!-- item 5 REWORK: reachable from Help regardless of earned status, separate from
+       the in-panel MEDALS tab's earned/ongoing-only view -- see openAllMedalsPanel.
+       This used to open the Data-Pad-style #allMedalsPanel as its own separate
+       floating popup ON TOP of Help (closed only via its own X, no way back to Help
+       short of closing both) -- "shouldn't open medals menus, it should be a box
+       within that box... then a back button to go back to help". Now it's a
+       content SWAP of this same modal window, exactly like this HELP window itself
+       already swaps with SETTINGS (see openHelpMenu/closeHelpMenu just above it in
+       the JS) -- #allMedalsPanel takes #helpMenu's place, its own BACK button swaps
+       back. -->
   <div class="dbtns">
     <button class="cmdbtn" id="btnOpenAllMedals">SHOW ALL MEDALS</button>
     <button class="cmdbtn" id="btnCloseHelp">◀ BACK</button>
   </div>
 </div>
 
-<!-- item 1: full medals/achievements browser -- lists EVERY fixed achievement and
-     every tiered chain's next few tiers regardless of earned/in-progress status, so a
-     curious player can browse the complete list. Separate popup from the MEDALS tab
-     inside the Data Pad (which only shows earned + in-progress, see renderMedals). -->
+<!-- item 1/5: full medals/achievements browser -- lists EVERY fixed achievement and
+     every tiered chain's next tier, PURELY as information (no EARNED/ONGOING status,
+     see renderAllMedalsPanel) -- separate from the MEDALS tab inside the Data Pad
+     (which only shows earned + in-progress WITH status, see renderMedals). Styled
+     and positioned (see its CSS override just after .popupPanel's own rules) as the
+     same centered modal as #helpMenu rather than a small corner-docked popup, since
+     it's reached by swapping helpMenu's own content out, not opened alongside it. -->
 <div class="hud popupPanel" id="allMedalsPanel">
-  <div class="phdr"><span>ALL MEDALS</span><button id="btnCloseAllMedals">✕</button></div>
+  <div class="phdr"><span>ALL MEDALS</span></div>
   <div class="popupBody">
     <div class="psection" style="margin-top:0;">TIERED MEDALS (ALL CHAINS)</div>
     <div id="allMedalsTierList"></div>
     <div class="psection" id="allMedalsFixedHeader">FIXED MEDALS</div>
     <div id="allMedalsFixedList"></div>
+    <div class="dbtns">
+      <button class="cmdbtn" id="btnCloseAllMedals">◀ BACK</button>
+    </div>
   </div>
 </div>
 
@@ -2011,6 +2151,34 @@
   <div class="popupBody">
     <div class="prow" style="font-size:11px; color:var(--phosphor-dim);"><span>You have no ship yet — just an escape pod. Pick a station to start at; you'll finance your first hull at its FINANCE OFFICE.</span></div>
     <div id="newCharacterStationList"></div>
+  </div>
+</div>
+
+<!-- item: forced starter-ship-choice modal -- shown once, immediately after a
+     brand-new character is auto-docked at their chosen starting station. No close/X
+     button anywhere in this markup, same "cannot proceed without acting" pattern as
+     #hardcoreConfirmPanel/#newCharacterStationPanel above. See
+     forceInitialShipChoice()/renderShipChoicePanel(). -->
+<div class="hud" id="shipChoicePanel">
+  <h2>FINANCE YOUR FIRST SHIP</h2>
+  <p>You have no ship yet — just an escape pod. Pick a hull to finance; it's delivered with nothing down and auto-equipped right now. The loan is paid down automatically out of your credits every in-game week (see the LOANS tab on your DATA PAD).</p>
+  <div id="shipChoiceGrid">
+    <div class="shipChoiceCol">
+      <h3>WAYFARER-CLASS</h3>
+      <div class="shipChoiceViewWrap"><canvas id="shipChoiceCanvasStarter" width="220" height="140"></canvas></div>
+      <div class="scDesc">Balanced combat hull: carries weapons and shields, but no mining laser mount. Faster and more agile than the Prospector, with a lighter hull and smaller cargo hold. The pick for fighting, bounty hunting, and general-purpose running.</div>
+      <div class="scStats" id="shipChoiceStatsStarter"></div>
+      <div class="scFinance" id="shipChoiceFinanceStarter"></div>
+      <button class="cmdbtn" data-force-choose-class="starter">CONFIRM — FINANCE WAYFARER</button>
+    </div>
+    <div class="shipChoiceCol">
+      <h3>PROSPECTOR-CLASS</h3>
+      <div class="shipChoiceViewWrap"><canvas id="shipChoiceCanvasMining" width="220" height="140"></canvas></div>
+      <div class="scDesc">Dedicated mining hull: carries a mining laser and shields, but no weapon hardpoints at all — it can't fight. Tougher hull and nearly double the cargo hold of the Wayfarer, but noticeably slower to accelerate and a lower top speed. The pick for hauling ore out of the belt.</div>
+      <div class="scStats" id="shipChoiceStatsMining"></div>
+      <div class="scFinance" id="shipChoiceFinanceMining"></div>
+      <button class="cmdbtn" data-force-choose-class="mining">CONFIRM — FINANCE PROSPECTOR</button>
+    </div>
   </div>
 </div>
 <div class="hud" id="spawnAlert"></div>
@@ -2102,18 +2270,23 @@
     <button class="cmdbtn" id="btnDockMiningPanel">MINING CORP OFFICE</button>
     <button class="cmdbtn" id="btnDockTransportPanel">TRANSPORTATION GUILD</button>
     <button class="cmdbtn" id="btnDockGovPanel">SECTOR GOVERNMENT</button>
+    <!-- item 2/3: this column used to carry its own SAVE/LOAD STATION HUD LAYOUT
+         buttons directly, then a standalone CUSTOM HUD quick-access button, because
+         openSettingsMenu() refused to open at all while docked. Now that Settings
+         itself opens while docked (via the SETTINGS button below / Escape), a
+         separate Custom HUD entry point here is redundant -- Custom HUD is still
+         fully reachable via Settings -> CUSTOM HUD -> #customHudPanel (see
+         openCustomHudPanel). Removed per user request to de-duplicate the dock nav. -->
+    <!-- item: full Settings menu (AFK timeout/panel opacity/Help/account/etc) is now
+         reachable while docked too (see openSettingsMenu()'s removed docked guard) --
+         this button and the Escape key (handleEscapeAction) are the two ways in. -->
+    <button class="cmdbtn" id="btnDockSettings">SETTINGS</button>
   </div>
-  <!-- item 4: station HUD layout save/load lives HERE rather than the SETTINGS menu --
-       openSettingsMenu() refuses to open at all while docked (see its own guard), so
-       a player standing at a station could never reach a Settings-menu button anyway.
-       This is the only place the STATION preset controls are actually reachable while
-       the station sub-panels themselves are even on screen. The SPACE preset controls
-       stay in SETTINGS, since that IS reachable during normal flight. -->
-  <div class="dbtns" style="margin-top:10px;">
-    <button class="cmdbtn" id="btnSaveHudStation">SAVE STATION HUD LAYOUT</button>
-    <button class="cmdbtn" id="btnLoadHudStation">LOAD STATION HUD LAYOUT</button>
-  </div>
-  <div class="dbtns" style="margin-top:14px;">
+  <!-- UNDOCK kept in its own row, still danger-styled, but sharing the exact same
+       .dockNavList .cmdbtn sizing rule (font/padding/width) as every button above
+       it so nothing in this column is a different size -- see .dockNavList .cmdbtn
+       in the stylesheet, which this button also matches via the shared class. -->
+  <div class="dockNavList" style="margin-top:10px;">
     <button class="cmdbtn danger" id="btnUndock">UNDOCK</button>
   </div>
 </div>
@@ -2132,9 +2305,6 @@
         <button class="cmdbtn" id="dockCargoSellCancel">CANCEL</button>
       </div>
     </div>
-    <div class="dbtns" style="margin-top:14px;">
-      <button class="cmdbtn" id="btnDockCargoBack">◀ BACK</button>
-    </div>
     </div>
   </div>
 
@@ -2150,9 +2320,6 @@
         <button class="cmdbtn" id="marketBuyConfirm">BUY</button>
         <button class="cmdbtn" id="marketBuyCancel">CANCEL</button>
       </div>
-    </div>
-    <div class="dbtns" style="margin-top:14px;">
-      <button class="cmdbtn" id="btnDockMarketBack">◀ BACK</button>
     </div>
     </div>
   </div>
@@ -2176,9 +2343,6 @@
     <div id="auctionListingsGrid" style="margin-top:4px;"></div>
     <div class="psection">YOUR LISTINGS AT OTHER STATIONS</div>
     <div id="auctionMyListingsGrid" style="margin-top:4px;"></div>
-    <div class="dbtns" style="margin-top:14px;">
-      <button class="cmdbtn" id="btnDockAuctionBack">◀ BACK</button>
-    </div>
     </div>
   </div>
 
@@ -2195,7 +2359,6 @@
     </div>
     <div class="dbtns" style="margin-top:14px;">
       <button class="cmdbtn" id="btnWithdrawUbi">WITHDRAW UBI</button>
-      <button class="cmdbtn" id="btnDockGovBack">◀ BACK</button>
     </div>
     </div>
   </div>
@@ -2209,9 +2372,6 @@
     <div id="fitShieldList"></div>
     <div class="psection">MINING LASER</div>
     <div id="fitMiningList"></div>
-    <div class="dbtns" style="margin-top:14px;">
-      <button class="cmdbtn" id="btnDockFittingBack">◀ BACK</button>
-    </div>
     </div>
   </div>
 
@@ -2219,9 +2379,6 @@
     <div class="popupBody">
     <div class="sub" style="color:var(--amber); text-align:left;">MANUFACTURING — BUILT ITEMS GO TO STATION STORAGE</div>
     <div id="mfgRecipeList"></div>
-    <div class="dbtns" style="margin-top:14px;">
-      <button class="cmdbtn" id="btnDockManufacturingBack">◀ BACK</button>
-    </div>
     </div>
   </div>
 
@@ -2235,9 +2392,6 @@
       <div id="libraryCubeForm"></div>
       <div class="psection">SKILL BOOKS — unlock starting LV.2+ training in that skill when consumed</div>
       <div id="libraryBookForm"></div>
-    </div>
-    <div class="dbtns" style="margin-top:14px;">
-      <button class="cmdbtn" id="btnDockLibraryBack">◀ BACK</button>
     </div>
     </div>
   </div>
@@ -2267,9 +2421,6 @@
         <button class="cmdbtn" id="dsMoveConfirm">MOVE</button>
         <button class="cmdbtn" id="dsMoveCancel">CANCEL</button>
       </div>
-    </div>
-    <div class="dbtns" style="margin-top:14px;">
-      <button class="cmdbtn" id="btnDockStorageBack">◀ BACK</button>
     </div>
     </div>
   </div>
@@ -2301,9 +2452,13 @@
       <input type="number" id="loanPayInput" min="1" step="1" value="100">
       <button class="cmdbtn" id="btnLoanPay">PAY</button>
     </div>
-    <div class="dbtns" style="margin-top:14px;">
-      <button class="cmdbtn" id="btnDockShipyardBack">◀ BACK</button>
+    <!-- item 2 (v0.24.0): early/full payoff -- available at any station's FINANCE
+         OFFICE while docked, same as the PAY box above (see clearLoanBountyIfPaidOff /
+         the btnLoanPayOff handler) -->
+    <div class="dbtns" style="margin-top:6px;">
+      <button class="cmdbtn" id="btnLoanPayOff">PAY OFF IN FULL</button>
     </div>
+    <div class="prow" style="font-size:10px; color:var(--phosphor-dim);"><span id="loanPayOffMsg"></span><span></span></div>
     </div>
   </div>
 
@@ -2325,9 +2480,6 @@
     <div class="psection">BLACK BOX BOUNTY (INDIVIDUAL TURN-IN)</div>
     <div class="drow"><span>STATION TREASURY</span><span id="navyBountyTreasuryRead">0 cr</span></div>
     <div id="navyBlackBoxBountyList" style="margin-top:8px;"></div>
-    <div class="dbtns" style="margin-top:14px;">
-      <button class="cmdbtn" id="btnDockNavyBack">◀ BACK</button>
-    </div>
     </div>
   </div>
 
@@ -2341,9 +2493,6 @@
     <div id="miningQuestList" style="margin-top:8px;"></div>
     <div class="psection">ACCEPTED CONTRACTS</div>
     <div id="miningActiveQuestList" style="margin-top:8px;"></div>
-    <div class="dbtns" style="margin-top:14px;">
-      <button class="cmdbtn" id="btnDockMiningBack">◀ BACK</button>
-    </div>
     </div>
   </div>
 
@@ -2357,9 +2506,6 @@
     <div id="transportQuestList" style="margin-top:8px;"></div>
     <div class="psection">ACCEPTED DELIVERIES</div>
     <div id="transportActiveQuestList" style="margin-top:8px;"></div>
-    <div class="dbtns" style="margin-top:14px;">
-      <button class="cmdbtn" id="btnDockTransportBack">◀ BACK</button>
-    </div>
     </div>
   </div>
 </div>
@@ -2414,9 +2560,9 @@
 // compatibility depends on it. Add new keys, don't rename old ones.
 
 // ---------- version / build info (shown in the ESC settings menu) ----------
-const GAME_VERSION = "0.21.0";
-const GAME_LAST_EDITED = "2026-09-24";
-const GAME_BUILD_TIME = "21:21 PT"; // wall-clock time this build was published, not just the date
+const GAME_VERSION = "0.25.1";
+const GAME_LAST_EDITED = "2026-09-25";
+const GAME_BUILD_TIME = "14:05 PT"; // wall-clock time this build was published, not just the date
 
 // ---------- update-available banner ----------
 // Periodically re-fetches this very page (same-origin -- works identically whether
@@ -3381,6 +3527,15 @@ let hasBounty = false;         // 3 consecutive missed payments -- bounty hunter
 // loanPrincipal). Both balances accrue interest/trigger missed-payment bounty hunters
 // together -- see processLoanInterestTick.
 let shipLoanBalance = 0;
+// item 3 (v0.24.0): set true the moment a player's starter ship is confiscated (see
+// the instId:0 repossession branch in applyPlayerSaveData below) OR retroactively
+// detected on load for a returning player left shipless by an EARLIER deployment of
+// that same repossession migration (before this flag existed to track it) -- see
+// that same function's retroactive-detection block further down. Consumed (set back
+// to false) the moment the player actually completes the forced ship-choice modal
+// (see forceInitialShipChoice's caller in the LAUNCH handler), so it only ever fires
+// once per confiscation event, never every login thereafter.
+let starterShipConfiscatedPendingChoice = false;
 // item 4c: mortgage payments are due every in-game WEEK (was a 150-real-second
 // "in-game hour" micro-tick that auto-paid from bountyCredits constantly -- replaced
 // with a real wall-clock due-date, consistent with how manufacturing/library
@@ -3389,6 +3544,15 @@ let shipLoanBalance = 0;
 // taken yet / not yet scheduled.
 const LOAN_PAYMENT_INTERVAL_MS = SKILL_REAL_SECONDS_PER_INGAME_DAY * 7 * 1000; // 1 in-game week
 const LOAN_INTEREST_RATE = 0.05;
+// item 2 (v0.24.0): the weekly tick used to deduct ONLY this interest amount, which
+// never actually paid down the underlying loan -- a "weekly payment" that could never
+// clear the loan was the bug. LOAN_PRINCIPAL_PAYMENT_RATE is the ADDITIONAL slice of
+// the current combined debt that a successful weekly payment now also strips off the
+// principal itself (ship balance first, then gear balance -- same priority order the
+// missed-payment compounding below already used), on top of the interest charge. At
+// 12%/week a loan amortizes down to zero in well under 3 in-game months of on-time
+// payments even before any manual/early paydown. See processLoanInterestTick.
+const LOAN_PRINCIPAL_PAYMENT_RATE = 0.12;
 let nextLoanPaymentDueMs = 0;
 let playerStunned = 0;         // seconds remaining stunned (bounty-hunter ion blast) -- input/movement locked out while >0
 let playerStunnedEndsAtMs = 0; // (v0.19.2) wall-clock deadline playerStunned is now derived from each tick, so a
@@ -3645,6 +3809,10 @@ function sellStoredShip(instId){
 // weekly mortgage-payment system (LOAN_PAYMENT_INTERVAL_MS/processLoanInterestTick).
 // "Only one ship loan at a time" still applies (see the shipLoanBalance>0 guard below)
 // -- that restriction is legitimate and unrelated to the credits bug.
+// returns the newly-financed {instId,classKey,name} inst on success (used by
+// forceInitialShipChoice() below to immediately board it), or undefined if the
+// finance was refused (already financing a ship) -- this return value is purely
+// additive, every pre-existing caller already ignored buyNewShip's return.
 function buyNewShip(classKey){
   const cls = SHIP_CLASSES[classKey];
   if(!cls) return;
@@ -3666,6 +3834,7 @@ function buyNewShip(classKey){
   updateDockedPanel();
   if(typeof renderDockShipyardPanel === 'function') renderDockShipyardPanel();
   if(typeof renderDockStorageRows === 'function') renderDockStorageRows();
+  return inst;
 }
 // financing starter gear always puts the full cost on the station loan (rather than
 // auto-splitting against available credits like buyNewShip) -- these are meant as a
@@ -3675,7 +3844,16 @@ function buyNewShip(classKey){
 // now, same as ships, only ONE weapon/shield/ammo loan may be outstanding at a time
 // (any nonzero loanPrincipal blocks financing another piece of gear until it's paid
 // down). item 9: ammo loan raised from 100 to 500 bullets.
-const FINANCE_GEAR_COST = { weapon:400, shield:400, ammo:150 };
+// item 4 (v0.24.0): miningLaser added here at its existing outright-purchase price
+// (MINING_LASER_COST, declared much further down near the mining section -- can't be
+// referenced directly from this early in the file, module-init order/TDZ, so its
+// value is duplicated here as a plain number; keep the two in sync if either ever
+// changes). There was previously no Finance Office financing option for a mining
+// laser at all (only an outright MARKET purchase) -- this reuses that exact same
+// price as the loan principal rather than inventing a new one, and is now also
+// offered as an ordinary FINANCE STARTER GEAR row (see renderDockShipyardPanel)
+// alongside weapon/shield/ammo, not just from the forced onboarding modal below.
+const FINANCE_GEAR_COST = { weapon:400, shield:400, ammo:150, miningLaser:600 };
 function financeStarterGear(kind){
   if(loanPrincipal > 0){
     flashMessage('ALREADY FINANCING GEAR — PAY IT OFF FIRST', 'warn');
@@ -3685,6 +3863,7 @@ function financeStarterGear(kind){
   if(kind === 'weapon'){ itemType='weaponTier0'; qty=1; cost=FINANCE_GEAR_COST.weapon; label='Starter Weapon Mk1'; }
   else if(kind === 'shield'){ itemType='shieldTier0'; qty=1; cost=FINANCE_GEAR_COST.shield; label='Starter Shield Mk1'; }
   else if(kind === 'ammo'){ itemType=AMMO_ITEM_TYPE; qty=500; cost=FINANCE_GEAR_COST.ammo; label='Iron Bullets x500'; }
+  else if(kind === 'miningLaser'){ itemType='miningLaser'; qty=1; cost=FINANCE_GEAR_COST.miningLaser; label='Mining Laser LV.0'; }
   else return;
   loanPrincipal += cost;
   if(nextLoanPaymentDueMs === 0) nextLoanPaymentDueMs = Date.now() + LOAN_PAYMENT_INTERVAL_MS;
@@ -3696,6 +3875,54 @@ function financeStarterGear(kind){
   updateDockedPanel();
   if(typeof renderDockStorageRows === 'function') renderDockStorageRows();
   if(typeof renderDockShipyardPanel === 'function') renderDockShipyardPanel();
+}
+// item 4 (v0.24.0): bootstraps a fully-equipped starter loadout for the forced
+// ship-choice modal (see forceInitialShipChoice) -- reuses the exact same
+// FINANCE_GEAR_COST prices and loanPrincipal financing mechanism as the ordinary
+// FINANCE STARTER GEAR path above (financeStarterGear), but deliberately differs in
+// two ways, both one-time-bootstrapping-only:
+//  (1) delivers straight into CARGO and immediately equips/activates the item,
+//      instead of leaving it in station storage for a manual equip step -- the point
+//      of "forced" onboarding is the player leaves combat/mining-ready, not with a
+//      bare hull;
+//  (2) does NOT refuse when a gear loan is already open. A Wayfarer choice finances
+//      shield+weapon+ammo and a Prospector choice finances shield+mining laser in
+//      one go here -- unavoidably more than the usual "only one weapon/shield/ammo
+//      loan at a time" (see financeStarterGear/renderDockShipyardPanel), which is
+//      deliberately allowed ONLY for this exact flow since it runs once per
+//      character and there's no other way to leave this modal with a usable ship.
+// Every item financed this way lands on the SAME shared loanPrincipal balance and
+// pays down/compounds through the exact same weekly mechanism (processLoanInterestTick)
+// as any other gear loan afterward -- nothing about its bookkeeping is special once
+// it exists, only how it was created.
+function financeStarterGearAutoEquip(kind){
+  let itemType, qty, cost, label;
+  if(kind === 'weapon'){ itemType='weaponTier0'; qty=1; cost=FINANCE_GEAR_COST.weapon; label='Starter Weapon Mk1'; }
+  else if(kind === 'shield'){ itemType='shieldTier0'; qty=1; cost=FINANCE_GEAR_COST.shield; label='Starter Shield Mk1'; }
+  else if(kind === 'ammo'){ itemType=AMMO_ITEM_TYPE; qty=500; cost=FINANCE_GEAR_COST.ammo; label='Iron Bullets x500'; }
+  else if(kind === 'miningLaser'){ itemType='miningLaser'; qty=1; cost=FINANCE_GEAR_COST.miningLaser; label='Mining Laser LV.0'; }
+  else return;
+  loanPrincipal += cost;
+  if(nextLoanPaymentDueMs === 0) nextLoanPaymentDueMs = Date.now() + LOAN_PAYMENT_INTERVAL_MS;
+  addToCargo(itemType, qty);
+  if(kind === 'weapon') equipWeaponTier(0, true);
+  else if(kind === 'shield') equipShieldTier(0, true);
+  else if(kind === 'miningLaser'){
+    hasMiningLaser = true;
+    if(!miningLaserEquipped) toggleMiningLaserEquip();
+  } else if(kind === 'ammo'){
+    // loads this fresh stack into the gun slot unless something else already
+    // validly is -- equippedAmmoStackId can be non-null but DANGLING here (points
+    // at a stack id that no longer exists in cargoStacks, e.g. this same modal's
+    // brand-new-character cargo wipe above, or an earlier real enterEscapePod()
+    // wipe for a confiscated player -- neither of those touches this pointer), so
+    // "already equipped" is judged by the stack actually still existing, not just
+    // by the pointer being non-null.
+    const stack = cargoStacks.find(s=> s.itemType === AMMO_ITEM_TYPE && !s.guildQuestId);
+    const currentlyValid = equippedAmmoStackId != null && cargoStacks.some(s=> s.stackId === equippedAmmoStackId);
+    if(stack && !currentlyValid) equippedAmmoStackId = stack.stackId;
+  }
+  logEvent('FINANCED ' + label.toUpperCase() + ' (' + cost + ' CR) — EQUIPPED', 'good');
 }
 
 // ---------- shared speed-based accuracy modifier ----------
@@ -7323,6 +7550,20 @@ function closeDockSubPanel(name){
   const navBtnId = DOCK_NAV_BTN_ID[name];
   const btn = navBtnId && document.getElementById(navBtnId);
   if(btn) btn.classList.remove('active');
+  // item 1: the bottom-of-panel "◀ BACK" button on every station sub-panel was
+  // removed as redundant clutter -- the title-bar X (onClose, also routed here)
+  // and re-clicking the same nav-column button (toggleDockSubPanel, also routed
+  // here) are the two remaining ways to close one. A couple of these panels'
+  // now-deleted Back buttons used to also reset some panel-local UI state on the
+  // way out (SELL CARGO's qty prompt, STORAGE's move prompt) -- folded that
+  // cleanup in here so it still runs no matter which of the two remaining paths
+  // closes the panel, instead of only running on a click that no longer exists.
+  if(name === 'dockCargoPanel'){
+    const prompt = document.getElementById('dockCargoSellPrompt');
+    if(prompt) prompt.style.display = 'none';
+    dockSellActionStackId = null;
+  }
+  if(name === 'dockStoragePanel' && typeof closeStorageMovePrompt === 'function') closeStorageMovePrompt();
 }
 // item 3: clicking a nav-column button a SECOND time (while its own sub-panel is
 // already open) now closes that panel instead of just re-focusing/re-rendering it --
@@ -7508,11 +7749,6 @@ document.getElementById('btnUndock').addEventListener('click', ()=>{ exitDock();
 // separate floating/draggable cargo-hold popup -- keeps every docking-bay sub-panel
 // (MARKET, FITTING, STORAGE, SELL CARGO) visually consistent with each other. ----------
 document.getElementById('btnDockCargoPanel').addEventListener('click', ()=> toggleDockSubPanel('dockCargoPanel'));
-document.getElementById('btnDockCargoBack').addEventListener('click', ()=> {
-  document.getElementById('dockCargoSellPrompt').style.display = 'none';
-  dockSellActionStackId = null;
-  closeDockSubPanel('dockCargoPanel');
-});
 let dockSellActionStackId = null;
 function renderDockCargoPanel(){
   const grid = document.getElementById('dockCargoGrid');
@@ -7772,11 +8008,8 @@ document.getElementById('marketBuyConfirm').addEventListener('click', ()=>{
   addStationTax(activeStationEntry().id, tax);
 });
 document.getElementById('btnDockMarketPanel').addEventListener('click', ()=> toggleDockSubPanel('dockMarketPanel'));
-document.getElementById('btnDockMarketBack').addEventListener('click', ()=> closeDockSubPanel('dockMarketPanel'));
 document.getElementById('btnDockAuctionPanel').addEventListener('click', ()=> toggleDockSubPanel('dockAuctionPanel'));
-document.getElementById('btnDockAuctionBack').addEventListener('click', ()=> closeDockSubPanel('dockAuctionPanel'));
 document.getElementById('btnDockGovPanel').addEventListener('click', ()=> toggleDockSubPanel('dockGovPanel'));
-document.getElementById('btnDockGovBack').addEventListener('click', ()=> closeDockSubPanel('dockGovPanel'));
 
 // ---------- Sector Government / station tax trust (signed-in players only) ----------
 // One row per (server, station_id) holding a running credit balance -- every station
@@ -8358,7 +8591,6 @@ document.getElementById('fitMiningList').addEventListener('click', (e)=>{
   if(e.target.closest('#btnFitMining')){ toggleMiningLaserEquip(); renderFittingPanel(); }
 });
 document.getElementById('btnDockFittingPanel').addEventListener('click', ()=> toggleDockSubPanel('dockFittingPanel'));
-document.getElementById('btnDockFittingBack').addEventListener('click', ()=> closeDockSubPanel('dockFittingPanel'));
 
 // ---------- item 7: MANUFACTURING -- queue-built items from known blueprints ----------
 // one queue per recipe (keyed by blueprint type), holding how many units are still
@@ -8491,7 +8723,6 @@ document.getElementById('mfgRecipeList').addEventListener('click', (e)=>{
   startManufacturing(bpType, qty);
 });
 document.getElementById('btnDockManufacturingPanel').addEventListener('click', ()=> toggleDockSubPanel('dockManufacturingPanel'));
-document.getElementById('btnDockManufacturingBack').addEventListener('click', ()=> closeDockSubPanel('dockManufacturingPanel'));
 
 // ---------- LIBRARY (Memory Cube crafting + Skill Book scribing) ----------
 // Available at every station. Two craftable items, both wall-clock-timed exactly like
@@ -8808,7 +9039,6 @@ function renderLibraryPanel(){
   }
 }
 document.getElementById('btnDockLibraryPanel').addEventListener('click', ()=> toggleDockSubPanel('dockLibraryPanel'));
-document.getElementById('btnDockLibraryBack').addEventListener('click', ()=> closeDockSubPanel('dockLibraryPanel'));
 document.getElementById('dockLibraryPanel').addEventListener('click', (e)=>{
   const cancelBtn = e.target.closest('#btnLibraryCancelCraft');
   if(cancelBtn){ openLibraryCancelConfirm(); return; }
@@ -8914,7 +9144,6 @@ function renderDockStorageRows(){
       }).join('');
 }
 document.getElementById('btnDockStoragePanel').addEventListener('click', ()=> toggleDockSubPanel('dockStoragePanel'));
-document.getElementById('btnDockStorageBack').addEventListener('click', ()=> { closeStorageMovePrompt(); closeDockSubPanel('dockStoragePanel'); });
 function addToStationStorage(itemType, qty, stationId){
   qty = Math.max(0, Math.round(qty));
   if(qty <= 0) return;
@@ -9019,7 +9248,6 @@ document.getElementById('dsMoveConfirm').addEventListener('click', ()=>{
 // from here. See activateShipInstance/boardStoredShip/sellStoredShip/buyNewShip/
 // financeStarterGear above (defined alongside the ship-ownership state).
 document.getElementById('btnDockShipyardPanel').addEventListener('click', ()=> toggleDockSubPanel('dockShipyardPanel'));
-document.getElementById('btnDockShipyardBack').addEventListener('click', ()=> closeDockSubPanel('dockShipyardPanel'));
 function renderDockShipyardPanel(){
   const curEl = document.getElementById('shipyardCurrentRead');
   if(!curEl) return;
@@ -9050,7 +9278,10 @@ function renderDockShipyardPanel(){
   gearList.innerHTML =
       '<div class="peq"><span>Starter Weapon Mk1 — ' + FINANCE_GEAR_COST.weapon + ' cr (financed)</span>' + gearBtn('weapon') + '</div>'
     + '<div class="peq"><span>Starter Shield Mk1 — ' + FINANCE_GEAR_COST.shield + ' cr (financed)</span>' + gearBtn('shield') + '</div>'
-    + '<div class="peq"><span>Iron Bullets ×500 — ' + FINANCE_GEAR_COST.ammo + ' cr (financed)</span>' + gearBtn('ammo') + '</div>';
+    + '<div class="peq"><span>Iron Bullets ×500 — ' + FINANCE_GEAR_COST.ammo + ' cr (financed)</span>' + gearBtn('ammo') + '</div>'
+    // item 4 (v0.24.0): mining laser financing, newly added alongside weapon/shield/
+    // ammo -- same price as the existing outright MARKET purchase (MINING_LASER_COST)
+    + '<div class="peq"><span>Mining Laser LV.0 — ' + FINANCE_GEAR_COST.miningLaser + ' cr (financed)</span>' + gearBtn('miningLaser') + '</div>';
 
   // item 4a: stored ships are now real item stacks at THIS station's storage (see
   // addShipToStationStorage) instead of the old flat storedShipInstances array
@@ -9095,11 +9326,8 @@ document.getElementById('shipyardStoredShipsList').addEventListener('click', (e)
 
 // ---------- station LOAN section (item 16: now embedded in dockShipyardPanel) ----------
 document.getElementById('btnDockNavyPanel').addEventListener('click', ()=> toggleDockSubPanel('dockNavyPanel'));
-document.getElementById('btnDockNavyBack').addEventListener('click', ()=> closeDockSubPanel('dockNavyPanel'));
 document.getElementById('btnDockMiningPanel').addEventListener('click', ()=> toggleDockSubPanel('dockMiningPanel'));
-document.getElementById('btnDockMiningBack').addEventListener('click', ()=> closeDockSubPanel('dockMiningPanel'));
 document.getElementById('btnDockTransportPanel').addEventListener('click', ()=> toggleDockSubPanel('dockTransportPanel'));
-document.getElementById('btnDockTransportBack').addEventListener('click', ()=> closeDockSubPanel('dockTransportPanel'));
 // item 4c: shows the COMBINED balance (ship + gear) here -- the DATA PAD's LOANS tab
 // (see renderLoansTab) breaks the two out individually
 function renderDockLoanPanel(){
@@ -9109,6 +9337,21 @@ function renderDockLoanPanel(){
   document.getElementById('loanBountyRead').textContent = hasBounty ? 'BOUNTY ACTIVE — HUNTERS INBOUND' : 'CLEAR';
   const payBtn = document.getElementById('btnLoanPay');
   payBtn.disabled = totalOwed <= 0 || bountyCredits <= 0;
+  // item 2 (v0.24.0): PAY IN FULL -- greyed out with a clear shortfall readout
+  // whenever the player can't yet cover the whole remaining balance in one shot
+  const payOffBtn = document.getElementById('btnLoanPayOff');
+  const payOffMsgEl = document.getElementById('loanPayOffMsg');
+  const totalOwedRounded = Math.ceil(totalOwed);
+  if(payOffBtn){
+    const canPayOff = totalOwedRounded > 0 && bountyCredits >= totalOwedRounded;
+    payOffBtn.disabled = !canPayOff;
+    payOffBtn.textContent = totalOwedRounded <= 0 ? 'NO LOAN' : ('PAY OFF IN FULL — ' + totalOwedRounded + ' CR');
+  }
+  if(payOffMsgEl){
+    if(totalOwedRounded <= 0) payOffMsgEl.textContent = '';
+    else if(bountyCredits >= totalOwedRounded) payOffMsgEl.textContent = '';
+    else payOffMsgEl.textContent = 'NEED ' + Math.ceil(totalOwedRounded - bountyCredits) + ' MORE CR TO PAY OFF IN FULL';
+  }
 }
 document.getElementById('btnLoanPay').addEventListener('click', ()=>{
   const input = document.getElementById('loanPayInput');
@@ -9126,6 +9369,44 @@ document.getElementById('btnLoanPay').addEventListener('click', ()=>{
   loanPrincipal = Math.max(0, loanPrincipal - (amt - towardShip));
   flashMessage('PAID DOWN LOAN — -' + amt + ' CR', 'good');
   logEvent('LOAN PAYMENT -' + amt + ' CR — SHIP ' + Math.round(shipLoanBalance) + ' CR / GEAR ' + Math.round(loanPrincipal) + ' CR', 'good');
+  clearLoanBountyIfPaidOff();
+  updateCargoUI();
+  updateDockedPanel();
+  renderDockLoanPanel();
+  if(typeof renderLoansTab === 'function') renderLoansTab();
+});
+// item 2 (v0.24.0): shared by any manual/early payment path (this PAY box and the
+// PAY IN FULL button below) -- the weekly auto-tick has its own equivalent inline
+// (see processLoanInterestTick) since it already sits inside its own loop. Paying a
+// loan down to exactly zero, by whatever path, stops the weekly deduction AND lifts
+// any bounty that was placed over it -- the debt this collateral was for is gone.
+function clearLoanBountyIfPaidOff(){
+  if(loanPrincipal + shipLoanBalance > 0) return;
+  nextLoanPaymentDueMs = 0;
+  missedPaymentStreak = 0;
+  if(hasBounty){
+    hasBounty = false;
+    logEvent('=== LOAN PAID OFF IN FULL — BOUNTY LIFTED ===', 'good');
+    zoneMessage('LOAN PAID OFF — BOUNTY LIFTED', 'good');
+  }
+}
+// item 2 (v0.24.0): "pay off early" / "pay in full" -- available at ANY station's
+// FINANCE OFFICE while docked (same docked-only gate every other manual loan action
+// here already has), immediately clears the FULL remaining combined balance in one
+// shot if the player can afford it. Disabled (see renderDockLoanPanel) with a clear
+// shortfall message when they can't. Frees up ship/gear loan exclusivity immediately,
+// same as letting the loan reach zero via the weekly auto-payments.
+document.getElementById('btnLoanPayOff').addEventListener('click', ()=>{
+  if(!docked) return;
+  const totalOwed = Math.ceil(loanPrincipal + shipLoanBalance);
+  if(totalOwed <= 0 || bountyCredits < totalOwed) return;
+  bountyCredits -= totalOwed;
+  addLedgerEntry(-totalOwed, 'Loan paid off in full');
+  logEvent('LOAN PAID OFF IN FULL -' + totalOwed + ' CR', 'good');
+  loanPrincipal = 0;
+  shipLoanBalance = 0;
+  flashMessage('LOAN PAID OFF IN FULL — -' + totalOwed + ' CR', 'good');
+  clearLoanBountyIfPaidOff();
   updateCargoUI();
   updateDockedPanel();
   renderDockLoanPanel();
@@ -10349,37 +10630,49 @@ function totalTimePlayedSeconds(){
 // -- this is the "medal rarity" value awardKnowledge() reads from on MEDAL EARNED
 // (see checkAchievements() below); no such numeric field existed on achievements
 // before this update, so these are new additions, not renames.
+// item 6 ROOT CAUSE FIX: each multi-step achievement (one whose check() threshold is
+// higher than the natural "first time" unit for its stat) now also carries a
+// `progress` predicate -- true once the underlying stat has moved off zero, i.e. the
+// player has genuinely started toward it, false while it's still completely
+// untouched. renderMedals() below uses this (not just "!earned") to decide whether a
+// not-yet-earned medal is shown under ONGOING at all -- true "hide medals not earned
+// AND not started" instead of the previous behavior of showing literally every
+// unearned medal there. A single-step "first time" achievement (first_blood,
+// first_ore, captain_slayer, gold_rush, jumper's own first unlock is actually
+// multi-step so it keeps one, etc.) has no meaningful partial state -- either it's
+// done or it isn't -- so it intentionally carries no `progress` fn and stays hidden
+// entirely until earned, exactly like the user asked.
 const ACHIEVEMENTS = [
   { id:'first_blood', name:'First Blood', desc:'Destroy your first pirate.', rarity:1, check:()=> piratesKilled >= 1 },
-  { id:'pirate_hunter', name:'Pirate Hunter', desc:'Destroy 25 pirates.', rarity:2, check:()=> piratesKilled >= 25 },
-  { id:'pirate_scourge', name:'Scourge of the Belt', desc:'Destroy 100 pirates.', rarity:4, check:()=> piratesKilled >= 100 },
+  { id:'pirate_hunter', name:'Pirate Hunter', desc:'Destroy 25 pirates.', rarity:2, check:()=> piratesKilled >= 25, progress:()=> piratesKilled > 0 },
+  { id:'pirate_scourge', name:'Scourge of the Belt', desc:'Destroy 100 pirates.', rarity:4, check:()=> piratesKilled >= 100, progress:()=> piratesKilled > 0 },
   { id:'captain_slayer', name:'Captain Slayer', desc:'Destroy a rare pirate captain.', rarity:2, check:()=> captainsKilled >= 1 },
-  { id:'captain_nemesis', name:'Captain’s Nemesis', desc:'Destroy 10 pirate captains.', rarity:4, check:()=> captainsKilled >= 10 },
-  { id:'ace_pilot', name:'Ace Pilot', desc:'Train Gunnery to Level 2.', rarity:2, check:()=> (skillLevels.gunnery||0) >= 2 },
-  { id:'veteran_pilot', name:'Veteran Pilot', desc:'Train Gunnery to Level 4.', rarity:5, check:()=> (skillLevels.gunnery||0) >= 4 },
+  { id:'captain_nemesis', name:'Captain’s Nemesis', desc:'Destroy 10 pirate captains.', rarity:4, check:()=> captainsKilled >= 10, progress:()=> captainsKilled > 0 },
+  { id:'ace_pilot', name:'Ace Pilot', desc:'Train Gunnery to Level 2.', rarity:2, check:()=> (skillLevels.gunnery||0) >= 2, progress:()=> (skillLevels.gunnery||0) >= 1 },
+  { id:'veteran_pilot', name:'Veteran Pilot', desc:'Train Gunnery to Level 4.', rarity:5, check:()=> (skillLevels.gunnery||0) >= 4, progress:()=> (skillLevels.gunnery||0) >= 1 },
   { id:'first_ore', name:'First Haul', desc:'Mine your first ore.', rarity:1, check:()=> totalOreMinedTotal >= 1 },
-  { id:'prospector', name:'Prospector', desc:'Mine 500 total ore.', rarity:2, check:()=> totalOreMinedTotal >= 500 },
-  { id:'ore_baron', name:'Ore Baron', desc:'Mine 5,000 total ore.', rarity:4, check:()=> totalOreMinedTotal >= 5000 },
-  { id:'master_miner', name:'Master Miner', desc:'Train Mining to Level 4.', rarity:5, check:()=> (skillLevels.mining||0) >= 4 },
+  { id:'prospector', name:'Prospector', desc:'Mine 500 total ore.', rarity:2, check:()=> totalOreMinedTotal >= 500, progress:()=> totalOreMinedTotal > 0 },
+  { id:'ore_baron', name:'Ore Baron', desc:'Mine 5,000 total ore.', rarity:4, check:()=> totalOreMinedTotal >= 5000, progress:()=> totalOreMinedTotal > 0 },
+  { id:'master_miner', name:'Master Miner', desc:'Train Mining to Level 4.', rarity:5, check:()=> (skillLevels.mining||0) >= 4, progress:()=> (skillLevels.mining||0) >= 1 },
   { id:'gold_rush', name:'Gold Rush', desc:'Mine gold ore for the first time.', rarity:2, check:()=> totalGoldMined >= 1 },
-  { id:'wanderer', name:'Wanderer', desc:'Travel 100,000 m.', rarity:1, check:()=> distanceTraveledTotal >= 100000 },
-  { id:'explorer', name:'Explorer', desc:'Travel 500,000 m.', rarity:3, check:()=> distanceTraveledTotal >= 500000 },
-  { id:'jumper', name:'Gate Jumper', desc:'Warp 10 times.', rarity:1, check:()=> timesWarpedTotal >= 10 },
-  { id:'road_warrior', name:'Road Warrior', desc:'Warp 50 times.', rarity:3, check:()=> timesWarpedTotal >= 50 },
+  { id:'wanderer', name:'Wanderer', desc:'Travel 100,000 m.', rarity:1, check:()=> distanceTraveledTotal >= 100000, progress:()=> distanceTraveledTotal > 0 },
+  { id:'explorer', name:'Explorer', desc:'Travel 500,000 m.', rarity:3, check:()=> distanceTraveledTotal >= 500000, progress:()=> distanceTraveledTotal > 0 },
+  { id:'jumper', name:'Gate Jumper', desc:'Warp 10 times.', rarity:1, check:()=> timesWarpedTotal >= 10, progress:()=> timesWarpedTotal > 0 },
+  { id:'road_warrior', name:'Road Warrior', desc:'Warp 50 times.', rarity:3, check:()=> timesWarpedTotal >= 50, progress:()=> timesWarpedTotal > 0 },
   { id:'first_contract_navy', name:'On the Payroll', desc:'Complete a Galactic Navy contract.', rarity:1, check:()=> navyContractsCompleted >= 1 },
-  { id:'navy_regular', name:'Navy Regular', desc:'Complete 10 Galactic Navy contracts.', rarity:2, check:()=> navyContractsCompleted >= 10 },
-  { id:'navy_veteran', name:'Navy Veteran', desc:'Reach Galactic Navy reputation Level 5.', rarity:4, check:()=> repLevel(maxStationRep('navy')) >= 5 },
+  { id:'navy_regular', name:'Navy Regular', desc:'Complete 10 Galactic Navy contracts.', rarity:2, check:()=> navyContractsCompleted >= 10, progress:()=> navyContractsCompleted > 0 },
+  { id:'navy_veteran', name:'Navy Veteran', desc:'Reach Galactic Navy reputation Level 5.', rarity:4, check:()=> repLevel(maxStationRep('navy')) >= 5, progress:()=> repLevel(maxStationRep('navy')) >= 1 },
   { id:'first_contract_mining', name:'Ore Supplier', desc:'Complete a Mining Corp contract.', rarity:1, check:()=> miningContractsCompleted >= 1 },
-  { id:'mining_regular', name:'Mining Corp Regular', desc:'Complete 10 Mining Corp contracts.', rarity:2, check:()=> miningContractsCompleted >= 10 },
-  { id:'mining_veteran', name:'Mining Corp Veteran', desc:'Reach Mining Corp reputation Level 5.', rarity:4, check:()=> repLevel(maxStationRep('mining')) >= 5 },
+  { id:'mining_regular', name:'Mining Corp Regular', desc:'Complete 10 Mining Corp contracts.', rarity:2, check:()=> miningContractsCompleted >= 10, progress:()=> miningContractsCompleted > 0 },
+  { id:'mining_veteran', name:'Mining Corp Veteran', desc:'Reach Mining Corp reputation Level 5.', rarity:4, check:()=> repLevel(maxStationRep('mining')) >= 5, progress:()=> repLevel(maxStationRep('mining')) >= 1 },
   { id:'first_delivery', name:'Bonded Courier', desc:'Complete a Transportation Guild delivery.', rarity:1, check:()=> transportContractsCompleted >= 1 },
-  { id:'guild_regular', name:'Guild Regular', desc:'Complete 10 Transportation Guild deliveries.', rarity:2, check:()=> transportContractsCompleted >= 10 },
-  { id:'salvager', name:'Salvager', desc:'Salvage 25 wrecks.', rarity:2, check:()=> wrecksSalvaged >= 25 },
-  { id:'well_off', name:'Well Off', desc:'Earn 50,000 credits (lifetime).', rarity:2, check:()=> lifetimeCreditsEarned >= 50000 },
-  { id:'first_million', name:'Made It', desc:'Earn 1,000,000 credits (lifetime).', rarity:5, check:()=> lifetimeCreditsEarned >= 1000000 },
+  { id:'guild_regular', name:'Guild Regular', desc:'Complete 10 Transportation Guild deliveries.', rarity:2, check:()=> transportContractsCompleted >= 10, progress:()=> transportContractsCompleted > 0 },
+  { id:'salvager', name:'Salvager', desc:'Salvage 25 wrecks.', rarity:2, check:()=> wrecksSalvaged >= 25, progress:()=> wrecksSalvaged > 0 },
+  { id:'well_off', name:'Well Off', desc:'Earn 50,000 credits (lifetime).', rarity:2, check:()=> lifetimeCreditsEarned >= 50000, progress:()=> lifetimeCreditsEarned > 0 },
+  { id:'first_million', name:'Made It', desc:'Earn 1,000,000 credits (lifetime).', rarity:5, check:()=> lifetimeCreditsEarned >= 1000000, progress:()=> lifetimeCreditsEarned > 0 },
   { id:'blueprint_scholar', name:'Blueprint Scholar', desc:'Learn a manufacturing blueprint.', rarity:1, check:()=> knownBlueprints.size >= 1 },
   { id:'survivor', name:'Survivor', desc:'Escape your destroyed ship in an escape pod.', rarity:1, check:()=> shipsLostTotal >= 1 },
-  { id:'hard_luck', name:'Hard Luck Case', desc:'Lose 5 ships and live to tell about it.', rarity:3, check:()=> shipsLostTotal >= 5 },
+  { id:'hard_luck', name:'Hard Luck Case', desc:'Lose 5 ships and live to tell about it.', rarity:3, check:()=> shipsLostTotal >= 5, progress:()=> shipsLostTotal > 0 },
 ];
 let earnedAchievements = new Set();
 function checkAchievements(){
@@ -10502,16 +10795,21 @@ function checkTierMedals(){
   if(anyChange && walletTab === 'medals') renderMedals();
   updateFameFromPoints();
 }
-// item 1: medals reorganized into two collapsible sections -- EARNED (fixed
+// item 1/6: medals reorganized into two collapsible sections -- EARNED (fixed
 // achievements already got, plus tier chains that have reached tier 1+) listed
-// ABOVE ONGOING (everything not yet earned). Fixed ACHIEVEMENTS only carry a
-// pass/fail check() function, not a numeric progress signal, so "hide achievements
-// with zero progress" can't be computed for them generically -- DESIGN DECISION:
-// every not-yet-earned fixed achievement is treated as "in progress" (kept visible
-// under ONGOING) rather than risk hiding one a player is legitimately close to.
-// TIER_CHAINS do carry continuous progress and already only ever show the ONE next
-// tier (never "far future locked tiers"), so the zero-progress-hiding requirement is
-// inherently satisfied there by construction.
+// ABOVE ONGOING (everything not yet earned that the player has genuinely started).
+// item 6 ROOT CAUSE: a previous pass here explicitly chose to treat EVERY
+// not-yet-earned fixed achievement as "in progress" regardless of whether the
+// player had made any progress at all toward it (see each ACHIEVEMENTS entry's own
+// comment) -- that design decision is exactly why "hide medals not earned" kept
+// coming back as unfixed: a brand-new, zero-progress character still saw the full
+// achievement list, just relabeled ONGOING instead of split out separately. Fixed
+// now to actually use each achievement's optional `progress` predicate (true once
+// its stat has moved off zero); an achievement with no progress fn at all (a
+// single-step "first time" one with no meaningful partial state) simply never
+// appears until earned. TIER_CHAINS get the same treatment below (statFn() > 0),
+// since a chain sitting at tier 0 with truly zero underlying stat is just as
+// "not started" as a fixed achievement in that state.
 let medalsEarnedExpanded = true, medalsOngoingExpanded = true;
 function medalsRowFixed(a, got){
   return '<div class="prow" style="align-items:flex-start; ' + (got?'':'opacity:0.6;') + '">'
@@ -10546,9 +10844,23 @@ function renderMedals(){
       + '<span style="color:var(--phosphor-dim); white-space:nowrap;">NEXT: ' + nextThresh.toLocaleString() + '</span></div>';
   }
   const earnedFixed = ACHIEVEMENTS.filter(a=> earnedAchievements.has(a.id));
-  const ongoingFixed = ACHIEVEMENTS.filter(a=> !earnedAchievements.has(a.id));
+  // item 6: only a not-yet-earned achievement the player has genuinely started
+  // (see each entry's `progress` predicate above) shows under ONGOING -- a
+  // never-touched one (no progress fn, or one that returns false) stays hidden
+  // entirely, matching "hide medals not earned" instead of the old "show every
+  // unearned medal, just under a different heading" behavior.
+  const ongoingFixed = ACHIEVEMENTS.filter(a=> !earnedAchievements.has(a.id)
+    && typeof a.progress === 'function'
+    && (()=>{ try{ return !!a.progress(); }catch(e){ return false; } })());
   const earnedTiers = TIER_CHAINS.filter(c=> (tierMedalLevels[c.key]||0) > 0);
-  const ongoingTiers = TIER_CHAINS.filter(c=> !(tierMedalLevels[c.key]||0));
+  // same "must have genuinely started" gate for tier chains: tier 0 with a truly
+  // zero underlying stat (statFn()) is not started, so it's hidden rather than
+  // shown as "0 / <threshold> TO TIER 1".
+  const ongoingTiers = TIER_CHAINS.filter(c=>{
+    if((tierMedalLevels[c.key]||0) > 0) return false;
+    let val = 0; try{ val = c.statFn(); }catch(e){ val = 0; }
+    return val > 0;
+  });
   const earnedHtml = earnedTiers.map(medalsRowTierEarned).join('') + earnedFixed.map(a=>medalsRowFixed(a,true)).join('');
   const ongoingHtml = ongoingTiers.map(medalsRowTier).join('') + ongoingFixed.map(a=>medalsRowFixed(a,false)).join('');
   const earnedCount = earnedTiers.length + earnedFixed.length;
@@ -10566,24 +10878,50 @@ document.getElementById('medalsList').addEventListener('click', (e)=>{
   else medalsOngoingExpanded = !medalsOngoingExpanded;
   renderMedals();
 });
-// item 1: Help -> SHOW ALL MEDALS -- lists every fixed achievement and every tier
-// chain's current+next tier regardless of earned status, separate from the in-panel
-// earned/ongoing-only MEDALS tab above
+// item 1/5: Help -> SHOW ALL MEDALS -- lists every fixed achievement and every tier
+// chain, regardless of earned status, separate from the in-panel earned/ongoing-only
+// MEDALS tab above. item 5 REWORK: this is now a self-contained INFORMATION browser,
+// not a status tracker -- "no status just information" -- so unlike medalsRowFixed/
+// medalsRowTier (used by the real MEDALS tab) these two row renderers never print
+// EARNED/ONGOING or any other per-player state, just each medal's name and what it
+// takes to get, exactly the same regardless of who's looking at it.
+function medalsRowFixedInfo(a){
+  return '<div class="prow" style="align-items:flex-start;">'
+    + '<span>' + a.name + '<br><span style="font-size:10px; color:var(--phosphor-dim);">' + a.desc + '</span></span></div>';
+}
+function medalsRowTierInfo(chain){
+  const t1 = Math.ceil(tierThreshold(chain, 1));
+  return '<div class="prow" style="align-items:flex-start;">'
+    + '<span>' + chain.label + ' (tiered)<br><span style="font-size:10px; color:var(--phosphor-dim);">Tier 1 at ' + t1.toLocaleString()
+    + ' ' + chain.label.toUpperCase() + ' — each further tier ' + chain.ratio + '× harder, no limit</span></span></div>';
+}
 function renderAllMedalsPanel(){
   const tierEl = document.getElementById('allMedalsTierList');
   const fixedEl = document.getElementById('allMedalsFixedList');
   if(!tierEl || !fixedEl) return;
-  tierEl.innerHTML = TIER_CHAINS.map(medalsRowTier).join('');
-  fixedEl.innerHTML = ACHIEVEMENTS.map(a=> medalsRowFixed(a, earnedAchievements.has(a.id))).join('');
+  tierEl.innerHTML = TIER_CHAINS.map(medalsRowTierInfo).join('');
+  fixedEl.innerHTML = ACHIEVEMENTS.map(medalsRowFixedInfo).join('');
   const hdr = document.getElementById('allMedalsFixedHeader');
   if(hdr) hdr.textContent = 'FIXED MEDALS (ALL ' + ACHIEVEMENTS.length + ')';
 }
+// item 5 REWORK: opened as a content SWAP of the same Help modal window (exactly
+// like openHelpMenu/closeHelpMenu swap Settings<->Help) instead of a separate
+// floating popup stacked on top of Help -- closing it (BACK) returns to Help, not
+// to the flight HUD, and it can only ever be reached from Help in the first place
+// (helpMenuOpen must already be true), so there's no separate "is this open" gate
+// needed beyond the panel's own .show class.
 function openAllMedalsPanel(){
+  if(!helpMenuOpen) return;
   renderAllMedalsPanel();
+  document.getElementById('helpMenu').classList.remove('show');
   document.getElementById('allMedalsPanel').classList.add('show');
 }
+function closeAllMedalsPanel(){
+  document.getElementById('allMedalsPanel').classList.remove('show');
+  document.getElementById('helpMenu').classList.add('show');
+}
 document.getElementById('btnOpenAllMedals').addEventListener('click', openAllMedalsPanel);
-document.getElementById('btnCloseAllMedals').addEventListener('click', ()=> document.getElementById('allMedalsPanel').classList.remove('show'));
+document.getElementById('btnCloseAllMedals').addEventListener('click', closeAllMedalsPanel);
 
 // ---------- equipment popup ----------
 // reads owned equipment straight from cargoStacks (filtering by itemType prefix)
@@ -11240,14 +11578,23 @@ function renderLoansTab(){
   shipPEl.textContent = Math.round(shipLoanBalance) + ' cr';
   document.getElementById('loansShipDueRead').textContent = (shipLoanBalance > 0 && nextLoanPaymentDueMs > 0)
     ? new Date(nextLoanPaymentDueMs).toLocaleString() : '—';
+  // item 2 (v0.24.0): the weekly payment now pays down PRINCIPAL too, not just
+  // interest (see LOAN_PRINCIPAL_PAYMENT_RATE/processLoanInterestTick) -- this
+  // readout shows the real combined amount actually deducted each week.
+  const combinedDebt = loanPrincipal + shipLoanBalance;
+  const weeklyInterest = combinedDebt * LOAN_INTEREST_RATE;
+  const weeklyPrincipal = Math.min(combinedDebt, combinedDebt * LOAN_PRINCIPAL_PAYMENT_RATE);
+  const weeklyTotal = Math.round(weeklyInterest + weeklyPrincipal);
   document.getElementById('loansShipAmountRead').textContent = shipLoanBalance > 0
-    ? Math.round((loanPrincipal + shipLoanBalance) * LOAN_INTEREST_RATE) + ' cr (interest)' : '—';
+    ? weeklyTotal + ' cr/week (auto-paid, pays down principal)' : '—';
   document.getElementById('loansShipFinancedItemRead').textContent = shipLoanBalance > 0
     ? 'Financed ship loan outstanding — cannot finance another ship until this is paid off.'
     : 'No active ship loan.';
   document.getElementById('loansGearPrincipalRead').textContent = Math.round(loanPrincipal) + ' cr';
   document.getElementById('loansGearDueRead').textContent = (loanPrincipal > 0 && nextLoanPaymentDueMs > 0)
     ? new Date(nextLoanPaymentDueMs).toLocaleString() : '—';
+  const gearAmountEl = document.getElementById('loansGearAmountRead');
+  if(gearAmountEl) gearAmountEl.textContent = loanPrincipal > 0 ? weeklyTotal + ' cr/week (auto-paid, pays down principal)' : '—';
   document.getElementById('loansMissedRead').textContent = missedPaymentStreak + ' / 3';
   document.getElementById('loansBountyRead').textContent = hasBounty ? 'BOUNTY ACTIVE — HUNTERS INBOUND' : 'CLEAR';
   // item 7: this tab is read-only now (no PAY DOWN box) -- the actual payment
@@ -12387,7 +12734,18 @@ document.getElementById('btnThrottleFull').addEventListener('click', ()=> thrott
 })();
 let settingsMenuOpen = false;
 function openSettingsMenu(){
-  if(settingsMenuOpen || docked || dockingSequence || warpSequence || inspecting || inspectTransition) return;
+  // item: Settings used to refuse to open at all while docked (the 'docked' term
+  // was in this guard below), which is why a separate CUSTOM HUD quick-access
+  // button/panel was bolted onto #dockNavColumn as a workaround -- players had no
+  // way to reach AFK timeout/panel opacity/Help/etc while docked. Settings now
+  // opens fine while docked (same centered-modal-over-#settingsBackdrop layering
+  // as everything else) -- reached both via a new SETTINGS button in
+  // #dockNavColumn's list and via the Escape key (see handleEscapeAction). That
+  // standalone CUSTOM HUD button in #dockNavColumn was later removed as redundant
+  // now that Custom HUD is reachable through here via Settings' own CUSTOM HUD
+  // button. Still refused during genuine transitional/other-modal states where no
+  // menu should be able to pop up.
+  if(settingsMenuOpen || dockingSequence || warpSequence || inspecting || inspectTransition) return;
   settingsMenuOpen = true;
   document.getElementById('settingsMenu').classList.add('show');
   const backdrop = document.getElementById('settingsBackdrop');
@@ -12420,6 +12778,37 @@ function closeHelpMenu(){
 }
 document.getElementById('btnOpenHelp').addEventListener('click', openHelpMenu);
 document.getElementById('btnCloseHelp').addEventListener('click', closeHelpMenu);
+
+// ---------- item 3 REWORK: CUSTOM HUD panel (consolidates every HUD-layout
+// save/load/reset control that used to be scattered across Settings and
+// #dockNavColumn into one place) ----------
+// Reached exclusively via Settings' own CUSTOM HUD button now (swaps out of/back
+// into #settingsMenu exactly like Help does above, settingsMenuOpen staying true
+// throughout so the existing ship-pause/inputLocked() behavior for an open
+// Settings menu just keeps applying). #dockNavColumn used to also carry its own
+// standalone CUSTOM HUD quick-access button/direct-open path (back when
+// openSettingsMenu() refused to open at all while docked), but now that Settings
+// itself opens fine while docked, that duplicate entry point was removed --
+// Custom HUD is still fully reachable via Settings -> CUSTOM HUD.
+let customHudPanelOpen = false;
+function openCustomHudPanel(){
+  if(customHudPanelOpen || !settingsMenuOpen) return;
+  customHudPanelOpen = true;
+  document.getElementById('settingsMenu').classList.remove('show');
+  document.getElementById('customHudPanel').classList.add('show');
+}
+function closeCustomHudPanel(){
+  if(!customHudPanelOpen) return;
+  customHudPanelOpen = false;
+  document.getElementById('customHudPanel').classList.remove('show');
+  document.getElementById('settingsMenu').classList.add('show');
+}
+document.getElementById('btnOpenCustomHud').addEventListener('click', openCustomHudPanel);
+// item: full Settings menu, reachable while docked -- see #dockNavColumn's new
+// SETTINGS button and openSettingsMenu()'s removed docked guard above.
+const btnDockSettings = document.getElementById('btnDockSettings');
+if(btnDockSettings) btnDockSettings.addEventListener('click', ()=> openSettingsMenu());
+document.getElementById('btnCloseCustomHud').addEventListener('click', closeCustomHudPanel);
 
 // ---------- FULL SCREEN toggle (settings menu) ----------
 // unlike the mobile auto-lock attempt that got reverted (see the rotate-device-
@@ -12538,11 +12927,31 @@ if(panelOpacitySlider){
 // browser/device, which is the right tradeoff here (panel geometry is meaningful
 // only in pixels on THIS screen) and keeps this from bloating the cloud save.
 const HUD_LAYOUT_STORAGE_KEYS = { space: 'voidDriftHudLayoutSpace', station: 'voidDriftHudLayoutStation' };
+// item 7/8: strips just the `height:...;` declaration out of an inline style
+// string, used for any panel flagged noPersistHeight (currently TARGET and ITEM
+// INSPECTOR -- see the long comment at their shared api object in
+// makePanelManageable). Left/top/right/bottom/transform/width are untouched, so
+// a player's chosen POSITION (and width, for panels that allow it) still saves
+// and restores exactly like any other panel -- only height is excluded. Applied
+// on BOTH save and restore (not just save) so a layout that was already saved
+// before this fix shipped -- i.e. a real returning player's existing, already-
+// too-tall stale value -- gets neutralized the moment it's loaded too, not just
+// for layouts saved from now on.
+function stripHeightFromStyle(styleText){
+  if(!styleText) return styleText || '';
+  return styleText.split(';')
+    .filter(decl=> !/^\s*height\s*:/i.test(decl))
+    .join(';')
+    .replace(/;\s*;/g, ';')
+    .trim();
+}
 function saveHudLayout(group){
   const data = {};
   managedPanels.forEach(p=>{
     if(p.group !== group) return;
-    data[p.panel.id] = p.panel.getAttribute('style') || '';
+    let styleText = p.panel.getAttribute('style') || '';
+    if(p.noPersistHeight) styleText = stripHeightFromStyle(styleText);
+    data[p.panel.id] = styleText;
   });
   try{ localStorage.setItem(HUD_LAYOUT_STORAGE_KEYS[group], JSON.stringify(data)); }catch(err){}
   flashMessage((group==='station' ? 'STATION' : 'SPACE') + ' HUD LAYOUT SAVED', 'good');
@@ -12563,8 +12972,13 @@ function applyCustomHudLayout(group, announce){
   }
   managedPanels.forEach(p=>{
     if(p.group !== group) return;
-    const styleText = data[p.panel.id];
+    let styleText = data[p.panel.id];
     if(styleText === undefined) return; // a panel added since this layout was saved -- leave it at its default
+    // item 7/8: strip height back out on RESTORE too, not just on save -- this is
+    // what actually neutralizes a stale, already-saved oversized height from
+    // before noPersistHeight existed (e.g. this session's own localStorage, or a
+    // returning player's browser), which a save-time-only strip could never fix.
+    if(p.noPersistHeight) styleText = stripHeightFromStyle(styleText);
     if(p.state.collapsed) p.expand();
     if(styleText) p.panel.setAttribute('style', styleText);
     else p.panel.removeAttribute('style');
@@ -12655,6 +13069,10 @@ function getPlayerSaveData(){
     // due-date (see their declarations near activeShipInstance)
     shipLoanBalance: shipLoanBalance,
     nextLoanPaymentDueMs: nextLoanPaymentDueMs,
+    // item 3 (v0.24.0): see its declaration's comment -- persisted so the forced
+    // onboarding modal reliably fires on the player's NEXT login (survives a
+    // logout/refresh between being confiscated and actually completing the choice)
+    starterShipConfiscatedPendingChoice: starterShipConfiscatedPendingChoice,
     activeShipInstance: activeShipInstance ? { instId: activeShipInstance.instId, classKey: activeShipInstance.classKey, name: activeShipInstance.name } : null,
     // legacy field, frozen -- always saved empty now that ships live in
     // stationStorageStacks (see the ship-ownership block near activeShipInstance's
@@ -12908,6 +13326,7 @@ function applyPlayerSaveData(d){
   }
   if(typeof d.shipLoanBalance === 'number') shipLoanBalance = d.shipLoanBalance;
   if(typeof d.nextLoanPaymentDueMs === 'number') nextLoanPaymentDueMs = d.nextLoanPaymentDueMs;
+  if(typeof d.starterShipConfiscatedPendingChoice === 'boolean') starterShipConfiscatedPendingChoice = d.starterShipConfiscatedPendingChoice;
 
   // ship/pod restore last, since it depends on equippedShieldTier (shield regen)
   // already being set above, and it's the one part of loading that touches the
@@ -12929,6 +13348,10 @@ function applyPlayerSaveData(d){
     enterEscapePod({ resetPosition:true });
     logEvent('=== YOUR STARTER WAYFARER HAS BEEN REPOSSESSED — VISIT THE FINANCE OFFICE ===', 'warn');
     flashMessage('STARTER WAYFARER REPOSSESSED — FINANCE A NEW SHIP', 'warn');
+    // item 3 (v0.24.0): this player was JUST confiscated by the migration above --
+    // queue the same forced ship-choice onboarding a brand-new character gets (see
+    // the LAUNCH handler, which checks this flag right after applyPlayerSaveData)
+    starterShipConfiscatedPendingChoice = true;
   } else if(d.inEscapePod && d.activeShipInstance === null){
     enterEscapePod({ resetPosition:true });
   } else if(d.activeShipInstance && SHIP_CLASSES[d.activeShipInstance.classKey]){
@@ -12960,6 +13383,23 @@ function applyPlayerSaveData(d){
   // restored max in case equipment/hull changed since the save was made
   if(typeof d.hull === 'number') shipState.hull = Math.min(d.hull, shipState.maxHull);
   if(typeof d.shield === 'number') shipState.shield = Math.min(d.shield, shipState.maxShield);
+
+  // item 3 (v0.24.0) RETROACTIVE MIGRATION: catches a player who was confiscated by
+  // an EARLIER deployment of the isUntouchedStarterShip migration above, back before
+  // starterShipConfiscatedPendingChoice existed to track it -- their save already
+  // shows the after-effects (shipless) but never got the flag set. Signature: an
+  // existing save (this function only ever runs on one -- a genuinely brand-new
+  // character has no save row at all and never reaches applyPlayerSaveData) that is
+  // shipless both actively AND in every station's storage, and doesn't already carry
+  // the flag (either because it's a fresh confiscation just handled above, in which
+  // case it's already true and this is a no-op, or because the player already went
+  // through the forced choice and is legitimately shipless again some other way --
+  // seeing the modal once more in that edge case is a harmless nudge, not a bug).
+  if(!starterShipConfiscatedPendingChoice && !activeShipInstance){
+    const hasAnyStoredShip = Object.keys(stationStorageStacks).some(stId=>
+      stationStorageStacks[stId].some(s=> isShipItemType(s.itemType)));
+    if(!hasAnyStoredShip) starterShipConfiscatedPendingChoice = true;
+  }
 
   // resume in the same spot the player actually logged out from, instead of always
   // snapping back to the station spawn point -- overwrites whatever the ship/pod
@@ -14554,13 +14994,21 @@ window.addEventListener('keydown', (e)=>{
 // Escape key, so #btnMenuEsc -- see the telemetry HUD row -- is the only way a
 // touch-only player can back out of inspect mode or open/close the settings menu)
 function handleEscapeAction(){
-  if(helpMenuOpen){
+  if(customHudPanelOpen){
+    closeCustomHudPanel();
+  } else if(document.getElementById('allMedalsPanel').classList.contains('show')){
+    closeAllMedalsPanel();
+  } else if(helpMenuOpen){
     closeHelpMenu();
   } else if(inspecting && !inspectTransition){
     exitInspectMode();
   } else if(settingsMenuOpen){
     closeSettingsMenu();
-  } else if(!docked && !dockingSequence && !warpSequence && !inspectTransition){
+  } else if(!dockingSequence && !warpSequence && !inspectTransition){
+    // item: this used to also require !docked, matching openSettingsMenu()'s own
+    // now-removed docked guard -- Escape now opens the full Settings menu while
+    // docked too (openSettingsMenu() itself still refuses during a genuine
+    // transition like docking/warping, handled by the guards above/here).
     openSettingsMenu();
   }
 }
@@ -14973,12 +15421,35 @@ function processLoanInterestTick(){
     const debtNow = loanPrincipal + shipLoanBalance;
     if(debtNow <= 0) break;
     const interestDue = debtNow * LOAN_INTEREST_RATE;
-    if(bountyCredits >= interestDue){
-      bountyCredits -= interestDue;
-      addLedgerEntry(-Math.round(interestDue), 'Loan payment (weekly)');
+    // item 2 (v0.24.0): a real weekly PAYMENT, not just accruing interest -- the
+    // principal slice is capped so it can never pay down more than what's actually
+    // still owed (the last week of a loan pays off exactly the remainder).
+    const principalDue = Math.min(debtNow, debtNow * LOAN_PRINCIPAL_PAYMENT_RATE);
+    const totalDue = interestDue + principalDue;
+    if(bountyCredits >= totalDue){
+      bountyCredits -= totalDue;
+      addLedgerEntry(-Math.round(totalDue), 'Loan payment (weekly)');
+      // ship balance pays down first (the exclusivity-gated, "more serious" one,
+      // same priority the missed-payment compounding below and the manual PAY
+      // button already use), any remainder of the principal slice onto gear
+      const towardShip = Math.min(shipLoanBalance, principalDue);
+      shipLoanBalance = Math.max(0, shipLoanBalance - towardShip);
+      loanPrincipal = Math.max(0, loanPrincipal - (principalDue - towardShip));
       missedPaymentStreak = 0;
-      logEvent('LOAN PAYMENT -' + Math.round(interestDue) + ' CR (SHIP ' + Math.round(shipLoanBalance) + ' CR / GEAR ' + Math.round(loanPrincipal) + ' CR)', 'good');
+      logEvent('LOAN PAYMENT -' + Math.round(totalDue) + ' CR (' + Math.round(interestDue) + ' INTEREST / ' + Math.round(principalDue) + ' PRINCIPAL) — SHIP ' + Math.round(shipLoanBalance) + ' CR / GEAR ' + Math.round(loanPrincipal) + ' CR', 'good');
       updateCargoUI();
+      // loan fully paid off via this scheduled payment -- clears the due date and,
+      // same as an early payoff, lifts any bounty tied to this debt (see
+      // btnLoanPayOff/btnLoanPay below for the manual-payment equivalent)
+      if(loanPrincipal + shipLoanBalance <= 0){
+        nextLoanPaymentDueMs = 0;
+        if(hasBounty){
+          hasBounty = false;
+          logEvent('=== LOAN PAID OFF IN FULL — BOUNTY LIFTED ===', 'good');
+          zoneMessage('LOAN PAID OFF — BOUNTY LIFTED', 'good');
+        }
+        break; // fully paid off -- don't let the loop tail re-arm nextLoanPaymentDueMs below
+      }
     } else {
       // compound onto the ship balance first (it's the exclusivity-gated, "more
       // serious" one), then any remainder onto the gear balance
@@ -16576,6 +17047,171 @@ function buildUnidentifiedPreviewMesh(){
   });
   return group;
 }
+// ---------- forced starter-ship-choice modal (see #shipChoicePanel) ----------
+// Builds a fresh, freestanding preview mesh for a whole ship CLASS (not a specific
+// world entity, unlike buildWorldPreviewMesh above) -- constructs the real hull via
+// that class's own build() (buildShip/buildMiningShip, same models flown in the
+// belt), tints it the same "scan preview" green, and normalizes it into the small
+// preview camera's frame the same way buildWorldPreviewMesh does.
+function buildShipClassPreviewMesh(classKey){
+  const cls = SHIP_CLASSES[classKey];
+  if(!cls) return null;
+  let mesh;
+  try{ mesh = cls.build(); }catch(e){ return null; }
+  mesh.traverse(o=>{
+    if(o.isMesh) o.material = new THREE.MeshLambertMaterial({ color: GREEN_PREVIEW_COLOR, flatShading:true, transparent:true, opacity:0.92 });
+  });
+  mesh.position.set(0,0,0); mesh.rotation.set(0,0,0); mesh.scale.set(1,1,1);
+  mesh.updateMatrixWorld(true);
+  const box = new THREE.Box3().setFromObject(mesh);
+  const size = new THREE.Vector3(); box.getSize(size);
+  const center = new THREE.Vector3(); box.getCenter(center);
+  const maxDim = Math.max(size.x, size.y, size.z, 0.0001);
+  const scale = 2.6 / maxDim;
+  mesh.scale.setScalar(scale);
+  mesh.position.set(-center.x*scale, -center.y*scale, -center.z*scale);
+  return mesh;
+}
+// two small, fully independent renderer/scene/camera trios (same construction as
+// inspectorRenderer/inspectorScene/inspectorCamera above), one per ship column, so
+// both the Wayfarer and Prospector previews can spin side by side at once -- the
+// shared #itemInspector renderer only ever shows one preview at a time, so it can't
+// be reused directly here.
+function makeShipChoiceViewport(canvasId){
+  const canvas = document.getElementById(canvasId);
+  const renderer = new THREE.WebGLRenderer({ canvas, antialias:false, alpha:true });
+  renderer.setPixelRatio(1);
+  renderer.setClearColor(0x000000, 0);
+  const scene = new THREE.Scene();
+  const camera = new THREE.PerspectiveCamera(38, 1, 0.05, 500);
+  camera.position.set(0, 1.1, 4.4);
+  camera.lookAt(0, 0, 0);
+  scene.add(new THREE.AmbientLight(0x33443a, 1.1));
+  const light = new THREE.DirectionalLight(0x9dffcf, 1.3);
+  light.position.set(3, 4, 5);
+  scene.add(light);
+  return { canvas, renderer, scene, camera, mesh:null };
+}
+let shipChoiceViewportStarter = null, shipChoiceViewportMining = null;
+function ensureShipChoiceViewports(){
+  if(!shipChoiceViewportStarter) shipChoiceViewportStarter = makeShipChoiceViewport('shipChoiceCanvasStarter');
+  if(!shipChoiceViewportMining) shipChoiceViewportMining = makeShipChoiceViewport('shipChoiceCanvasMining');
+}
+function fillShipChoiceViewport(vp, classKey){
+  if(vp.mesh){ vp.scene.remove(vp.mesh); disposePreviewObject(vp.mesh); vp.mesh = null; }
+  const mesh = buildShipClassPreviewMesh(classKey);
+  if(mesh){ vp.scene.add(mesh); vp.mesh = mesh; }
+}
+function renderShipChoiceViewport(vp, dt){
+  if(!vp.canvas.clientWidth) return;
+  const s = Math.max(40, Math.min(400, Math.round(vp.canvas.clientWidth)));
+  if(vp.canvas.width !== s || vp.canvas.height !== s){
+    vp.renderer.setSize(s, s, false);
+    vp.camera.aspect = 1;
+    vp.camera.updateProjectionMatrix();
+  }
+  if(vp.mesh) vp.mesh.rotation.y += dt * 0.6;
+  vp.renderer.render(vp.scene, vp.camera);
+}
+// weekly payment readout shown per column: the auto-deducted weekly interest
+// payment (see processLoanInterestTick/LOAN_INTEREST_RATE) a fresh loan at that
+// class's cls.cost principal would carry -- computed from the SAME constants the
+// real loan-payment schedule uses, not a separately hardcoded number.
+function renderShipChoiceStatsAndFinance(){
+  ['starter','mining'].forEach(classKey=>{
+    const cls = SHIP_CLASSES[classKey];
+    const suffix = classKey === 'starter' ? 'Starter' : 'Mining';
+    const statsEl = document.getElementById('shipChoiceStats' + suffix);
+    const financeEl = document.getElementById('shipChoiceFinance' + suffix);
+    if(statsEl){
+      statsEl.innerHTML =
+          '<div class="prow"><span>TOP SPEED</span><span>' + cls.maxSpeed + '</span></div>'
+        + '<div class="prow"><span>ACCEL</span><span>' + cls.accel + '</span></div>'
+        + '<div class="prow"><span>MAX HULL</span><span>' + cls.maxHull + '</span></div>'
+        + '<div class="prow"><span>CARGO CAPACITY</span><span>' + cls.cargoCapacity + '</span></div>'
+        + '<div class="prow"><span>WEAPON HARDPOINT</span><span>' + (cls.canWeapon?'YES':'NO') + '</span></div>'
+        + '<div class="prow"><span>MINING LASER MOUNT</span><span>' + (cls.canMining?'YES':'NO') + '</span></div>';
+    }
+    if(financeEl){
+      // item 2 (v0.24.0): weekly payment now includes both the interest charge and a
+      // real principal paydown slice (LOAN_PRINCIPAL_PAYMENT_RATE) -- matches exactly
+      // what processLoanInterestTick will actually deduct once this loan is live.
+      const weekly = Math.round(cls.cost * LOAN_INTEREST_RATE + Math.min(cls.cost, cls.cost * LOAN_PRINCIPAL_PAYMENT_RATE));
+      financeEl.innerHTML = 'LOAN PRINCIPAL: ' + cls.cost + ' CR<br>~' + weekly + ' CR/WEEK (auto-paid, pays down principal)<br>NOTHING DOWN — delivered and equipped immediately';
+    }
+  });
+}
+// item: forced, unskippable starter-ship-choice popup for a brand-new character
+// (no save at all -- see the LAUNCH handler's own comment on that gate), shown right
+// after they're auto-docked at their chosen starting station. Resolves once the
+// player picks a hull; there is deliberately no way to resolve/dismiss this without
+// picking one (no close button in the markup, and the only listener attached below
+// is on the two CONFIRM buttons). The chosen ship is financed through the SAME
+// buyNewShip() every other financing path uses (so "only one ship loan at a time"
+// is already correctly enforced here too), then immediately boarded via the SAME
+// boardStoredShip() the ordinary storage-click equip flow uses -- this streamlining
+// (skip having to separately click the item in storage afterward) is ONLY done here,
+// for this one-time onboarding choice; every later financing purchase still lands in
+// storage and needs to be equipped by hand exactly as before.
+function forceInitialShipChoice(){
+  return new Promise(resolve=>{
+    ensureShipChoiceViewports();
+    renderShipChoiceStatsAndFinance();
+    fillShipChoiceViewport(shipChoiceViewportStarter, 'starter');
+    fillShipChoiceViewport(shipChoiceViewportMining, 'mining');
+    const panel = document.getElementById('shipChoicePanel');
+    panel.classList.add('show');
+    let rafId = null;
+    let lastT = performance.now();
+    function loop(){
+      const now = performance.now();
+      const dt = Math.min(0.1, (now - lastT) / 1000);
+      lastT = now;
+      renderShipChoiceViewport(shipChoiceViewportStarter, dt);
+      renderShipChoiceViewport(shipChoiceViewportMining, dt);
+      rafId = requestAnimationFrame(loop);
+    }
+    rafId = requestAnimationFrame(loop);
+    const grid = document.getElementById('shipChoiceGrid');
+    function onClick(e){
+      const btn = e.target.closest('[data-force-choose-class]');
+      if(!btn) return;
+      const classKey = btn.dataset.forceChooseClass;
+      if(!SHIP_CLASSES[classKey]) return;
+      grid.removeEventListener('click', onClick);
+      if(rafId !== null) cancelAnimationFrame(rafId);
+      panel.classList.remove('show');
+      const inst = buyNewShip(classKey);
+      if(inst){
+        // FIRST ship only: streamline straight past the usual "click it in storage"
+        // step and board it right here, same boardStoredShip() that step calls.
+        boardStoredShip(inst.instId);
+        // item 4 (v0.24.0): each ship choice ALSO forces financing of matching
+        // starter equipment, auto-equipped straight away (see
+        // financeStarterGearAutoEquip's own comment for exactly why/how this
+        // differs from the ordinary Finance Office gear-financing path). Both
+        // hulls get a shield; a Prospector (mining hull, no weapon hardpoints)
+        // additionally gets a mining laser, a Wayfarer (combat hull, no mining
+        // mount) additionally gets a weapon + a stack of 500 bullets.
+        financeStarterGearAutoEquip('shield');
+        if(classKey === 'mining'){
+          financeStarterGearAutoEquip('miningLaser');
+        } else {
+          financeStarterGearAutoEquip('weapon');
+          financeStarterGearAutoEquip('ammo');
+        }
+        updateCargoUI();
+        refreshEquipmentPanel();
+        updateDockedPanel();
+        if(typeof renderDockShipyardPanel === 'function') renderDockShipyardPanel();
+        if(typeof renderLoansTab === 'function') renderLoansTab();
+        flashMessage('FINANCED AND BOARDED YOUR ' + SHIP_CLASSES[classKey].label.toUpperCase() + ' — FULLY EQUIPPED', 'good');
+      }
+      resolve();
+    }
+    grid.addEventListener('click', onClick);
+  });
+}
 // short flavor/fun-fact blurbs per item type, shown under the qty/weight readout
 // for a selected cargo stack
 const ITEM_FLAVOR = {
@@ -17032,7 +17668,28 @@ function makePanelManageable(panel, opts){
   // (the default, every main flight-HUD panel) or 'station' (the docked sub-panels,
   // see group:'station' at their call sites below). See saveHudLayout/
   // applyCustomHudLayout further down for how this is used.
-  const api = { collapse, expand, resetLayout, state, panel, ensureContentFits, group: opts.group || 'space' };
+  // item 7/8 ROOT CAUSE FIX: #targetPanel and #itemInspector both pass
+  // opts.noPersistHeight:true at their call sites below. The recurring "blank
+  // space in TARGET" / "ITEM INSPECTOR keeps getting enlarged" reports kept
+  // coming back after repeated CSS-only fixes because CSS was never the whole
+  // story -- applyCustomHudLayout('space', false) auto-restores a saved SPACE
+  // HUD layout on every single LAUNCH (see its call near the bottom of this
+  // file), and that saved layout is just each managed panel's inline `style`
+  // attribute, height included. Once a player had EVER resized (or had a stale
+  // pre-fix default auto-saved for) either of these two panels, that old,
+  // too-tall height got silently written back over the CSS default on every
+  // future load forever -- which is exactly why a CSS min-height tweak alone
+  // could ship, appear to fix nothing changed, and then "come back": for a
+  // returning player with a saved layout it never took effect in the first
+  // place. Height for these two panels specifically is now never saved or
+  // restored (position/width still are, like any other panel) -- see
+  // stripHeightFromStyle()'s use in saveHudLayout/applyCustomHudLayout. This is
+  // approach (a) from the task write-up rather than a clamp-on-restore (b):
+  // #itemInspector already has a live content-fit sizer (ensureContentFits)
+  // that's the actual right source of truth for its height, and #targetPanel's
+  // content is effectively fixed (a command-button row), so neither panel
+  // benefits from a persisted height at all -- only from CSS/content driving it.
+  const api = { collapse, expand, resetLayout, state, panel, ensureContentFits, group: opts.group || 'space', noPersistHeight: !!opts.noPersistHeight };
   managedPanels.push(api);
   return api;
 }
@@ -17065,13 +17722,13 @@ const eventLogPanelApi = makePanelManageable(document.getElementById('eventLog')
 // looked "perfect" while the untouched default state didn't. Simplest, most
 // reliable fix: don't collapse them in the first place. They now start exactly
 // like every other panel, in their normal (already mobile-safe) CSS position.
-makePanelManageable(document.getElementById('targetPanel'),  { title:'TARGET',         minW:320, minH:210, bottomResize:true });
+makePanelManageable(document.getElementById('targetPanel'),  { title:'TARGET',         minW:320, minH:210, bottomResize:true, noPersistHeight:true });
 // contentFitSelector:'#inspectorText' makes this panel grow itself (see
 // ensureContentFits above) rather than ever silently clipping an item's name/
 // stats/flavor text behind a barely-visible scrollbar -- both while the corner
 // grip is being dragged smaller, and whenever selecting a different item swaps
 // in longer text than whatever size the panel happens to be locked at.
-const itemInspectorPanelApi = makePanelManageable(document.getElementById('itemInspector'),{ title:'ITEM INSPECTOR', minW:200, minH:246, contentFitSelector:'#inspectorText' });
+const itemInspectorPanelApi = makePanelManageable(document.getElementById('itemInspector'),{ title:'ITEM INSPECTOR', minW:200, minH:246, contentFitSelector:'#inspectorText', noPersistHeight:true });
 // minH bumped up from the previous round's 260 -- 260 could still be dragged short
 // enough to clip the cargo grid down to under one full row of tiles (or the equip
 // lists down to a couple of rows), hiding real content rather than just scrolling
@@ -17532,6 +18189,31 @@ document.getElementById('startBtn').addEventListener('click', async ()=>{
   if(savedGame){
     applyPlayerSaveData(savedGame);
     logEvent('CLOUD SAVE RESTORED', 'good');
+    // item 3 (v0.24.0): a returning player flagged by applyPlayerSaveData (either
+    // just confiscated by the instId:0 migration this very load, or retroactively
+    // detected as left shipless by an earlier deployment of that same migration)
+    // gets the exact same unskippable forced ship-choice onboarding a brand-new
+    // character gets below -- just docked at their nearest/last-known station
+    // (they may predate the "chosen starting station" concept entirely) rather than
+    // one they explicitly picked, since there's no such choice on file for them.
+    if(starterShipConfiscatedPendingChoice && !activeShipInstance){
+      const fallbackStation = nearestStation() || stationEntry;
+      const spawnOffset = STATION_SPAWN_POS.clone().sub(fallbackStation.mesh.position);
+      shipState.pos.copy(fallbackStation.mesh.position.clone().add(spawnOffset));
+      shipState.vel.set(0,0,0);
+      ship.position.copy(shipState.pos);
+      ship.quaternion.identity();
+      const welcomeBackMsg = 'welcome back to ' + fallbackStation.name + ' — your starter ship was repossessed in an earlier update. pick a new hull to finance and get flying again.';
+      logEvent('=== ' + welcomeBackMsg.toUpperCase() + ' ===', 'good');
+      zoneMessage(welcomeBackMsg, 'good');
+      enterDock(fallbackStation);
+      await forceInitialShipChoice();
+      // consume the marker -- forceInitialShipChoice financed+boarded a ship (or, in
+      // the pathological case where financing itself somehow failed, there is
+      // nothing more useful to do than let normal play/the FINANCE OFFICE take over
+      // from here rather than re-prompting on every single future login)
+      starterShipConfiscatedPendingChoice = false;
+    }
   } else {
     // item 4d: brand-new character -- no save at all means no ship either, just the
     // escape pod (reusing ESCAPE_POD_STATS exactly like post-death handling does),
@@ -17542,6 +18224,16 @@ document.getElementById('startBtn').addEventListener('click', async ()=>{
     activeShipInstance = null;
     inEscapePod = true;
     applyEscapePodStats();
+    // item 4 (v0.24.0): the module boots with a legacy free weaponTier0/shieldTier0/
+    // 300-ammo seed already sitting in cargoStacks (see its declaration further down
+    // -- predates ships being financeable items at all). Left in place, a brand-new
+    // character would board their forced-choice ship already silently carrying that
+    // freebie gear, making the new forced equipment financing below redundant/
+    // confusing (a loan for gear they already have for free). Cleared here so this
+    // modal's financing is the ONE authoritative source of a new character's starter
+    // loadout -- exactly mirroring how a confiscated player already reaches this same
+    // modal with empty cargo (enterEscapePod wipes cargoStacks on every real pod entry).
+    if(cargoStacks.length){ cargoStacks = []; syncFlatCargoMirrors(); }
     const chosenStation = await pickStartingStation();
     scene.remove(ship);
     ship = escapePodMesh;
@@ -17562,6 +18254,16 @@ document.getElementById('startBtn').addEventListener('click', async ()=>{
     const welcomeMsg = 'welcome to ' + chosenStation.name + " i don't know how you got here but you should finance a ship if you want to operate in this sector.";
     logEvent('=== ' + welcomeMsg.toUpperCase() + ' ===', 'good');
     zoneMessage(welcomeMsg, 'good');
+    // item: forced starter-ship-choice onboarding -- a brand-new character is now
+    // auto-docked at the station they just chose (no manual fly-in/DOCK click needed)
+    // and immediately shown the unskippable #shipChoicePanel modal so they finance
+    // (and, uniquely for this first ship, immediately board) a starter hull before
+    // ever being set loose in the belt. Gated on the exact same "no cloud save at
+    // all" brand-new-character branch this whole else-block already is, so a
+    // returning player (including one already sitting in an escape pod from an
+    // earlier migration -- they have a save row, it's just shipless) never sees this.
+    enterDock(chosenStation);
+    await forceInitialShipChoice();
   }
   pendingCloudSave = null;
   // surface a broken cloud-save setup loudly rather than let it silently look like
