@@ -2655,9 +2655,9 @@
 // compatibility depends on it. Add new keys, don't rename old ones.
 
 // ---------- version / build info (shown in the ESC settings menu) ----------
-const GAME_VERSION = "0.29.0";
+const GAME_VERSION = "0.30.0";
 const GAME_LAST_EDITED = "2026-09-25";
-const GAME_BUILD_TIME = "12:32 PT"; // wall-clock time this build was published, not just the date
+const GAME_BUILD_TIME = "15:39 PT"; // wall-clock time this build was published, not just the date
 
 // ---------- update-available banner ----------
 // Periodically re-fetches this very page (same-origin -- works identically whether
@@ -5135,97 +5135,109 @@ const STATION_SCALE = 20;
 const DOCK_RANGE = 1000;
 const REPAIR_COST_PER_HP = 3;
 
+// v-next visual rework: Meridian Station rebuilt from the ground up around an
+// "Amarr-style" gothic/cathedral silhouette (per 10 reference STL renders) --
+// a tiered, bulbous central hub (rounded pods + collar bands + a domed spire)
+// with two long, tapering, scythe-like blade-spires swept outward and backward
+// from the hub on diagonally-opposite headings. Because each blade individually
+// curves backward as it extends, the pair reads as an elongated cross/X from
+// above rather than a straight spindle -- combined with the vertical hub spire
+// (the cross's other axis) this is the "elongated cross/X, not a plus-sign or
+// ring" silhouette from the brief. Palette moved from the old cool grey/amber
+// industrial scheme to a warm gold/bronze hull with dark umber trim and amber
+// glass, matching the Amarr reference's traditional gold+dark-trim color
+// language (see design notes near GAME_LAST_EDITED for the full rationale).
+// Same construction convention as every other station builder in this file:
+// primitives combined into a THREE.Group, PS1 jitter materials, a hand-picked
+// collisionSpheres array sized off the same numbers used to place the meshes.
 function buildSpaceStation(){
   const g = new THREE.Group();
-  // the station is scaled up 20x after being built (STATION_SCALE), so at typical
-  // viewing/docking distance it fills far more of the screen than anything else in
-  // the game -- a higher (less aggressive) jitter keeps its vertex-snap grid fine
-  // enough not to read as flashing/swimming the way the shared default would here.
-  // Kept at roughly the same ~1.85x ratio over the new 240 default that 260/140 was.
+  // see buildFoundrySpineStation/buildCrystalSepulchreStation for the same
+  // jitter convention -- kept at the station-scale value already tuned above
   const stationJitter = { jitter: 440 };
-  const hullMat  = applyPS1(new THREE.MeshLambertMaterial({ color:0x9aa3ad, flatShading:true }), stationJitter);
-  const trimMat  = applyPS1(new THREE.MeshLambertMaterial({ color:0xffb020, flatShading:true }), stationJitter);
-  const trimMat2 = applyPS1(new THREE.MeshLambertMaterial({ color:0x5CFFB0, flatShading:true }), stationJitter);
-  const darkMat  = applyPS1(new THREE.MeshLambertMaterial({ color:0x22262c, flatShading:true }), stationJitter);
-  const glassMat = applyPS1(new THREE.MeshLambertMaterial({ color:0x0c2430, flatShading:true }), stationJitter);
+  const hullMat   = applyPS1(new THREE.MeshLambertMaterial({ color:0xc9a35a, flatShading:true }), stationJitter); // warm gold-bronze hull
+  const hullMat2  = applyPS1(new THREE.MeshLambertMaterial({ color:0xe8c37a, flatShading:true }), stationJitter); // lighter gold panel accent
+  const trimMat   = applyPS1(new THREE.MeshLambertMaterial({ color:0x3a2a14, flatShading:true }), stationJitter); // dark umber/bronze trim
+  const trimMat2  = applyPS1(new THREE.MeshLambertMaterial({ color:0xffdd99, flatShading:true }), stationJitter); // bright gilt accent (collars/rim)
+  const darkMat   = applyPS1(new THREE.MeshLambertMaterial({ color:0x201509, flatShading:true }), stationJitter); // near-black greeble/spike trim
+  const glassMat  = applyPS1(new THREE.MeshLambertMaterial({ color:0x5a2f10, flatShading:true }), stationJitter); // amber-glass dome/windows
 
-  // central core -- a tall hexagonal drum
-  const core = new THREE.Mesh(new THREE.CylinderGeometry(30, 34, 130, 20), hullMat);
-  g.add(core);
+  const spheres = []; // collisionSpheres, filled alongside the meshes below (local, pre-STATION_SCALE units)
 
-  // three habitation rings at different heights, each on its own truss collar
-  const ringHeights = [-55, 0, 58];
-  const ringRadii = [58, 72, 50];
-  ringHeights.forEach((y, idx) => {
-    const ring = new THREE.Mesh(new THREE.TorusGeometry(ringRadii[idx], 5, 14, 32), idx===1?trimMat2:trimMat);
-    ring.rotation.x = Math.PI/2;
-    ring.position.y = y;
-    g.add(ring);
-    // spokes connecting ring to core -- previously centered exactly on the ring's own
-    // radius, so the box passed all the way through the torus tube and crossed its
-    // surface at a near-tangent angle (a real clipping/z-fight source); now it runs
-    // from the core's outer radius to just short of the ring's inner tube surface
-    for(let i=0;i<6;i++){
-      const ang = i*Math.PI/3;
-      const R = ringRadii[idx];
-      const spokeOuter = R - 7;   // stop just shy of the ring tube (tube radius 5 + margin)
-      const spokeInner = 32;      // meets the core's outer radius (30-34)
-      const spokeLen = Math.max(4, spokeOuter - spokeInner);
-      const spokeMid = (spokeOuter + spokeInner) / 2;
-      const spoke = new THREE.Mesh(new THREE.BoxGeometry(3, 3, spokeLen), darkMat);
-      spoke.position.set(Math.cos(ang)*spokeMid, y, Math.sin(ang)*spokeMid);
-      spoke.rotation.y = -ang;
-      g.add(spoke);
-    }
-  });
+  // ---------- central hub: tiered cluster of bulbous pods, cathedral-like ----------
+  // wide base pod (squashed sphere) the two blade-spires spring from
+  const basePod = new THREE.Mesh(new THREE.SphereGeometry(34, 14, 10), hullMat);
+  basePod.scale.set(1, 0.62, 1);
+  basePod.position.y = -8;
+  g.add(basePod);
+  spheres.push({ local: new THREE.Vector3(0,-8,0), radius: 36 });
 
-  // docking arms radiating from the mid ring, each tipped with a light
-  for(let i=0;i<4;i++){
-    const ang = i*Math.PI/2 + 0.4;
-    const arm = new THREE.Mesh(new THREE.CylinderGeometry(2.2, 3, 46, 14), darkMat);
-    arm.rotation.z = Math.PI/2;
-    arm.position.set(Math.cos(ang)*(72+23), 0, Math.sin(ang)*(72+23));
-    arm.rotation.y = -ang;
-    g.add(arm);
-    const tipLight = new THREE.Mesh(new THREE.SphereGeometry(3, 12, 10), new THREE.MeshBasicMaterial({ color:0xffb020, fog:false }));
-    tipLight.position.set(Math.cos(ang)*(72+46), 0, Math.sin(ang)*(72+46));
-    g.add(tipLight);
-    g.userData['arm'+i+'Light'] = tipLight;
+  // lower keel pod hanging beneath, tapering to a blunt point -- the cross's
+  // downward stroke, mirroring the spire above
+  const keel = new THREE.Mesh(new THREE.CylinderGeometry(18, 3, 46, 12), hullMat);
+  keel.position.y = -8-15-23;
+  g.add(keel);
+  spheres.push({ local: new THREE.Vector3(0,-46,0), radius: 20 });
+
+  // gilt collar band wrapping the base pod
+  const collar = new THREE.Mesh(new THREE.TorusGeometry(31, 5, 10, 22), trimMat2);
+  collar.rotation.x = Math.PI/2;
+  collar.position.y = 2;
+  g.add(collar);
+  for(let i=0;i<10;i++){ // small ornamental spikes ringing the collar
+    const ang = i*Math.PI/5;
+    const spike = new THREE.Mesh(new THREE.ConeGeometry(1.6, 9, 5), darkMat);
+    spike.position.set(Math.cos(ang)*32, 2, Math.sin(ang)*32);
+    g.add(spike);
   }
 
-  // command tower spire on top, with an observation dome
-  const spire = new THREE.Mesh(new THREE.CylinderGeometry(10, 16, 60, 18), hullMat);
-  spire.position.y = 95;
-  g.add(spire);
-  const dome = new THREE.Mesh(new THREE.SphereGeometry(13, 20, 14, 0, Math.PI*2, 0, Math.PI*0.55), glassMat);
-  dome.position.y = 127;
+  // mid pod (taller, narrower ellipsoid) rising above the collar
+  const midPod = new THREE.Mesh(new THREE.SphereGeometry(23, 14, 10), hullMat2);
+  midPod.scale.set(1, 1.15, 1);
+  midPod.position.y = 32;
+  g.add(midPod);
+  spheres.push({ local: new THREE.Vector3(0,32,0), radius: 26 });
+
+  // upper gilt collar, narrower
+  const collar2 = new THREE.Mesh(new THREE.TorusGeometry(17, 3.2, 8, 18), trimMat2);
+  collar2.rotation.x = Math.PI/2;
+  collar2.position.y = 52;
+  g.add(collar2);
+
+  // small tertiary pod + dome + tapering spire, the top of the cross's vertical stroke
+  const upperPod = new THREE.Mesh(new THREE.SphereGeometry(13, 12, 8), hullMat);
+  upperPod.position.y = 62;
+  g.add(upperPod);
+  const dome = new THREE.Mesh(new THREE.SphereGeometry(11, 14, 8, 0, Math.PI*2, 0, Math.PI*0.55), glassMat);
+  dome.position.y = 71;
   g.add(dome);
-  const beacon = new THREE.Mesh(new THREE.SphereGeometry(3.4, 12, 10), new THREE.MeshBasicMaterial({ color:0xffb020, fog:false }));
-  beacon.position.y = 140;
+  const spire = new THREE.Mesh(new THREE.CylinderGeometry(0.6, 6.5, 44, 10), trimMat);
+  spire.position.y = 71 + 22;
+  g.add(spire);
+  const beacon = new THREE.Mesh(new THREE.SphereGeometry(3, 10, 8), new THREE.MeshBasicMaterial({ color:0xffe0a0, fog:false }));
+  beacon.position.y = 71 + 44 + 2;
   g.add(beacon);
   g.userData.beacon = beacon;
+  spheres.push({ local: new THREE.Vector3(0, 68, 0), radius: 26 });
 
-  // docking bay doors -- a LINE of separate hangar-mouth openings spaced evenly
-  // around the station's lower ring band (instead of one single bay mouth), each
-  // with its own lit door face + a pair of small blinking amber approach-marker
-  // lights framing it (animated in updateStationBayLights). Doesn't change
-  // DOCK_RANGE/docking logic at all -- purely a hull detail/visual upgrade.
+  // ---------- docking bay archways -- 3 gothic-arch hangar mouths around the base pod ----------
   const bayLights = [];
-  const BAY_DOOR_COUNT = 4;
-  const bayRadius = 72; // sits on the mid habitation ring's band, like the docking arms
+  const BAY_DOOR_COUNT = 3;
+  const bayRadius = 33;
   for(let i=0;i<BAY_DOOR_COUNT;i++){
-    const ang = i*(Math.PI*2/BAY_DOOR_COUNT) + 0.9; // offset from the docking arms' own angles
+    const ang = i*(Math.PI*2/BAY_DOOR_COUNT) + 0.5;
     const doorGroup = new THREE.Group();
-    doorGroup.position.set(Math.cos(ang)*bayRadius, -55, Math.sin(ang)*bayRadius);
+    doorGroup.position.set(Math.cos(ang)*bayRadius, -8, Math.sin(ang)*bayRadius);
     doorGroup.rotation.y = -ang;
-    const bay = new THREE.Mesh(new THREE.BoxGeometry(22, 18, 14), darkMat);
-    doorGroup.add(bay);
-    const bayLight = new THREE.Mesh(new THREE.PlaneGeometry(16, 11), new THREE.MeshBasicMaterial({ color:0x5CFFB0, side:THREE.DoubleSide, fog:false }));
-    bayLight.position.set(0, 0, 7.3);
+    const archFrame = new THREE.Mesh(new THREE.CylinderGeometry(9, 9, 6, 10, 1, false, 0, Math.PI), darkMat);
+    archFrame.rotation.z = Math.PI/2;
+    doorGroup.add(archFrame);
+    const bayLight = new THREE.Mesh(new THREE.PlaneGeometry(13, 9), new THREE.MeshBasicMaterial({ color:0xffcf7a, side:THREE.DoubleSide, fog:false }));
+    bayLight.position.set(0, 0, 6.1);
     doorGroup.add(bayLight);
     for(let m=-1;m<=1;m+=2){
-      const marker = new THREE.Mesh(new THREE.SphereGeometry(1.1, 8, 6), new THREE.MeshBasicMaterial({ color:0xffb020, fog:false, transparent:true, opacity:0.9 }));
-      marker.position.set(m*12, 0, 7.5);
+      const marker = new THREE.Mesh(new THREE.SphereGeometry(1, 8, 6), new THREE.MeshBasicMaterial({ color:0xffdd99, fog:false, transparent:true, opacity:0.9 }));
+      marker.position.set(m*10, 0, 6.3);
       doorGroup.add(marker);
       bayLights.push(marker);
     }
@@ -5233,79 +5245,73 @@ function buildSpaceStation(){
   }
   g.userData.bayLights = bayLights;
 
-  // ---- extra detail pass: sensor dishes, antenna spikes, surface panel-line
-  // greebles -- a genuine step up from the bare core+rings+arms+spire silhouette,
-  // while staying within the low-poly/flat-shaded PS1-era look (modest segment
-  // counts, no organic detail) ----
-  for(let i=0;i<2;i++){
-    const dishAng = i===0 ? 1.1 : -2.0;
-    const dishMount = new THREE.Mesh(new THREE.CylinderGeometry(1.4, 1.4, 10, 8), darkMat);
-    dishMount.position.set(Math.cos(dishAng)*33, 30, Math.sin(dishAng)*33);
-    dishMount.rotation.z = Math.PI/2;
-    dishMount.rotation.y = -dishAng;
-    g.add(dishMount);
-    const dish = new THREE.Mesh(new THREE.SphereGeometry(6, 12, 8, 0, Math.PI*2, 0, Math.PI*0.5), trimMat2);
-    dish.position.set(Math.cos(dishAng)*43, 30, Math.sin(dishAng)*43);
-    dish.rotation.x = Math.PI/2;
-    dish.rotation.z = -dishAng;
-    g.add(dish);
+  // ---------- twin scythe-like blade-spires ----------
+  // built from a chain of tapering box segments following a curved outward-and-
+  // backward sweep (increasing curvature + downward droop as the blade extends),
+  // finished with a sharp cone tip -- reused across both blades via a shared
+  // unit-box geometry (cheap: only each Mesh's own scale/position/quaternion differ)
+  const unitBox = new THREE.BoxGeometry(1, 1, 1);
+  function buildBlade(baseAngle){
+    const group = new THREE.Group();
+    const segCount = 7;
+    const totalLen = 190;
+    const baseW = 24, tipW = 2.5;
+    const baseT = 10, tipT = 1.4;
+    let ang = baseAngle;
+    let prev = new THREE.Vector3(Math.cos(baseAngle)*8, 3, Math.sin(baseAngle)*8);
+    for(let i=0;i<segCount;i++){
+      const t0 = i/segCount, t1 = (i+1)/segCount;
+      ang += 0.045 + t0*0.05; // sweeps back harder as it extends -- the "scythe curve"
+      const r1 = totalLen*t1;
+      const y1 = 3 - Math.pow(t1, 1.6)*42; // droops downward toward the tip
+      const cur = new THREE.Vector3(Math.cos(ang)*r1, y1, Math.sin(ang)*r1);
+      const mid = prev.clone().add(cur).multiplyScalar(0.5);
+      const segLen = prev.distanceTo(cur);
+      const tm = (t0+t1)/2;
+      const w = baseW + (tipW-baseW)*tm;
+      const th = baseT + (tipT-baseT)*tm;
+      const seg = new THREE.Mesh(unitBox, i%3===2 ? trimMat : (i%2===0?hullMat:hullMat2));
+      seg.position.copy(mid);
+      seg.scale.set(Math.max(segLen,0.001), th, w);
+      const dir = cur.clone().sub(prev).normalize();
+      seg.quaternion.setFromUnitVectors(new THREE.Vector3(1,0,0), dir);
+      group.add(seg);
+      // dark gilt-edge ridge along the blade's dorsal spine -- gothic ornamentation
+      // breaking up the flat hull panels
+      const ridge = new THREE.Mesh(new THREE.ConeGeometry(Math.max(w*0.14,0.6), 7, 4), darkMat);
+      ridge.position.copy(mid).addScaledVector(new THREE.Vector3(0,1,0), th*0.5+3.2);
+      ridge.rotation.x = Math.PI;
+      group.add(ridge);
+      spheres.push({ local: mid.clone(), radius: Math.max(7, w*0.55) });
+      prev = cur;
+    }
+    // sharp tip spike
+    const tipDir = new THREE.Vector3(Math.cos(ang), (prev.y - (3 - Math.pow((segCount-1)/segCount,1.6)*42))/40, Math.sin(ang)).normalize();
+    const tip = new THREE.Mesh(new THREE.ConeGeometry(tipW*1.1, 22, 4), trimMat2);
+    tip.position.copy(prev).addScaledVector(tipDir, 10);
+    tip.quaternion.setFromUnitVectors(new THREE.Vector3(0,1,0), tipDir);
+    group.add(tip);
+    spheres.push({ local: prev.clone(), radius: 8 });
+    return group;
   }
-  for(let i=0;i<8;i++){
-    const ang = i*Math.PI/4 + 0.2;
-    const spike = new THREE.Mesh(new THREE.CylinderGeometry(0.4, 0.6, 14, 6), darkMat);
-    spike.position.set(Math.cos(ang)*29, 70, Math.sin(ang)*29);
-    g.add(spike);
-  }
-  for(let i=0;i<10;i++){
+  // diagonally opposite headings (not a straight 180 spindle nor a symmetric
+  // plus-sign) -- each blade also sweeps its own curve, so together they read
+  // as an elongated cross/X silhouette from above, per the reference brief
+  g.add(buildBlade(0.65));
+  g.add(buildBlade(Math.PI + 0.65));
+
+  // ---------- misc greebles: small conduit ridges + panel-line detail on the
+  // base pod, staying within the low-poly/flat-shaded PS1-era budget ----------
+  for(let i=0;i<9;i++){
     const ang = Math.random()*Math.PI*2;
-    const y = -50 + Math.random()*90;
-    const panel = new THREE.Mesh(new THREE.BoxGeometry(6+Math.random()*4, 3+Math.random()*3, 1.2), darkMat);
-    panel.position.set(Math.cos(ang)*32.2, y, Math.sin(ang)*32.2);
+    const y = -20 + Math.random()*36;
+    const panel = new THREE.Mesh(new THREE.BoxGeometry(5+Math.random()*3, 3+Math.random()*3, 1.2), darkMat);
+    panel.position.set(Math.cos(ang)*33.5, y, Math.sin(ang)*33.5);
     panel.rotation.y = -ang;
     g.add(panel);
   }
 
-  // ---- big flat docking disc + a long radial truss spine (item: "make space
-  // station look more like image 2" -- a wide flat platform under a tall central
-  // tower, with a long boom/truss reaching out to one side) ----
-  const disc = new THREE.Mesh(new THREE.CylinderGeometry(95, 100, 8, 28), hullMat);
-  disc.position.y = -68;
-  g.add(disc);
-  const discRim = new THREE.Mesh(new THREE.TorusGeometry(97, 4, 10, 28), trimMat);
-  discRim.rotation.x = Math.PI/2;
-  discRim.position.y = -64;
-  g.add(discRim);
-  for(let i=0;i<12;i++){
-    const ang = i*Math.PI/6;
-    const strut = new THREE.Mesh(new THREE.BoxGeometry(3, 3, 40), darkMat);
-    strut.position.set(Math.cos(ang)*75, -68, Math.sin(ang)*75);
-    strut.rotation.y = -ang;
-    g.add(strut);
-  }
-  // long truss spine + small terminal module reaching far off to one side, echoing
-  // the reference's long boom with distant habitats/ships strung along it
-  const spineAng = 0.9;
-  const spineLen = 260;
-  const spine = new THREE.Mesh(new THREE.CylinderGeometry(4, 5, spineLen, 10), darkMat);
-  spine.rotation.z = Math.PI/2;
-  spine.rotation.y = -spineAng;
-  spine.position.set(Math.cos(spineAng)*(100+spineLen/2), -68, Math.sin(spineAng)*(100+spineLen/2));
-  g.add(spine);
-  for(let i=0;i<3;i++){
-    const t = (i+1)/3.5;
-    const seg = new THREE.Mesh(new THREE.BoxGeometry(12, 10, 14), i%2===0?hullMat:darkMat);
-    seg.position.set(Math.cos(spineAng)*(100+spineLen*t), -68, Math.sin(spineAng)*(100+spineLen*t));
-    g.add(seg);
-  }
-  const terminalModule = new THREE.Mesh(new THREE.CylinderGeometry(20, 22, 26, 16), hullMat);
-  terminalModule.rotation.x = Math.PI/2;
-  terminalModule.position.set(Math.cos(spineAng)*(100+spineLen), -68, Math.sin(spineAng)*(100+spineLen));
-  g.add(terminalModule);
-  const terminalLight = new THREE.Mesh(new THREE.SphereGeometry(3, 10, 8), new THREE.MeshBasicMaterial({ color:0x5CFFB0, fog:false }));
-  terminalLight.position.set(Math.cos(spineAng)*(100+spineLen), -50, Math.sin(spineAng)*(100+spineLen));
-  g.add(terminalLight);
-  g.userData.terminalLight = terminalLight;
-
+  g.userData.collisionSpheres = spheres;
   return g;
 }
 
@@ -5329,7 +5335,10 @@ stationMesh.position.set(
 );
 scene.add(stationMesh);
 const stationEntry = {
-  mesh: stationMesh, id:'station_home', name:'Meridian Station', radius: 145 * STATION_SCALE,
+  // radius bumped 145->195 (v-next gothic rework) to match the new blade-spires'
+  // ~190-unit reach -- an approximate clearance/spawn-distance figure only; actual
+  // hull collision uses the precise per-piece STATION_COLLISION_SPHERES below
+  mesh: stationMesh, id:'station_home', name:'Meridian Station', radius: 195 * STATION_SCALE,
   type:'station', hostile:false, alive:true
 };
 structures.push(stationEntry);
@@ -5346,52 +5355,12 @@ structures.push(stationEntry);
 // between two docking arms) while still being blocked from clipping into any solid
 // part. Converted to world space (via stationMesh.localToWorld) each check, since the
 // station slowly rotates -- cheap, a couple dozen points against one ship position.
-const STATION_COLLISION_SPHERES = (function(){
-  const spheres = [];
-  // central core cylinder (radius 30-34, height 130 -> half-height 65): one bounding
-  // sphere sized to cover both its radius and half-height (sqrt(34^2+65^2)~=73.4)
-  spheres.push({ local: new THREE.Vector3(0,0,0), radius: 75 });
-  // 3 habitation rings, sampled at 6 points each around their own radius/height
-  // (matching the spoke angles buildSpaceStation uses) rather than one solid disc --
-  // so the hole through the middle of each ring, and the gaps between rings, stay
-  // genuinely flyable instead of being treated as solid.
-  const ringHeights = [-55, 0, 58];
-  const ringRadii = [58, 72, 50];
-  ringHeights.forEach((y, idx) => {
-    const R = ringRadii[idx];
-    for(let i=0;i<6;i++){
-      const ang = i*Math.PI/3;
-      spheres.push({ local: new THREE.Vector3(Math.cos(ang)*R, y, Math.sin(ang)*R), radius: 12 });
-    }
-  });
-  // 4 docking arms, radiating from the mid ring band (reach from radius 95 to 118) --
-  // one sphere per arm, centered along its reach
-  for(let i=0;i<4;i++){
-    const ang = i*Math.PI/2 + 0.4;
-    spheres.push({ local: new THREE.Vector3(Math.cos(ang)*106.5, 0, Math.sin(ang)*106.5), radius: 16 });
-  }
-  // command spire + observation dome + beacon (radius 10-16, spans y 65-140)
-  spheres.push({ local: new THREE.Vector3(0, 102.5, 0), radius: 45 });
-  // big flat docking disc (radius ~100, at y=-68) -- sampled at a center sphere plus
-  // 8 points around its rim so the disc's genuinely flat edge is covered without
-  // needing one enormous sphere that would push the player unreasonably far out
-  spheres.push({ local: new THREE.Vector3(0, -68, 0), radius: 60 });
-  for(let i=0;i<8;i++){
-    const ang = i*Math.PI/4;
-    spheres.push({ local: new THREE.Vector3(Math.cos(ang)*75, -68, Math.sin(ang)*75), radius: 30 });
-  }
-  // long truss spine + terminal module reaching out to one side (matches the spine/
-  // terminalModule built in buildSpaceStation above) -- a handful of spheres strung
-  // along its length plus one for the terminal module at the far end
-  const spineAng = 0.9, spineLen = 260;
-  for(let i=1;i<=3;i++){
-    const t = i/3.5;
-    const d = 100 + spineLen*t;
-    spheres.push({ local: new THREE.Vector3(Math.cos(spineAng)*d, -68, Math.sin(spineAng)*d), radius: 14 });
-  }
-  spheres.push({ local: new THREE.Vector3(Math.cos(spineAng)*(100+spineLen), -68, Math.sin(spineAng)*(100+spineLen)), radius: 24 });
-  return spheres;
-})();
+// (v-next gothic rework) buildSpaceStation() now builds its collisionSpheres
+// inline (same convention buildFoundrySpineStation/buildCrystalSepulchreStation
+// use) sized off the actual hub-pod/blade-spire numbers it constructs with --
+// STATION_COLLISION_SPHERES just aliases that array so every reference below
+// (resolveStationCollision's fallback, stationEntry.collisionSpheres) keeps working.
+const STATION_COLLISION_SPHERES = stationMesh.userData.collisionSpheres;
 
 // ---------- multi-galaxy stations (v0.10.0) ----------
 // Galaxy A's Meridian Station above stays exactly as it was (stationEntry is still
@@ -19560,6 +19529,20 @@ document.getElementById('startBtn').addEventListener('click', async ()=>{
   const modBlockMsg = await checkModerationBlock();
   if(modBlockMsg){ flashMessage('ACCESS BLOCKED', 'warn'); logEvent('=== ' + modBlockMsg + ' ===', 'warn'); return; }
   document.getElementById('bootscreen').style.display = 'none';
+  // bug fix: the space-flight HUD panels (#telemetry/#overview/#eventLog/
+  // #targetPanel/etc) have no hidden-by-default CSS state -- they're only ever
+  // hidden by enterDock()/shown by exitDock(). Before this fix they'd sit fully
+  // visible (nothing else was hiding them) from the instant the bootscreen above
+  // was hidden until enterDock() ran further down this same handler (after an
+  // `await fetchCloudSaveIntoPending()` and other awaited work) for a returning
+  // player restored into a docked state -- a visible flash of the space HUD
+  // under the docking-bay UI. Pre-hiding the exact same element list enterDock()
+  // hides, right here before any of that async work starts, means a docked
+  // restore now stays hidden the whole way through instead of flashing; the
+  // block below (after the save-restore branches settle) restores them for the
+  // common non-docked case, which is the only case that still needs them shown.
+  const SPACE_HUD_IDS = ['telemetry','clockPanel','overview','eventLog','targetPanel','itemInspector','centerReticle','spawnAlert','zoneAlert','lockAlert'];
+  SPACE_HUD_IDS.forEach(id=>{ const el = document.getElementById(id); if(el) el.style.display = 'none'; });
   clock.start();
   gameStartTime = performance.now(); // starts the in-game clock (#clockPanel) at LAUNCH
   mpJoinedAtMs = Date.now(); // (v0.19.2) wall-clock twin of the above, see its declaration
@@ -19688,6 +19671,18 @@ document.getElementById('startBtn').addEventListener('click', async ()=>{
     // earlier migration -- they have a save row, it's just shipless) never sees this.
     enterDock(chosenStation);
     await forceInitialShipChoice();
+  }
+  // bug fix (cont'd from the pre-hide above): every branch that ends up docked
+  // already called enterDock(), which is a no-op on the display style here since
+  // it's already 'none' -- but the ordinary "restored mid-flight, not docked"
+  // case (the most common login) never calls enterDock() at all, so the space
+  // HUD is still sitting pre-hidden from above and needs restoring now that we
+  // know for certain the player isn't docked. Checking the live `docked` flag
+  // (rather than re-deriving it from savedGame) covers every branch correctly,
+  // including the stale/unrecognized-dockedStationId case that also never calls
+  // enterDock().
+  if(!docked){
+    SPACE_HUD_IDS.forEach(id=>{ const el = document.getElementById(id); if(el) el.style.display = ''; });
   }
   pendingCloudSave = null;
   // surface a broken cloud-save setup loudly rather than let it silently look like
