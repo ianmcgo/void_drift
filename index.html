@@ -15,7 +15,15 @@
     --danger:#ff4d4d;
     --shield:#5cc9ff;
     --xp:#c98dff;
-    --panel-bg: rgba(3,10,8,0.72);
+    /* item 3: panel background alpha as its own custom property, driven by the
+       Settings menu opacity slider (see the panelOpacitySlider handler) so every
+       panel using --panel-bg (nearly all of them) updates together. 0.72 matches
+       the previous fixed semi-transparent default; the slider goes up to 1.0 (fully
+       opaque) for players who prefer solid boxes. --panel-bg-solid intentionally
+       stays a fixed opaque color -- it's used for panels (danger/modal dialogs etc)
+       that were already meant to always be solid regardless of this setting. */
+    --panel-bg-opacity: 0.72;
+    --panel-bg: rgba(3,10,8,var(--panel-bg-opacity));
     --panel-bg-solid: #060f0c;
     --panel-border: rgba(109,255,194,0.45);
     box-sizing:border-box;
@@ -328,6 +336,16 @@
        to 210px, which also lets #targetPanel sit flush with the bottom of the screen
        instead of being artificially stretched to match an oversized Event Log. */
     min-height:210px;
+    /* regression fix (item D): with no max-height, this panel's own content (the
+       accumulating log list) was free to grow #eventLog upward without bound --
+       given enough log lines it climbed high enough to cover #telemetry's bottom
+       rows (its SETTINGS/SERVER buttons and throttle-cap row), which is exactly
+       what the screenshot showed. A touch-device media query already capped this
+       (see the (pointer:coarse) block), desktop/mouse just never got the same
+       treatment. Capped here too, sized to stay clear of telemetry's own natural
+       content height (~14px top offset + ~470px tall) with a safety margin; .list's
+       own overflow-y:auto (already set) takes over once content exceeds this. */
+    max-height:max(210px, calc(100vh - 510px));
     background:var(--panel-bg); border:1px solid var(--panel-border);
     display:flex; flex-direction:column;
   }
@@ -361,6 +379,16 @@
        (kept just above its own makePanelManageable minH:246 floor) so none of the
        three is stretched taller than its content needs. */
     width:min(78vw,270px); min-height:250px;
+    /* regression fix (item D): ensureContentFits (see makePanelManageable) grows
+       this panel upward from its bottom-right anchor to fit a long item
+       description, but had no ceiling of its own on desktop (only a touch-device
+       media query capped it) -- a long enough blurb could grow it tall enough to
+       climb up over #overview's bottom rows on the same right-hand column. This
+       caps its rendered height to stay clear of #overview's own natural bottom
+       edge (54px top offset + ~36px header + its list's 38vh) with a safety
+       margin; #inspectorText's own overflow-y:auto (already set) takes over for
+       any text that still doesn't fit once the panel hits this ceiling. */
+    max-height:max(250px, calc(62vh - 130px));
     background:var(--panel-bg); border:1px solid var(--panel-border);
     padding:8px 10px 10px; font-size:12px;
     display:flex; flex-direction:column; overflow:hidden;
@@ -496,27 +524,73 @@
   .dockNavList .cmdbtn{font-size:12px; padding:9px 8px; text-align:left; width:100%; box-sizing:border-box;}
   .dockNavList .cmdbtn.active{background:var(--phosphor); color:#001108; font-weight:bold;}
 
-  /* docking bay sub-panel container -- shown filling the rest of the screen while a
-     sub-panel is open (see showDockSubPanel) */
-  #dockedPanel{
-    display:none; z-index:38;
-    left:calc(14px + 200px + 14px); right:14px; top:14px; bottom:14px;
-    width:auto; max-width:none; height:auto; max-height:none; overflow-y:auto;
-    background:var(--panel-bg-solid); border:1px solid var(--panel-border);
-    padding:20px 46px 22px 24px; text-align:left; pointer-events:auto;
-  }
+  /* regression fix (item E): station sub-panels (MARKET, FINANCE OFFICE, LIBRARY,
+     STORAGE, AUCTION HOUSE, the quest offices, etc.) used to all render inside
+     #dockedPanel, ONE at a time, as a single full-screen, fully OPAQUE overlay --
+     the "atrocious" full-screen-modal treatment the user flagged. #dockedPanel is
+     now just a plain, invisible DOM grouping node (no positioning/background of its
+     own -- kept only so the existing "#dockedPanel .drow/.sub/.dbtns/.psection"
+     descendant rules below still apply, and so #dockedPanel .popupBody's own child
+     styling matches the rest of the game's popups). Each sub-panel (.dockFloatPanel)
+     is instead its OWN independent floating window: same semi-transparent
+     var(--panel-bg) + draggable/resizable chrome (makePanelManageable) as every
+     other HUD popup, sized to roughly half of the old full-screen treatment, and
+     multiple can be open at once (see showDockSubPanel/closeDockSubPanel below --
+     opening one no longer force-closes any other). */
   @media (max-width:900px){
-    /* not enough width for a side-by-side column + fill panel -- the nav column
-       drops to a top bar instead and the sub-panel container fills below it */
+    /* not enough width for a side-by-side column layout -- the nav column
+       drops to a top bar instead */
     #dockNavColumn{
       left:8px; right:8px; top:8px; bottom:auto; width:auto; max-height:none;
       transform:none; padding:8px;
     }
     .dockNavList{ flex-direction:row; flex-wrap:wrap; }
     .dockNavList .cmdbtn{ width:auto; flex:1 1 30%; text-align:center; }
-    #dockedPanel{ left:8px; right:8px; top:calc(8px + 128px); bottom:8px; padding:16px 40px 18px 16px; }
   }
-  #dockedPanel.show{display:block;}
+  /* default size/position for a station floating sub-panel: ~half the old
+     full-screen treatment, staggered per-panel (like a normal window cascade) so
+     opening several at once doesn't stack them in an identical spot. All fully
+     draggable/resizable afterward via makePanelManageable, same as every other
+     HUD panel -- these starting offsets only matter the first time each one opens. */
+  /* .popupPanel.dockFloatPanel (not just .dockFloatPanel alone) so this reliably
+     WINS over the generic .popupPanel rule's own top/left/width/max-height (both are
+     single-class selectors of otherwise-equal specificity -- source order would
+     silently decide, and .popupPanel's smaller generic sizing would win by sitting
+     later in the stylesheet). The compound selector's higher specificity makes that
+     safe regardless of where either rule sits in the file. */
+  .popupPanel.dockFloatPanel{
+    top:calc(60px + env(safe-area-inset-top,0px)); left:240px;
+    width:min(46vw,480px); max-height:min(60vh,480px);
+    text-align:left;
+  }
+  .dockFloatPanel .popupBody{ text-align:left; }
+  #dockMarketPanel{ left:270px; top:calc(90px + env(safe-area-inset-top,0px)); }
+  #dockAuctionPanel{ left:330px; top:calc(150px + env(safe-area-inset-top,0px)); }
+  #dockGovPanel{ left:390px; top:calc(210px + env(safe-area-inset-top,0px)); }
+  #dockFittingPanel{ left:450px; top:calc(70px + env(safe-area-inset-top,0px)); }
+  #dockManufacturingPanel{ left:510px; top:calc(130px + env(safe-area-inset-top,0px)); }
+  #dockLibraryPanel{ left:570px; top:calc(190px + env(safe-area-inset-top,0px)); }
+  #dockStoragePanel{ left:250px; top:calc(250px + env(safe-area-inset-top,0px)); }
+  #dockShipyardPanel{ left:280px; top:calc(310px + env(safe-area-inset-top,0px)); }
+  #dockNavyPanel{ left:340px; top:calc(340px + env(safe-area-inset-top,0px)); }
+  #dockMiningPanel{ left:400px; top:calc(370px + env(safe-area-inset-top,0px)); }
+  #dockTransportPanel{ left:460px; top:calc(400px + env(safe-area-inset-top,0px)); }
+  @media (max-width:900px){
+    /* regression fix (item F): on narrow/short mobile the nav column becomes a
+       wrapped top bar that can run 250-300px+ tall on its own (every station
+       option plus UNDOCK, wrapped across several rows) -- there is no top offset
+       that reliably clears it AND still leaves useful room for a sub-panel on a
+       short landscape phone. Rather than pushing sub-panels below an unpredictably
+       tall nav bar (which was the old, still-broken behavior), they start near the
+       top and simply lay OVER it -- exactly like the main flight HUD's own popups
+       already do on mobile. Being semi-transparent (not the old opaque full-screen
+       treatment) keeps the nav bar legible underneath, and the panel is still fully
+       draggable if the player wants it elsewhere. */
+    .popupPanel.dockFloatPanel{ left:8px; width:min(78vw,360px); top:calc(6px + env(safe-area-inset-top,0px)); max-height:min(80vh,320px); }
+    #dockMarketPanel, #dockAuctionPanel, #dockGovPanel, #dockFittingPanel, #dockManufacturingPanel,
+    #dockLibraryPanel, #dockStoragePanel, #dockShipyardPanel, #dockNavyPanel, #dockMiningPanel,
+    #dockTransportPanel{ left:8px; top:calc(6px + env(safe-area-inset-top,0px)); }
+  }
   #dockedPanel h2{font-family:'VT323',monospace; font-size:28px; letter-spacing:3px; color:var(--amber); margin:0 0 4px; text-shadow:0 0 8px rgba(255,176,32,0.5);}
   #dockedPanel .sub{font-size:13px; color:var(--phosphor-dim); margin-bottom:16px; letter-spacing:1px;}
   #dockedPanel .drow{display:flex; justify-content:space-between; font-size:14px; margin:6px 0; color:var(--phosphor-dim);}
@@ -581,8 +655,21 @@
   .popupPanel .pbar.full i{background:var(--danger); box-shadow:0 0 6px var(--danger);}
 
   /* WALLET popup -- ledger + stats sub-tabs, same panel-color language as the rest
-     of the HUD popups (see #walletPanel) */
-  .walletTabs{display:flex; gap:4px; margin-bottom:8px;}
+     of the HUD popups (see #walletPanel). Regression fix (item C): the Data Pad's
+     content (5 tabs, and especially MAIL's compose form + inbox list) was cramped
+     into the same ~270px-wide default every small popup panel uses. Data Pad now
+     gets a wider/taller default (still fully draggable/resizable afterward via
+     makePanelManageable's minW/minH floor set at its call site) so MAIL is usable
+     without the player having to immediately resize the panel by hand. -->
+  #walletPanel{ width:min(90vw,420px); max-height:min(86vh,600px); }
+  /* regression fix (item D): SKILLS uses the generic .popupPanel max-height:80vh,
+     which (top-anchored at 14px) let its scrollable skill list grow tall enough to
+     reach all the way down over #targetPanel (bottom-center) when both were open at
+     once -- exactly what the screenshot showed (APPROACH/ORBIT buttons bleeding
+     through). Capped well short of that; .popupBody's own overflow-y:auto (already
+     set on every popupPanel) scrolls the rest. */
+  #skillsPanel{ max-height:min(80vh, calc(100vh - 300px)); }
+  .walletTabs{display:flex; gap:4px; margin-bottom:8px; flex-wrap:wrap;}
   .walletTabs button{
     flex:1 1 auto; font-family:'VT323',monospace; font-size:13px; letter-spacing:1px; padding:5px 4px;
     background:transparent; border:1px solid var(--panel-border); color:var(--phosphor-dim); cursor:pointer;
@@ -667,19 +754,14 @@
   }
   #dockStorageMovePrompt.show{display:block;}
 
-  /* station STORAGE / CARGO(sell) sub-panels, nested inside #dockedPanel -- same
-     drow/dbtns visual language as the rest of the docking bay, one row per item type
-     with a qty input + action button(s) */
-  .dockSubPanel{display:none; position:relative;}
-  .dockSubPanel.show{display:block;}
-  /* item 13: universal top-right "X" close button on every station sub-panel */
-  .dockCloseBtn{
-    position:absolute; top:-4px; right:0; z-index:5;
-    background:transparent; border:1px solid var(--panel-border); color:var(--phosphor);
-    font-family:'Share Tech Mono',monospace; font-size:16px; line-height:1;
-    width:30px; height:30px; cursor:pointer;
-  }
-  .dockCloseBtn:hover{ background:rgba(255,77,77,0.2); border-color:var(--danger); color:var(--danger); }
+  /* station STORAGE / CARGO(sell) sub-panels -- same drow/dbtns visual language as
+     the rest of the docking bay, one row per item type with a qty input + action
+     button(s). Regression fix (item E): each of these is now a real .dockFloatPanel
+     (.hud.popupPanel) -- its show/hide, close button (via makePanelManageable's
+     opts.onClose) and internal scroll region all come from that same shared system,
+     the old bespoke .dockSubPanel display toggle + absolutely-positioned
+     .dockCloseBtn "X" (which duplicated what the shared panel chrome now provides)
+     are gone. */
   .dockSubRow{
     display:flex; align-items:center; justify-content:space-between; gap:6px;
     font-size:12px; margin:6px 0; padding-bottom:6px; border-bottom:1px solid rgba(109,255,194,0.12);
@@ -1142,7 +1224,14 @@
        28vh just below) so the two stay proportionally clear of each other on any
        touch device/orientation this block applies to, not just the common ones. */
     #itemInspector{ min-height:190px; height:min(260px,34vh); max-height:min(260px,34vh); }
-    #eventLog{ height:min(260px,34vh); }
+    /* regression fix (item F): EVENT LOG's base (desktop) stylesheet rule carries a
+       min-height:210px floor -- per the CSS sizing spec, min-height always wins over
+       a smaller max-height/height, so without overriding it here too, this block's
+       own height/max-height caps were silently ignored on any touch device short
+       enough for 34vh to compute under 210px, and EVENT LOG rendered at its full
+       210px+ regardless -- tall enough to climb up into TELEMETRY above it. Matches
+       ITEM INSPECTOR's own min-height override just above for the same reason. */
+    #eventLog{ min-height:0; height:min(260px,34vh); }
     #inspectorViewWrap{ height:76px; }
     /* uncapped, OVERVIEW's list defaults to 38vh (see the base stylesheet rule) --
        fine on a typical tall phone, but leaves less guaranteed clearance above
@@ -1232,7 +1321,11 @@
        same ceiling, which is what actually keeps them visually matched AND clear
        of their neighbors -- this ceiling is set to comfortably clear TELEMETRY's
        own (already-trimmed) bottom edge above EVENT LOG. */
-    #eventLog{bottom:calc(6px + env(safe-area-inset-bottom,0px)); left:6px; max-height:min(112px,30vh);}
+    /* regression fix (item F): same min-height trap as the general (pointer:coarse)
+       block above, worse here since this breakpoint's cap (112px/30vh) is even
+       smaller than the base min-height:210px it would otherwise lose to -- override
+       it to 0 so this block's own max-height actually governs. */
+    #eventLog{bottom:calc(6px + env(safe-area-inset-bottom,0px)); left:6px; min-height:0; height:auto; max-height:min(112px,30vh);}
     #eventLog .hdr{font-size:12px; padding:3px 8px;}
     #eventLog .list{max-height:48px; font-size:9px;}
     #eventLog .chatInputRow{padding:3px 8px 3px 6px;}
@@ -1506,20 +1599,6 @@
   </div>
 </div>
 
-<div class="hud popupPanel" id="equipmentPanel">
-  <div class="phdr"><span>EQUIPMENT</span><button id="btnCloseEquipment">✕</button></div>
-  <div class="popupBody">
-    <div class="psection" style="margin-top:0;">WEAPON</div>
-    <div id="equipWeaponList"></div>
-    <div class="psection">SHIELD</div>
-    <div id="equipShieldList"></div>
-    <div class="psection">MINING LASER</div>
-    <div id="equipMiningList"></div>
-    <div class="psection">AMMO — IRON BULLETS (FIELD RELOAD)</div>
-    <div id="equipAmmoList"></div>
-  </div>
-</div>
-
 <div class="hud popupPanel" id="starMapPanel">
   <div class="phdr"><span>STAR MAP</span><button id="btnCloseStarMap">✕</button></div>
   <div class="popupBody">
@@ -1577,8 +1656,15 @@
 
 <div class="hud popupPanel" id="walletPanel">
   <!-- item 11: "Wallet" renamed to "Data Pad" -- id stays walletPanel throughout (see
-       naming-stability rule), this is a display-label-only change -->
-  <div class="phdr"><span>DATA PAD</span><button id="btnCloseWallet">✕</button></div>
+       naming-stability rule), this is a display-label-only change. Regression fix:
+       the panel used to carry BOTH this inner .phdr ("DATA PAD" + X) AND the outer
+       drag-strip chrome from makePanelManageable (previously mistitled "WALLET"),
+       producing two stacked, mismatched title bars. There is now exactly one title
+       bar: the outer strip, titled "DATA PAD", with its close control folded in via
+       opts.onClose below. btnCloseWallet is kept as a hidden node purely so any
+       stray getElementById('btnCloseWallet') reference elsewhere doesn't throw --
+       its close functionality now lives on the strip's own close button. -->
+  <button id="btnCloseWallet" style="display:none;"></button>
   <div class="popupBody">
     <div class="walletTabs">
       <button class="clickable" id="btnWalletTabLedger">LEDGER</button>
@@ -1630,16 +1716,26 @@
       <div class="psection">MANUFACTURING PLANS</div>
       <div id="statBlueprints"><div class="prow"><span>NONE KNOWN</span><span></span></div></div>
     </div>
-    <!-- item 6 bugfix: EQUIPMENT used to bridge out by CLOSING the Data Pad and opening
-         the standalone equipment popup on top, which made the tab bar / credits row
-         disappear while "on" the Equipment tab -- unlike every other tab. Now the Data
-         Pad stays open (tab bar + fixed CREDITS/KNOWLEDGE row visible, EQUIPMENT shown
-         active) and the equipment popup opens ALONGSIDE it instead of replacing it; this
-         section is just a short pointer since the actual equip UI still lives in that
-         independently-draggable popup (not worth the risk of re-parenting its whole
-         DOM/logic into an inline tab section this late in the pass). -->
+    <!-- regression fix (item A): EQUIPMENT used to bridge out to a fully separate
+         standalone floating popup that opened directly on top of the Data Pad,
+         producing two overlapping panels with interleaved, illegible text. That
+         standalone panel is now gone -- this IS the real equipment UI, a normal
+         tab-content section within the Data Pad's own tab system exactly like
+         LEDGER/STATS/MEDALS/LOANS/MAIL (see refreshEquipmentPanel, unchanged --
+         it only ever populated these same #equipWeaponList/etc ids by getElementById,
+         so moving their parent into the Data Pad required no logic changes). The
+         legacy standalone-popup entry point (toggleEquipmentPanel, still used by the
+         hidden/legacy #btnEquipment) now just opens this same tab instead of a
+         second panel -- see toggleEquipmentPanel below. -->
     <div class="walletTabSection" id="walletEquipmentSection">
-      <div class="prow"><span>Equipment editor is open in its own panel — drag it alongside the Data Pad.</span><span></span></div>
+      <div class="psection" style="margin-top:0;">WEAPON</div>
+      <div id="equipWeaponList"></div>
+      <div class="psection">SHIELD</div>
+      <div id="equipShieldList"></div>
+      <div class="psection">MINING LASER</div>
+      <div id="equipMiningList"></div>
+      <div class="psection">AMMO — IRON BULLETS (FIELD RELOAD)</div>
+      <div id="equipAmmoList"></div>
     </div>
     <div class="walletTabSection" id="walletMedalsSection">
       <div id="fameHeaderRow"></div>
@@ -1659,13 +1755,13 @@
       <div class="psection">STATUS</div>
       <div class="prow"><span>Missed Payments</span><span id="loansMissedRead">0 / 3</span></div>
       <div class="prow"><span>Bounty Status</span><span id="loansBountyRead">CLEAR</span></div>
-      <div class="prow" style="margin-top:6px;">
-        <input type="number" id="loansPayInput" min="0" placeholder="AMOUNT" style="flex:1;">
-        <button class="cmdbtn" id="btnLoansPay" style="margin-left:6px;">PAY DOWN</button>
-      </div>
-      <!-- item 8: loans can only be paid while DOCKED at a station -->
-      <div class="prow" id="loansPayDockNote" style="font-size:10px; color:var(--danger); margin-top:4px; display:none;"><span>MUST BE DOCKED AT A STATION TO PAY DOWN A LOAN.</span><span></span></div>
-      <div class="prow" style="font-size:10px; color:var(--phosphor-dim); margin-top:4px;"><span>Payments can only be made while DOCKED at any station (Data Pad LOANS tab or the station's FINANCE OFFICE). Due every in-game WEEK.</span><span></span></div>
+      <!-- item 7 FIX: this tab used to have its own PAY DOWN input/button here too,
+           duplicating the one now in the station's FINANCE OFFICE panel -- but loan
+           payments only ever work while DOCKED (see item 8's dock note, formerly
+           below this box), and the Data Pad is reachable in space, so that box was a
+           dead/misleading control most of the time. This tab is read-only info now;
+           the FINANCE OFFICE panel (while docked) is the only place to actually pay. -->
+      <div class="prow" style="font-size:10px; color:var(--phosphor-dim); margin-top:6px;"><span>Read-only here. Pay down a loan at any station's FINANCE OFFICE while docked. Due every in-game WEEK.</span><span></span></div>
     </div>
     <div class="walletTabSection" id="walletMailSection">
       <div class="psection" style="margin-top:0;">COMPOSE</div>
@@ -1727,6 +1823,10 @@
   <div class="settingsRow">
     <label>AFK AUTO-LOGOUT (<span id="afkTimeoutReadout">10</span> MIN)</label>
     <input type="range" id="afkTimeoutSlider" min="10" max="30" step="1" value="10">
+  </div>
+  <div class="settingsRow">
+    <label>PANEL BACKGROUND OPACITY (<span id="panelOpacityReadout">72</span>%)</label>
+    <input type="range" id="panelOpacitySlider" min="20" max="100" step="1" value="72">
   </div>
   <div class="dbtns">
     <button class="cmdbtn" id="btnOpenHelp">HELP</button>
@@ -1941,15 +2041,9 @@
   </div>
 </div>
 
-<div class="hud" id="dockedPanel">
-  <!-- item 13: dockMainPanel is now just the "nothing open" placeholder state --
-       #dockedPanel itself is hidden whenever this is the active sub-panel (see
-       showDockSubPanel), so it never actually needs to render anything. -->
-  <div id="dockMainPanel" class="dockSubPanel show"></div>
-
-  <div id="dockCargoPanel" class="dockSubPanel">
-    <!-- item 13: universal top-right close button -->
-    <button class="dockCloseBtn" data-dockclose="1" aria-label="Close">✕</button>
+<div id="dockedPanel">
+  <div id="dockCargoPanel" class="hud popupPanel dockFloatPanel">
+    <div class="popupBody">
     <div class="sub" style="color:var(--amber); text-align:left;">SELL CARGO</div>
     <div style="color:var(--phosphor-dim); font-size:11px; margin-top:2px;">CREDITS: <span id="dockCargoCreditsRead">0</span> cr</div>
     <div id="dockCargoGrid" style="margin-top:6px;"></div>
@@ -1964,11 +2058,11 @@
     <div class="dbtns" style="margin-top:14px;">
       <button class="cmdbtn" id="btnDockCargoBack">◀ BACK</button>
     </div>
+    </div>
   </div>
 
-  <div id="dockMarketPanel" class="dockSubPanel">
-    <!-- item 13: universal top-right close button -->
-    <button class="dockCloseBtn" data-dockclose="1" aria-label="Close">✕</button>
+  <div id="dockMarketPanel" class="hud popupPanel dockFloatPanel">
+    <div class="popupBody">
     <div class="sub" style="color:var(--amber); text-align:left;">STATION MARKET</div>
     <div style="color:var(--phosphor-dim); font-size:11px; margin-top:2px;">CREDITS: <span id="dockMarketCreditsRead">0</span> cr</div>
     <div id="marketGrid" style="margin-top:6px;"></div>
@@ -1983,11 +2077,11 @@
     <div class="dbtns" style="margin-top:14px;">
       <button class="cmdbtn" id="btnDockMarketBack">◀ BACK</button>
     </div>
+    </div>
   </div>
 
-  <div id="dockAuctionPanel" class="dockSubPanel">
-    <!-- item 13: universal top-right close button -->
-    <button class="dockCloseBtn" data-dockclose="1" aria-label="Close">✕</button>
+  <div id="dockAuctionPanel" class="hud popupPanel dockFloatPanel">
+    <div class="popupBody">
     <div class="sub" style="color:var(--amber); text-align:left;">AUCTION HOUSE — PLAYER LISTINGS</div>
     <div style="color:var(--phosphor-dim); font-size:11px; margin-top:2px;">CREDITS: <span id="auctionCreditsRead">0</span> cr &nbsp;·&nbsp; YOUR LISTINGS HERE: <span id="auctionMyListingCountRead">0 / 4</span></div>
     <div class="psection" style="margin-top:10px;">LIST AN ITEM FROM STATION STORAGE (1 CR LISTING FEE)</div>
@@ -2008,11 +2102,11 @@
     <div class="dbtns" style="margin-top:14px;">
       <button class="cmdbtn" id="btnDockAuctionBack">◀ BACK</button>
     </div>
+    </div>
   </div>
 
-  <div id="dockGovPanel" class="dockSubPanel">
-    <!-- item 13: universal top-right close button -->
-    <button class="dockCloseBtn" data-dockclose="1" aria-label="Close">✕</button>
+  <div id="dockGovPanel" class="hud popupPanel dockFloatPanel">
+    <div class="popupBody">
     <div class="sub" style="color:var(--amber); text-align:left;">SECTOR GOVERNMENT — GOVERNMENT TRUST</div>
     <div class="drow"><span>GOVERNMENT TRUST BALANCE</span><span id="govTrustBalanceRead">0 cr</span></div>
     <!-- item 10: live countdown to next UBI claim -->
@@ -2026,11 +2120,11 @@
       <button class="cmdbtn" id="btnWithdrawUbi">WITHDRAW UBI</button>
       <button class="cmdbtn" id="btnDockGovBack">◀ BACK</button>
     </div>
+    </div>
   </div>
 
-  <div id="dockFittingPanel" class="dockSubPanel">
-    <!-- item 13: universal top-right close button -->
-    <button class="dockCloseBtn" data-dockclose="1" aria-label="Close">✕</button>
+  <div id="dockFittingPanel" class="hud popupPanel dockFloatPanel">
+    <div class="popupBody">
     <div class="sub" style="color:var(--amber); text-align:left;">FITTING — EQUIP OWNED GEAR (DOCKED ONLY)</div>
     <div class="psection" style="margin-top:0;">WEAPON SYSTEMS</div>
     <div id="fitWeaponList"></div>
@@ -2041,21 +2135,21 @@
     <div class="dbtns" style="margin-top:14px;">
       <button class="cmdbtn" id="btnDockFittingBack">◀ BACK</button>
     </div>
+    </div>
   </div>
 
-  <div id="dockManufacturingPanel" class="dockSubPanel">
-    <!-- item 13: universal top-right close button -->
-    <button class="dockCloseBtn" data-dockclose="1" aria-label="Close">✕</button>
+  <div id="dockManufacturingPanel" class="hud popupPanel dockFloatPanel">
+    <div class="popupBody">
     <div class="sub" style="color:var(--amber); text-align:left;">MANUFACTURING — BUILT ITEMS GO TO STATION STORAGE</div>
     <div id="mfgRecipeList"></div>
     <div class="dbtns" style="margin-top:14px;">
       <button class="cmdbtn" id="btnDockManufacturingBack">◀ BACK</button>
     </div>
+    </div>
   </div>
 
-  <div id="dockLibraryPanel" class="dockSubPanel">
-    <!-- item 13: universal top-right close button -->
-    <button class="dockCloseBtn" data-dockclose="1" aria-label="Close">✕</button>
+  <div id="dockLibraryPanel" class="hud popupPanel dockFloatPanel">
+    <div class="popupBody">
     <div class="sub" style="color:var(--amber); text-align:left;">LIBRARY — MEMORY CUBES &amp; SKILL BOOKS (TO STATION STORAGE)</div>
     <div style="color:var(--phosphor-dim); font-size:11px; margin-top:2px;">CREDITS: <span id="libraryCreditsRead">0</span> cr &nbsp;·&nbsp; KNOWLEDGE: <span id="libraryKnowledgeRead">0</span></div>
     <div id="libraryActiveCraft" style="margin-top:8px; display:none;"></div>
@@ -2068,11 +2162,11 @@
     <div class="dbtns" style="margin-top:14px;">
       <button class="cmdbtn" id="btnDockLibraryBack">◀ BACK</button>
     </div>
+    </div>
   </div>
 
-  <div id="dockStoragePanel" class="dockSubPanel">
-    <!-- item 13: universal top-right close button -->
-    <button class="dockCloseBtn" data-dockclose="1" aria-label="Close">✕</button>
+  <div id="dockStoragePanel" class="hud popupPanel dockFloatPanel">
+    <div class="popupBody">
     <div class="sub" style="color:var(--amber); text-align:left;">CLICK AN ITEM TO MOVE IT</div>
     <div class="storageGridWrap">
       <div>
@@ -2100,11 +2194,11 @@
     <div class="dbtns" style="margin-top:14px;">
       <button class="cmdbtn" id="btnDockStorageBack">◀ BACK</button>
     </div>
+    </div>
   </div>
 
-  <div id="dockShipyardPanel" class="dockSubPanel">
-    <!-- item 13: universal top-right close button -->
-    <button class="dockCloseBtn" data-dockclose="1" aria-label="Close">✕</button>
+  <div id="dockShipyardPanel" class="hud popupPanel dockFloatPanel">
+    <div class="popupBody">
     <div class="sub" style="color:var(--amber); text-align:left;">FINANCE OFFICE</div>
     <div class="drow"><span>CURRENT VESSEL</span><span id="shipyardCurrentRead">—</span></div>
     <div class="drow"><span>YOUR CREDITS</span><span id="shipyardCreditsRead">0 cr</span></div>
@@ -2133,13 +2227,13 @@
     <div class="dbtns" style="margin-top:14px;">
       <button class="cmdbtn" id="btnDockShipyardBack">◀ BACK</button>
     </div>
+    </div>
   </div>
 
   <!-- quest-giver offices (v0.11.0): one instance per STATION -- every readout/list
        below is re-rendered for whichever station is docked (see renderQuestPanel) -->
-  <div id="dockNavyPanel" class="dockSubPanel">
-    <!-- item 13: universal top-right close button -->
-    <button class="dockCloseBtn" data-dockclose="1" aria-label="Close">✕</button>
+  <div id="dockNavyPanel" class="hud popupPanel dockFloatPanel">
+    <div class="popupBody">
     <div class="sub" style="color:var(--amber); text-align:left;">GALACTIC NAVY OFFICE — BOUNTY MISSIONS</div>
     <div class="drow"><span>OFFICE</span><span id="navyStationRead">—</span></div>
     <div class="drow"><span>NEXT NEW CONTRACT</span><span id="navyNextQuestRead">—</span></div>
@@ -2157,11 +2251,11 @@
     <div class="dbtns" style="margin-top:14px;">
       <button class="cmdbtn" id="btnDockNavyBack">◀ BACK</button>
     </div>
+    </div>
   </div>
 
-  <div id="dockMiningPanel" class="dockSubPanel">
-    <!-- item 13: universal top-right close button -->
-    <button class="dockCloseBtn" data-dockclose="1" aria-label="Close">✕</button>
+  <div id="dockMiningPanel" class="hud popupPanel dockFloatPanel">
+    <div class="popupBody">
     <div class="sub" style="color:var(--amber); text-align:left;">MINING CORP OFFICE — ORE ORDERS</div>
     <div class="drow"><span>OFFICE</span><span id="miningStationRead">—</span></div>
     <div class="drow"><span>NEXT NEW CONTRACT</span><span id="miningNextQuestRead">—</span></div>
@@ -2173,11 +2267,11 @@
     <div class="dbtns" style="margin-top:14px;">
       <button class="cmdbtn" id="btnDockMiningBack">◀ BACK</button>
     </div>
+    </div>
   </div>
 
-  <div id="dockTransportPanel" class="dockSubPanel">
-    <!-- item 13: universal top-right close button -->
-    <button class="dockCloseBtn" data-dockclose="1" aria-label="Close">✕</button>
+  <div id="dockTransportPanel" class="hud popupPanel dockFloatPanel">
+    <div class="popupBody">
     <div class="sub" style="color:var(--amber); text-align:left;">TRANSPORTATION GUILD — DELIVERY CONTRACTS</div>
     <div class="drow"><span>OFFICE</span><span id="transportStationRead">—</span></div>
     <div class="drow"><span>NEXT NEW CONTRACT</span><span id="transportNextQuestRead">—</span></div>
@@ -2188,6 +2282,7 @@
     <div id="transportActiveQuestList" style="margin-top:8px;"></div>
     <div class="dbtns" style="margin-top:14px;">
       <button class="cmdbtn" id="btnDockTransportBack">◀ BACK</button>
+    </div>
     </div>
   </div>
 </div>
@@ -2242,9 +2337,9 @@
 // compatibility depends on it. Add new keys, don't rename old ones.
 
 // ---------- version / build info (shown in the ESC settings menu) ----------
-const GAME_VERSION = "0.20.1";
+const GAME_VERSION = "0.20.3";
 const GAME_LAST_EDITED = "2026-09-24";
-const GAME_BUILD_TIME = "13:26 PT"; // wall-clock time this build was published, not just the date
+const GAME_BUILD_TIME = "20:28 PT"; // wall-clock time this build was published, not just the date
 
 // ---------- update-available banner ----------
 // Periodically re-fetches this very page (same-origin -- works identically whether
@@ -3458,22 +3553,21 @@ function sellStoredShip(instId){
   if(typeof renderDockShipyardPanel === 'function') renderDockShipyardPanel();
   if(typeof renderDockStorageRows === 'function') renderDockStorageRows();
 }
-// item 4c: financing -- delivers the new ship into STATION STORAGE as a real item
-// (see addShipToStationStorage) same as before, but SHIP financing now goes onto its
-// own shipLoanBalance (not the shared loanPrincipal gear balance) so "only one
-// financed ship loan active at a time" can actually be enforced below.
-// item 9 bugfix/rework: this used to deduct the ship's FULL cost from credits
-// outright (only financing a shortfall if the player couldn't afford it), which is
-// buying a ship, not financing one, and the UI called it "BUY"/"PURCHASED" to match.
-// DESIGN DECISION (documented per the spec): financing a ship now ALWAYS costs
-// exactly cls.cost (8000 cr Wayfarer / 9500 cr Prospector) up front, deducted from
-// credits as a financing fee -- and that same amount becomes the loan's principal on
-// shipLoanBalance, paid down over time via the existing weekly mortgage-payment
-// system (LOAN_PAYMENT_INTERVAL_MS/processLoanInterestTick). This is the simplest
-// interpretation consistent with "just -8000/-9500 credits to finance" while still
-// leaving a real, payable-down loan behind (rather than the fee alone meaning nothing
-// is actually financed) -- and "only one ship loan at a time" now applies uniformly,
-// regardless of the player's credit balance at financing time.
+// item 4c/FIX: financing -- delivers the new ship into STATION STORAGE as a real item
+// (see addShipToStationStorage), and SHIP financing goes onto its own shipLoanBalance
+// (not the shared loanPrincipal gear balance) so "only one financed ship loan active
+// at a time" can actually be enforced below.
+// CORRECTED DESIGN (this was previously implemented backwards -- financing a ship
+// deducted the ship's cost from the player's CURRENT credits up front and blocked the
+// action entirely if they couldn't afford that amount, which made "financing" require
+// already having the money -- exactly backwards from what financing means).
+// Financing a ship costs the player NOTHING up front and has NO credit-balance
+// requirement whatsoever -- the player's credits are completely unchanged the instant
+// they finance. The cls.cost (8000 cr Wayfarer / 9500 cr Prospector) is purely the
+// LOAN PRINCIPAL added to shipLoanBalance, to be paid down over time via the existing
+// weekly mortgage-payment system (LOAN_PAYMENT_INTERVAL_MS/processLoanInterestTick).
+// "Only one ship loan at a time" still applies (see the shipLoanBalance>0 guard below)
+// -- that restriction is legitimate and unrelated to the credits bug.
 function buyNewShip(classKey){
   const cls = SHIP_CLASSES[classKey];
   if(!cls) return;
@@ -3481,20 +3575,16 @@ function buyNewShip(classKey){
     flashMessage('ALREADY FINANCING A SHIP — PAY IT OFF FIRST', 'warn');
     return;
   }
-  const fee = cls.cost;
-  if(bountyCredits < fee){
-    flashMessage('NOT ENOUGH CREDITS FOR THE FINANCING FEE (' + fee + ' CR)', 'warn');
-    return;
-  }
-  bountyCredits -= fee;
-  addLedgerEntry(-fee, 'Financed ' + cls.label);
-  shipLoanBalance += fee;
+  const principal = cls.cost;
+  // no credit deduction, no balance check -- financing gets you the ship for free,
+  // up front, in exchange for taking on a loan you pay down over time.
+  shipLoanBalance += principal;
   if(nextLoanPaymentDueMs === 0) nextLoanPaymentDueMs = Date.now() + LOAN_PAYMENT_INTERVAL_MS;
   const inst = { instId: nextShipInstanceId++, classKey, name: nextShipName(classKey) };
   addShipToStationStorage(inst, activeStationEntry().id);
   // item 4c/9: explicit delivery notification, "FINANCED" not "BOUGHT"/"PURCHASED"
   flashMessage('YOUR ' + cls.label.toUpperCase() + ' WAS DELIVERED TO YOUR ON-STATION STORAGE. (FINANCED)', 'good');
-  logEvent('FINANCED ' + inst.name.toUpperCase() + ' FOR ' + fee + ' CR — LOAN BALANCE ' + Math.round(shipLoanBalance) + ' CR — STORED AT ' + activeStationEntry().name.toUpperCase(), 'good');
+  logEvent('FINANCED ' + inst.name.toUpperCase() + ' — LOAN PRINCIPAL ' + principal + ' CR — LOAN BALANCE ' + Math.round(shipLoanBalance) + ' CR — STORED AT ' + activeStationEntry().name.toUpperCase(), 'good');
   updateCargoUI();
   updateDockedPanel();
   if(typeof renderDockShipyardPanel === 'function') renderDockShipyardPanel();
@@ -7107,37 +7197,23 @@ function updateDockedPanel(){
   repairBtn.textContent = missingHp <= 0 ? 'NO REPAIRS NEEDED' : ('REPAIR HULL (' + fullRepairCost + ' CR)');
 }
 
-// switches which of the docking-bay sub-panels is visible -- all live inside the
-// same #dockedPanel modal. item 8: OUTFITTING's old per-item buy buttons are gone,
-// replaced by the MARKET panel; item 9: dockCargoPanel is no longer a sub-panel of
-// its own -- SELL CARGO opens the flight-HUD cargo hold box directly instead (see
-// btnDockCargoPanel's click handler below).
-// item 13: station layout rework. The main menu's OPTIONS moved out of dockMainPanel
-// into the always-visible #dockNavColumn (a fixed left-side vertical list, toggled
-// alongside #dockedPanel in enterDock/exitDock, see below) -- dockMainPanel itself is
-// now just the "nothing open" placeholder state: showDockSubPanel('dockMainPanel') is
-// still how every BACK/X button asks to close whatever sub-panel is open (same id, same
-// callers, naming stability preserved), it just also hides the #dockedPanel container
-// entirely now so the full-screen spinning ship view and nav column are unobstructed.
-// Opening any REAL sub-panel instead shows #dockedPanel as a big opaque panel filling
-// the rest of the screen (see its CSS), with the nav column still visible alongside it.
-function showDockSubPanel(name){
-  ['dockMainPanel','dockCargoPanel','dockStoragePanel','dockShipyardPanel','dockMarketPanel','dockAuctionPanel','dockGovPanel','dockFittingPanel','dockManufacturingPanel','dockLibraryPanel','dockNavyPanel','dockMiningPanel','dockTransportPanel'].forEach(id=>{
-    const el = document.getElementById(id);
-    if(el) el.classList.toggle('show', id === name);
-  });
-  const dp = document.getElementById('dockedPanel');
-  if(dp) dp.classList.toggle('show', docked && name !== 'dockMainPanel');
-  // item 13: highlight whichever nav-column option corresponds to the open sub-panel
-  const navBtnId = { dockCargoPanel:'btnDockCargoPanel', dockStoragePanel:'btnDockStoragePanel',
-    dockShipyardPanel:'btnDockShipyardPanel', dockMarketPanel:'btnDockMarketPanel',
-    dockAuctionPanel:'btnDockAuctionPanel', dockGovPanel:'btnDockGovPanel',
-    dockFittingPanel:'btnDockFittingPanel', dockManufacturingPanel:'btnDockManufacturingPanel',
-    dockLibraryPanel:'btnDockLibraryPanel', dockNavyPanel:'btnDockNavyPanel',
-    dockMiningPanel:'btnDockMiningPanel', dockTransportPanel:'btnDockTransportPanel' }[name];
-  document.querySelectorAll('.dockNavList .cmdbtn').forEach(btn=>{
-    btn.classList.toggle('active', navBtnId && btn.id === navBtnId);
-  });
+// regression fix (item E): station sub-panels used to all live inside one shared
+// #dockedPanel modal, shown ONE at a time (opening a second one force-closed
+// whatever was already open) as a full-screen opaque overlay. Each sub-panel is now
+// its own independent floating window (.dockFloatPanel, see CSS) that opens/closes
+// on its own -- opening MARKET no longer touches LIBRARY if it's already open, and
+// any number can be open together, exactly like the main HUD's own floating panels.
+const DOCK_SUBPANEL_IDS = ['dockCargoPanel','dockStoragePanel','dockShipyardPanel','dockMarketPanel',
+  'dockAuctionPanel','dockGovPanel','dockFittingPanel','dockManufacturingPanel','dockLibraryPanel',
+  'dockNavyPanel','dockMiningPanel','dockTransportPanel'];
+// item 13: highlight whichever nav-column option(s) correspond to currently-open sub-panels
+const DOCK_NAV_BTN_ID = { dockCargoPanel:'btnDockCargoPanel', dockStoragePanel:'btnDockStoragePanel',
+  dockShipyardPanel:'btnDockShipyardPanel', dockMarketPanel:'btnDockMarketPanel',
+  dockAuctionPanel:'btnDockAuctionPanel', dockGovPanel:'btnDockGovPanel',
+  dockFittingPanel:'btnDockFittingPanel', dockManufacturingPanel:'btnDockManufacturingPanel',
+  dockLibraryPanel:'btnDockLibraryPanel', dockNavyPanel:'btnDockNavyPanel',
+  dockMiningPanel:'btnDockMiningPanel', dockTransportPanel:'btnDockTransportPanel' };
+function renderDockSubPanelContent(name){
   if(name === 'dockCargoPanel') renderDockCargoPanel();
   if(name === 'dockStoragePanel') renderDockStorageRows();
   if(name === 'dockShipyardPanel') renderDockShipyardPanel(); // item 16: renders STATION LOAN too
@@ -7151,12 +7227,26 @@ function showDockSubPanel(name){
   if(name === 'dockMiningPanel') renderQuestPanel('mining');
   if(name === 'dockTransportPanel') renderQuestPanel('transport');
 }
-// item 13: every sub-panel's top-right "X" (see .dockCloseBtn) closes back to the base
-// state -- one delegated listener on the shared #dockedPanel container instead of
-// wiring each button individually.
-document.getElementById('dockedPanel').addEventListener('click', (e)=>{
-  if(e.target.closest('[data-dockclose]')) showDockSubPanel('dockMainPanel');
-});
+// opens (or brings forward + re-renders) a single station sub-panel WITHOUT closing
+// any other sub-panel that's already open. 'dockMainPanel' is kept as a special
+// legacy name (naming-stability -- the "go back to base state" callers already used
+// it) meaning "close every sub-panel", used by enterDock/exitDock to reset state.
+function showDockSubPanel(name){
+  if(name === 'dockMainPanel'){ DOCK_SUBPANEL_IDS.forEach(closeDockSubPanel); return; }
+  const el = document.getElementById(name);
+  if(el) el.classList.add('show');
+  const navBtnId = DOCK_NAV_BTN_ID[name];
+  const btn = navBtnId && document.getElementById(navBtnId);
+  if(btn) btn.classList.add('active');
+  renderDockSubPanelContent(name);
+}
+function closeDockSubPanel(name){
+  const el = document.getElementById(name);
+  if(el) el.classList.remove('show');
+  const navBtnId = DOCK_NAV_BTN_ID[name];
+  const btn = navBtnId && document.getElementById(navBtnId);
+  if(btn) btn.classList.remove('active');
+}
 
 function enterDock(station){
   if(docked) return;
@@ -7205,7 +7295,9 @@ function exitDock(){
   // cancel/refund here.
   ['telemetry','clockPanel','overview','eventLog','targetPanel','itemInspector','centerReticle','spawnAlert','zoneAlert','lockAlert']
     .forEach(id=>{ const el = document.getElementById(id); if(el) el.style.display = ''; });
-  document.getElementById('dockedPanel').classList.remove('show');
+  // regression fix (item E): close every individual floating station sub-panel
+  // (there's no longer a single shared #dockedPanel box to hide)
+  showDockSubPanel('dockMainPanel');
   document.getElementById('dockNavColumn').classList.remove('show');
   // return to space close to the belt warp gate rather than just "somewhere outward
   // from the station hull" -- the station and its belt gate now sit ~3900 units apart,
@@ -7324,7 +7416,7 @@ document.getElementById('btnDockCargoPanel').addEventListener('click', ()=> show
 document.getElementById('btnDockCargoBack').addEventListener('click', ()=> {
   document.getElementById('dockCargoSellPrompt').style.display = 'none';
   dockSellActionStackId = null;
-  showDockSubPanel('dockMainPanel');
+  closeDockSubPanel('dockCargoPanel');
 });
 let dockSellActionStackId = null;
 function renderDockCargoPanel(){
@@ -7585,11 +7677,11 @@ document.getElementById('marketBuyConfirm').addEventListener('click', ()=>{
   addStationTax(activeStationEntry().id, tax);
 });
 document.getElementById('btnDockMarketPanel').addEventListener('click', ()=> showDockSubPanel('dockMarketPanel'));
-document.getElementById('btnDockMarketBack').addEventListener('click', ()=> showDockSubPanel('dockMainPanel'));
+document.getElementById('btnDockMarketBack').addEventListener('click', ()=> closeDockSubPanel('dockMarketPanel'));
 document.getElementById('btnDockAuctionPanel').addEventListener('click', ()=> showDockSubPanel('dockAuctionPanel'));
-document.getElementById('btnDockAuctionBack').addEventListener('click', ()=> showDockSubPanel('dockMainPanel'));
+document.getElementById('btnDockAuctionBack').addEventListener('click', ()=> closeDockSubPanel('dockAuctionPanel'));
 document.getElementById('btnDockGovPanel').addEventListener('click', ()=> showDockSubPanel('dockGovPanel'));
-document.getElementById('btnDockGovBack').addEventListener('click', ()=> showDockSubPanel('dockMainPanel'));
+document.getElementById('btnDockGovBack').addEventListener('click', ()=> closeDockSubPanel('dockGovPanel'));
 
 // ---------- Sector Government / station tax trust (signed-in players only) ----------
 // One row per (server, station_id) holding a running credit balance -- every station
@@ -8171,7 +8263,7 @@ document.getElementById('fitMiningList').addEventListener('click', (e)=>{
   if(e.target.closest('#btnFitMining')){ toggleMiningLaserEquip(); renderFittingPanel(); }
 });
 document.getElementById('btnDockFittingPanel').addEventListener('click', ()=> showDockSubPanel('dockFittingPanel'));
-document.getElementById('btnDockFittingBack').addEventListener('click', ()=> showDockSubPanel('dockMainPanel'));
+document.getElementById('btnDockFittingBack').addEventListener('click', ()=> closeDockSubPanel('dockFittingPanel'));
 
 // ---------- item 7: MANUFACTURING -- queue-built items from known blueprints ----------
 // one queue per recipe (keyed by blueprint type), holding how many units are still
@@ -8304,7 +8396,7 @@ document.getElementById('mfgRecipeList').addEventListener('click', (e)=>{
   startManufacturing(bpType, qty);
 });
 document.getElementById('btnDockManufacturingPanel').addEventListener('click', ()=> showDockSubPanel('dockManufacturingPanel'));
-document.getElementById('btnDockManufacturingBack').addEventListener('click', ()=> showDockSubPanel('dockMainPanel'));
+document.getElementById('btnDockManufacturingBack').addEventListener('click', ()=> closeDockSubPanel('dockManufacturingPanel'));
 
 // ---------- LIBRARY (Memory Cube crafting + Skill Book scribing) ----------
 // Available at every station. Two craftable items, both wall-clock-timed exactly like
@@ -8621,7 +8713,7 @@ function renderLibraryPanel(){
   }
 }
 document.getElementById('btnDockLibraryPanel').addEventListener('click', ()=> showDockSubPanel('dockLibraryPanel'));
-document.getElementById('btnDockLibraryBack').addEventListener('click', ()=> showDockSubPanel('dockMainPanel'));
+document.getElementById('btnDockLibraryBack').addEventListener('click', ()=> closeDockSubPanel('dockLibraryPanel'));
 document.getElementById('dockLibraryPanel').addEventListener('click', (e)=>{
   const cancelBtn = e.target.closest('#btnLibraryCancelCraft');
   if(cancelBtn){ openLibraryCancelConfirm(); return; }
@@ -8727,7 +8819,7 @@ function renderDockStorageRows(){
       }).join('');
 }
 document.getElementById('btnDockStoragePanel').addEventListener('click', ()=> showDockSubPanel('dockStoragePanel'));
-document.getElementById('btnDockStorageBack').addEventListener('click', ()=> { closeStorageMovePrompt(); showDockSubPanel('dockMainPanel'); });
+document.getElementById('btnDockStorageBack').addEventListener('click', ()=> { closeStorageMovePrompt(); closeDockSubPanel('dockStoragePanel'); });
 function addToStationStorage(itemType, qty, stationId){
   qty = Math.max(0, Math.round(qty));
   if(qty <= 0) return;
@@ -8832,7 +8924,7 @@ document.getElementById('dsMoveConfirm').addEventListener('click', ()=>{
 // from here. See activateShipInstance/boardStoredShip/sellStoredShip/buyNewShip/
 // financeStarterGear above (defined alongside the ship-ownership state).
 document.getElementById('btnDockShipyardPanel').addEventListener('click', ()=> showDockSubPanel('dockShipyardPanel'));
-document.getElementById('btnDockShipyardBack').addEventListener('click', ()=> showDockSubPanel('dockMainPanel'));
+document.getElementById('btnDockShipyardBack').addEventListener('click', ()=> closeDockSubPanel('dockShipyardPanel'));
 function renderDockShipyardPanel(){
   const curEl = document.getElementById('shipyardCurrentRead');
   if(!curEl) return;
@@ -8908,11 +9000,11 @@ document.getElementById('shipyardStoredShipsList').addEventListener('click', (e)
 
 // ---------- station LOAN section (item 16: now embedded in dockShipyardPanel) ----------
 document.getElementById('btnDockNavyPanel').addEventListener('click', ()=> showDockSubPanel('dockNavyPanel'));
-document.getElementById('btnDockNavyBack').addEventListener('click', ()=> showDockSubPanel('dockMainPanel'));
+document.getElementById('btnDockNavyBack').addEventListener('click', ()=> closeDockSubPanel('dockNavyPanel'));
 document.getElementById('btnDockMiningPanel').addEventListener('click', ()=> showDockSubPanel('dockMiningPanel'));
-document.getElementById('btnDockMiningBack').addEventListener('click', ()=> showDockSubPanel('dockMainPanel'));
+document.getElementById('btnDockMiningBack').addEventListener('click', ()=> closeDockSubPanel('dockMiningPanel'));
 document.getElementById('btnDockTransportPanel').addEventListener('click', ()=> showDockSubPanel('dockTransportPanel'));
-document.getElementById('btnDockTransportBack').addEventListener('click', ()=> showDockSubPanel('dockMainPanel'));
+document.getElementById('btnDockTransportBack').addEventListener('click', ()=> closeDockSubPanel('dockTransportPanel'));
 // item 4c: shows the COMBINED balance (ship + gear) here -- the DATA PAD's LOANS tab
 // (see renderLoansTab) breaks the two out individually
 function renderDockLoanPanel(){
@@ -10440,28 +10532,19 @@ document.getElementById('equipAmmoList').addEventListener('click', (e)=>{
   if(id === equippedAmmoStackId) unequipAmmoStack();
   else equipAmmoStack(id);
 });
-// item 6 bugfix: EQUIPMENT no longer force-closes the Data Pad (walletPanel) -- opening
-// Equipment from the Data Pad's EQUIPMENT tab must leave the Data Pad's tab bar and
-// credits/knowledge row visible. Opened from its own standalone HUD button (btnEquipment,
-// legacy/hidden per item 11) it still closes the OTHER unrelated popups as before.
-function toggleEquipmentPanel(show, keepWallet){
-  const panel = document.getElementById('equipmentPanel');
-  const invPanel = document.getElementById('inventoryPanel');
-  const smPanel = document.getElementById('starMapPanel');
-  const wPanel = document.getElementById('walletPanel');
-  const svPanel = document.getElementById('serverPanel');
-  const skPanel = document.getElementById('skillsPanel');
-  if(invPanel) invPanel.classList.remove('show');
-  if(smPanel) smPanel.classList.remove('show');
-  if(!keepWallet && wPanel) wPanel.classList.remove('show');
-  if(svPanel) svPanel.classList.remove('show');
-  if(skPanel) skPanel.classList.remove('show');
+// regression fix (item A): EQUIPMENT is now a real tab inside the Data Pad (see
+// #walletEquipmentSection above) rather than its own floating panel. This function
+// is kept (rather than deleted) purely as a compatibility shim for the legacy/hidden
+// #btnEquipment HUD button, which previously opened a standalone equipment popup --
+// it now just opens the Data Pad on the EQUIPMENT tab instead, the same place the
+// Data Pad's own EQUIPMENT tab button goes.
+function toggleEquipmentPanel(show){
+  const panel = document.getElementById('walletPanel');
   const willShow = show !== undefined ? show : !panel.classList.contains('show');
-  panel.classList.toggle('show', willShow);
-  if(willShow) refreshEquipmentPanel();
+  if(willShow) setWalletTab('equipment');
+  toggleWalletPanel(willShow);
 }
 document.getElementById('btnEquipment').addEventListener('click', ()=> toggleEquipmentPanel());
-document.getElementById('btnCloseEquipment').addEventListener('click', ()=> toggleEquipmentPanel(false));
 
 function findTarget(id){ return allTargets.find(a=>a.id===id); }
 
@@ -10962,9 +11045,13 @@ function setWalletTab(tab){
   document.getElementById('walletEquipmentSection').classList.toggle('active', tab==='equipment');
   document.getElementById('walletLoansSection').classList.toggle('active', tab==='loans');
   document.getElementById('walletMailSection').classList.toggle('active', tab==='mail');
-  // item 6: CREDITS/KNOWLEDGE readout row is now shown on EVERY tab (fixed, right below
-  // the tab bar) instead of only on LEDGER -- so the tab bar's position never shifts and
-  // the row is always visible regardless of active tab.
+  // regression fix (item B): CREDITS/KNOWLEDGE must ONLY be visible on the LEDGER tab
+  // (standing requirement from earlier in the project) -- a previous pass incorrectly
+  // pinned this row below the tab bar on every tab, which is what the Equipment-tab
+  // screenshot showed. Hide it everywhere except ledger.
+  const showBalance = tab === 'ledger';
+  document.getElementById('walletBalanceRow').style.display = showBalance ? '' : 'none';
+  document.getElementById('walletKnowledgeRow').style.display = showBalance ? '' : 'none';
   refreshWalletPanel();
 }
 document.getElementById('btnWalletTabMail').addEventListener('click', ()=> setWalletTab('mail'));
@@ -11033,6 +11120,7 @@ function refreshWalletPanel(){
     }
   }
   if(walletTab === 'medals') renderMedals();
+  if(walletTab === 'equipment') refreshEquipmentPanel();
   if(walletTab === 'loans') renderLoansTab();
   if(walletTab === 'mail') renderMailInbox();
 }
@@ -11041,15 +11129,11 @@ document.getElementById('btnCloseWallet').addEventListener('click', ()=> toggleW
 document.getElementById('btnWalletTabLedger').addEventListener('click', ()=> setWalletTab('ledger'));
 document.getElementById('btnWalletTabStats').addEventListener('click', ()=> setWalletTab('stats'));
 document.getElementById('btnWalletTabMedals').addEventListener('click', ()=> setWalletTab('medals'));
-// item 11: EQUIPMENT tab is a bridge -- rather than a risky full re-parenting of the
-// standalone equipment popup's DOM/logic into a walletTabSection, clicking this tab
-// closes the Data Pad and opens the (still fully independent) EQUIPMENT popup, which
-// satisfies "Equipment is reached via the Data Pad, not its own HUD button" (its old
-// dedicated HUD button is gone, see #btnEquipment's display:none wrapper above)
-// without touching the equip system's internals.
+// regression fix (item A): EQUIPMENT is a real inline tab now, same mechanism as
+// every other Data Pad tab -- no second panel involved.
 document.getElementById('btnWalletTabEquipment').addEventListener('click', ()=>{
   setWalletTab('equipment');
-  toggleEquipmentPanel(true, true);
+  refreshEquipmentPanel();
 });
 document.getElementById('btnWalletTabLoans').addEventListener('click', ()=> setWalletTab('loans'));
 // item 11: LOANS tab -- reads the financing state from item 4 (loanPrincipal is the
@@ -11071,38 +11155,10 @@ function renderLoansTab(){
     ? new Date(nextLoanPaymentDueMs).toLocaleString() : '—';
   document.getElementById('loansMissedRead').textContent = missedPaymentStreak + ' / 3';
   document.getElementById('loansBountyRead').textContent = hasBounty ? 'BOUNTY ACTIVE — HUNTERS INBOUND' : 'CLEAR';
-  const payBtn = document.getElementById('btnLoansPay');
-  // item 8: loans can only be paid down while DOCKED at a station (any station) --
-  // disable the button and label it accordingly when flying free in space.
-  if(payBtn) payBtn.disabled = (loanPrincipal + shipLoanBalance) <= 0 || bountyCredits <= 0 || !docked;
-  const payNote = document.getElementById('loansPayDockNote');
-  if(payNote) payNote.style.display = docked ? 'none' : '';
+  // item 7: this tab is read-only now (no PAY DOWN box) -- the actual payment
+  // control/handler lives only in the FINANCE OFFICE panel (see renderDockLoanPanel/
+  // its own pay button), which is only reachable while docked anyway.
 }
-document.getElementById('btnLoansPay').addEventListener('click', ()=>{
-  // item 8: hard-gate the actual payment action too (not just the disabled button --
-  // covers any other path that might call this handler)
-  if(!docked){ flashMessage('MUST BE DOCKED AT A STATION TO PAY LOANS', 'warn'); return; }
-  const input = document.getElementById('loansPayInput');
-  let amt = Math.round(parseFloat(input.value) || 0);
-  const totalOwed = loanPrincipal + shipLoanBalance;
-  amt = Math.max(0, Math.min(amt, bountyCredits, Math.ceil(totalOwed)));
-  if(amt <= 0) return;
-  bountyCredits -= amt;
-  addLedgerEntry(-amt, 'Loan payment');
-  // pay down the ship loan first (it's the exclusivity-gated one), then any remainder
-  // onto the gear/legacy balance
-  const towardShip = Math.min(amt, shipLoanBalance);
-  shipLoanBalance = Math.max(0, shipLoanBalance - towardShip);
-  const towardGear = amt - towardShip;
-  loanPrincipal = Math.max(0, loanPrincipal - towardGear);
-  flashMessage('PAID DOWN LOAN — -' + amt + ' CR', 'good');
-  logEvent('LOAN PAYMENT -' + amt + ' CR — SHIP BAL ' + Math.round(shipLoanBalance) + ' CR / GEAR BAL ' + Math.round(loanPrincipal) + ' CR', 'good');
-  input.value = '';
-  updateCargoUI();
-  updateDockedPanel();
-  renderLoansTab();
-  if(typeof renderDockLoanPanel === 'function') renderDockLoanPanel();
-});
 setWalletTab('ledger');
 // (v0.10.0) only lists the zones of the galaxy the player is currently in -- the
 // star map is an intra-galaxy drive; reaching another galaxy still means physically
@@ -11649,10 +11705,17 @@ function updateUniverseMapSelectionBar(){
   const sameGalaxy = !zone.galaxy || zone.galaxy === currentGalaxyKey();
   const warpBtn = document.getElementById('btnUniverseMapWarp');
   const autopilotBtn = document.getElementById('btnUniverseMapAutopilot');
+  // item 4 FIX: this was backwards -- it showed AUTOPILOT exactly for out-of-galaxy
+  // destinations, which autopilot can never actually reach (it never uses gates, and
+  // long-range warp/autopilot both only travel within the current galaxy -- see the
+  // comments on beginStarMapWarp/computeAutopilotRoute), and hid it for same-galaxy
+  // destinations, the only place it can ever do anything. AUTOPILOT now only offers
+  // itself alongside WARP for same-galaxy destinations; a different-galaxy selection
+  // gets neither button, just a message pointing at a gate instead.
   if(warpBtn) warpBtn.style.display = (!isHere && sameGalaxy) ? '' : 'none';
-  if(autopilotBtn) autopilotBtn.style.display = (!isHere && !sameGalaxy) ? '' : 'none';
+  if(autopilotBtn) autopilotBtn.style.display = (!isHere && sameGalaxy) ? '' : 'none';
   const hintEl = document.getElementById('universeMapSelectionHint');
-  if(hintEl) hintEl.textContent = isHere ? 'YOU ARE HERE' : (sameGalaxy ? 'WITHIN WARP RANGE' : 'ANOTHER GALAXY — GATE OR AUTOPILOT REQUIRED');
+  if(hintEl) hintEl.textContent = isHere ? 'YOU ARE HERE' : (sameGalaxy ? 'WITHIN WARP RANGE' : 'ANOTHER GALAXY — TRAVEL VIA A GALAXY GATE');
 }
 document.getElementById('btnOpenUniverseMap').addEventListener('click', ()=>{ toggleStarMapPanel(false); toggleUniverseMapPanel(true); });
 document.getElementById('btnCloseUniverseMap').addEventListener('click', ()=> toggleUniverseMapPanel(false));
@@ -12237,6 +12300,37 @@ if(afkSlider){
     try{ localStorage.setItem('voidDriftAfkTimeoutMin', String(afkTimeoutMinutes)); }catch(err){}
   });
 }
+// item 3: panel background opacity slider -- persisted the same way as the AFK
+// slider above (localStorage, restored on load), drives --panel-bg-opacity on
+// :root so every panel using var(--panel-bg) updates together. Stored as a 0..1
+// fraction; the slider itself shows/edits it as a 0-100 percent for readability.
+const PANEL_OPACITY_DEFAULT = 0.72, PANEL_OPACITY_MIN = 0.20, PANEL_OPACITY_MAX = 1.0;
+function loadPanelOpacity(){
+  try{
+    const raw = localStorage.getItem('voidDriftPanelOpacity');
+    const n = raw !== null ? parseFloat(raw) : NaN;
+    if(Number.isFinite(n)) return Math.max(PANEL_OPACITY_MIN, Math.min(PANEL_OPACITY_MAX, n));
+  }catch(e){}
+  return PANEL_OPACITY_DEFAULT;
+}
+function applyPanelOpacity(v){
+  document.documentElement.style.setProperty('--panel-bg-opacity', String(v));
+}
+let panelBgOpacity = loadPanelOpacity();
+applyPanelOpacity(panelBgOpacity);
+const panelOpacitySlider = document.getElementById('panelOpacitySlider');
+const panelOpacityReadout = document.getElementById('panelOpacityReadout');
+if(panelOpacitySlider){
+  panelOpacitySlider.value = String(Math.round(panelBgOpacity*100));
+  if(panelOpacityReadout) panelOpacityReadout.textContent = String(Math.round(panelBgOpacity*100));
+  panelOpacitySlider.addEventListener('input', (e)=>{
+    const pct = Math.max(PANEL_OPACITY_MIN*100, Math.min(PANEL_OPACITY_MAX*100, parseInt(e.target.value, 10) || Math.round(PANEL_OPACITY_DEFAULT*100)));
+    panelBgOpacity = pct/100;
+    applyPanelOpacity(panelBgOpacity);
+    if(panelOpacityReadout) panelOpacityReadout.textContent = String(pct);
+    try{ localStorage.setItem('voidDriftPanelOpacity', String(panelBgOpacity)); }catch(err){}
+  });
+}
 async function afkAutoLogout(){
   if(afkLoggingOut) return;
   afkLoggingOut = true;
@@ -12388,7 +12482,14 @@ function getPlayerSaveData(){
     // the one-time welcome email is never re-shown/re-sent after a reload.
     mutedPlayers: mutedPlayers.slice(),
     lastSeenNoticeId: lastSeenNoticeId,
-    welcomeEmailSent: welcomeEmailSent
+    welcomeEmailSent: welcomeEmailSent,
+    // item 6 FIX: the WALLET LEDGER's transaction history (creditLedger) was never
+    // included in the save data at all, so it started empty on every fresh load and
+    // looked "wiped" on every login even though nothing was actually resetting it in
+    // memory mid-session -- it just never survived a logout/reload in the first
+    // place. Already capped at LEDGER_MAX (100) entries by addLedgerEntry, so this
+    // never grows the save unboundedly.
+    creditLedger: creditLedger.map(e=> Object.assign({}, e))
   };
 }
 // Applies a previously-saved object to live game state. Written defensively --
@@ -12533,6 +12634,13 @@ function applyPlayerSaveData(d){
   if(Array.isArray(d.mutedPlayers)) mutedPlayers = d.mutedPlayers.slice();
   if(typeof d.lastSeenNoticeId === 'number') lastSeenNoticeId = d.lastSeenNoticeId;
   if(typeof d.welcomeEmailSent === 'boolean') welcomeEmailSent = d.welcomeEmailSent;
+  // item 6 FIX: restore the WALLET LEDGER transaction history saved above (see
+  // getPlayerSaveData's creditLedger comment) -- defensively re-capped at LEDGER_MAX
+  // in case an old/foreign save somehow carried more than that.
+  if(Array.isArray(d.creditLedger)){
+    creditLedger = d.creditLedger.map(e=> Object.assign({}, e));
+    if(creditLedger.length > LEDGER_MAX) creditLedger.length = LEDGER_MAX;
+  }
 
   if(typeof d.nextShipInstanceId === 'number') nextShipInstanceId = d.nextShipInstanceId;
   if(d.shipSerialCounters && typeof d.shipSerialCounters === 'object') shipSerialCounters = Object.assign({}, shipSerialCounters, d.shipSerialCounters);
@@ -16397,6 +16505,20 @@ function makePanelManageable(panel, opts){
 
   const ctrls = document.createElement('div');
   ctrls.className = 'panelCtrls clickable';
+  // item (regression fix): a panel that has NO separate inner .phdr title/close row
+  // of its own (opts.onClose set) gets its close (X) button folded into this same
+  // outer drag-strip control cluster, right next to collapse -- avoids ever having
+  // two stacked header bars with two different titles/close controls for one panel
+  // (see walletPanel/"Data Pad", which used to show "WALLET" here AND a redundant
+  // "DATA PAD" + X row directly below it).
+  if(typeof opts.onClose === 'function'){
+    const closeBtn = document.createElement('button');
+    closeBtn.type = 'button';
+    closeBtn.textContent = '✕';
+    closeBtn.title = 'Close';
+    closeBtn.addEventListener('click', (e)=>{ e.stopPropagation(); opts.onClose(); });
+    ctrls.appendChild(closeBtn);
+  }
   const collapseBtn = document.createElement('button');
   collapseBtn.type = 'button';
   collapseBtn.textContent = '−';
@@ -16480,7 +16602,15 @@ function makePanelManageable(panel, opts){
     const deficit = el.scrollHeight - el.clientHeight;
     if(deficit > 1){
       const cur = panel.getBoundingClientRect().height;
-      const need = Math.min(maxH(), Math.ceil(cur + deficit));
+      // regression fix (item D): this used to grow all the way up to the generic
+      // maxH() ceiling (90% of the viewport) with no awareness of whatever OTHER
+      // panel sits above it -- for #itemInspector (bottom-right, growing upward)
+      // that meant a long item description could grow it tall enough to climb up
+      // over #overview's bottom rows. opts.contentFitMaxH lets a specific panel's
+      // growth be capped well short of the panel above it; panels that don't pass
+      // it keep the old global 90vh ceiling.
+      const ceiling = typeof opts.contentFitMaxH === 'function' ? opts.contentFitMaxH() : maxH();
+      const need = Math.min(ceiling, Math.ceil(cur + deficit));
       // deliberately does NOT call lockPixelPosition()/lockPixelSize() -- unlike an
       // actual user-driven drag, this should stay a minimal nudge: a panel that's
       // never been manually moved is still anchored via the stylesheet's bottom/
@@ -16645,10 +16775,24 @@ const itemInspectorPanelApi = makePanelManageable(document.getElementById('itemI
 // it. These now guarantee a couple of grid rows / equip rows stay visible even at
 // minimum size, with .popupBody handling anything beyond that via internal scroll.
 makePanelManageable(document.getElementById('inventoryPanel'),  { title:'CARGO HOLD',  minW:230, minH:320 });
-makePanelManageable(document.getElementById('equipmentPanel'),  { title:'EQUIPMENT',   minW:230, minH:340 });
 makePanelManageable(document.getElementById('starMapPanel'),    { title:'STAR MAP',    minW:230, minH:220 });
-makePanelManageable(document.getElementById('walletPanel'),     { title:'WALLET',      minW:230, minH:320 });
+makePanelManageable(document.getElementById('walletPanel'),     { title:'DATA PAD',    minW:420, minH:460, onClose:()=> toggleWalletPanel(false) });
 makePanelManageable(document.getElementById('skillsPanel'),     { title:'SKILLS',      minW:250, minH:340 });
+// regression fix (item E): station sub-panels are now independent floating windows,
+// draggable/resizable via the same makePanelManageable system as every other HUD
+// panel, each closing only itself (see closeDockSubPanel) rather than a shared modal.
+makePanelManageable(document.getElementById('dockCargoPanel'),       { title:'SELL CARGO',          minW:260, minH:220, onClose:()=> closeDockSubPanel('dockCargoPanel') });
+makePanelManageable(document.getElementById('dockMarketPanel'),      { title:'MARKET',              minW:260, minH:220, onClose:()=> closeDockSubPanel('dockMarketPanel') });
+makePanelManageable(document.getElementById('dockAuctionPanel'),     { title:'AUCTION HOUSE',       minW:280, minH:240, onClose:()=> closeDockSubPanel('dockAuctionPanel') });
+makePanelManageable(document.getElementById('dockGovPanel'),         { title:'SECTOR GOVERNMENT',   minW:260, minH:200, onClose:()=> closeDockSubPanel('dockGovPanel') });
+makePanelManageable(document.getElementById('dockFittingPanel'),     { title:'FITTING',             minW:260, minH:220, onClose:()=> closeDockSubPanel('dockFittingPanel') });
+makePanelManageable(document.getElementById('dockManufacturingPanel'), { title:'MANUFACTURING',     minW:260, minH:220, onClose:()=> closeDockSubPanel('dockManufacturingPanel') });
+makePanelManageable(document.getElementById('dockLibraryPanel'),     { title:'LIBRARY',             minW:280, minH:240, onClose:()=> closeDockSubPanel('dockLibraryPanel') });
+makePanelManageable(document.getElementById('dockStoragePanel'),     { title:'STORAGE',             minW:280, minH:240, onClose:()=> closeDockSubPanel('dockStoragePanel') });
+makePanelManageable(document.getElementById('dockShipyardPanel'),    { title:'FINANCE OFFICE',      minW:280, minH:260, onClose:()=> closeDockSubPanel('dockShipyardPanel') });
+makePanelManageable(document.getElementById('dockNavyPanel'),        { title:'GALACTIC NAVY OFFICE', minW:280, minH:240, onClose:()=> closeDockSubPanel('dockNavyPanel') });
+makePanelManageable(document.getElementById('dockMiningPanel'),      { title:'MINING CORP OFFICE',  minW:280, minH:240, onClose:()=> closeDockSubPanel('dockMiningPanel') });
+makePanelManageable(document.getElementById('dockTransportPanel'),   { title:'TRANSPORTATION GUILD', minW:280, minH:240, onClose:()=> closeDockSubPanel('dockTransportPanel') });
 
 // ---------- H: hide/show all managed HUD panels at once ----------
 // toggles a top-level visibility flag over every managed panel (and the hudDock
@@ -16709,7 +16853,27 @@ function updateTelemetry(speed){
   // current speed each frame (rather than gating on command.type==='idle') so it also
   // lights up if the ship comes to rest any other way (e.g. drag/drift settling out).
   const stopBtn = document.getElementById('btnStop');
-  if(stopBtn) stopBtn.classList.toggle('active', speed < 0.05);
+  const isStopped = speed < 0.05;
+  if(stopBtn) stopBtn.classList.toggle('active', isStopped);
+  // item 2 FIX: STOP and the 25%/50%/FULL throttle-cap buttons are meant to read as
+  // mutually exclusive -- STOP lighting up (whether from a click or the ship just
+  // coming to rest, per the "item 14" behavior above) must visually clear whichever
+  // throttle-cap button was selected, and the ship being in motion again must restore
+  // the correct throttle-cap button rather than leaving them all dark. throttleSetting
+  // itself (the actual speed cap used by effectiveMaxSpeed()) is untouched either way --
+  // only the button highlighting changes here.
+  const t25 = document.getElementById('btnThrottle25');
+  const t50 = document.getElementById('btnThrottle50');
+  const tFull = document.getElementById('btnThrottleFull');
+  if(isStopped){
+    if(t25) t25.classList.remove('active');
+    if(t50) t50.classList.remove('active');
+    if(tFull) tFull.classList.remove('active');
+  } else {
+    if(t25) t25.classList.toggle('active', throttleSetting === 0.25);
+    if(t50) t50.classList.toggle('active', throttleSetting === 0.5);
+    if(tFull) tFull.classList.toggle('active', throttleSetting === 1.0);
+  }
 }
 
 // ---------- main loop ----------
