@@ -635,7 +635,6 @@
   #dockMarketPanel{ left:270px; top:calc(90px + env(safe-area-inset-top,0px)); }
   #dockAuctionPanel{ left:330px; top:calc(150px + env(safe-area-inset-top,0px)); }
   #dockGovPanel{ left:390px; top:calc(210px + env(safe-area-inset-top,0px)); }
-  #dockFittingPanel{ left:450px; top:calc(70px + env(safe-area-inset-top,0px)); }
   #dockManufacturingPanel{ left:510px; top:calc(130px + env(safe-area-inset-top,0px)); }
   #dockLibraryPanel{ left:570px; top:calc(190px + env(safe-area-inset-top,0px)); }
   #dockStoragePanel{ left:250px; top:calc(250px + env(safe-area-inset-top,0px)); }
@@ -668,7 +667,7 @@
        would otherwise still win over the class rule just above even inside this same
        media query -- reproduced here, ID-for-ID, so every station sub-panel actually
        gets the shared centered position on mobile instead of its desktop stagger spot. */
-    #dockMarketPanel, #dockAuctionPanel, #dockGovPanel, #dockFittingPanel, #dockManufacturingPanel,
+    #dockMarketPanel, #dockAuctionPanel, #dockGovPanel, #dockManufacturingPanel,
     #dockLibraryPanel, #dockStoragePanel, #dockShipyardPanel, #dockNavyPanel, #dockMiningPanel,
     #dockTransportPanel{
       left:50%; top:50%; transform:translate(-50%,-50%);
@@ -2111,14 +2110,14 @@
   <div class="psection">DOCKING &amp; STATIONS</div>
   <div class="keys">
     <div><b>DOCK</b> once in range of a station to open its docking bay menu — <b>UNDOCK</b> launches you back out near the local gate</div>
-    <div>While docked: <b>REPAIR HULL</b>, sell cargo/ore, browse the <b>MARKET</b>, list/browse the <b>AUCTION HOUSE</b>, refit gear at <b>FITTING</b>, manage the <b>STORAGE</b> hold, buy/finance ships at the <b>FINANCE OFFICE</b>, take a <b>LOAN</b>, queue <b>MANUFACTURING</b> jobs, craft at the <b>LIBRARY</b>, and take contracts from the <b>GALACTIC NAVY</b>, <b>MINING CORP</b> and <b>TRANSPORTATION GUILD</b> offices</div>
+    <div>While docked: <b>REPAIR HULL</b>, sell cargo/ore, browse the <b>MARKET</b>, list/browse the <b>AUCTION HOUSE</b>, equip/unequip owned gear by clicking it in <b>STORAGE</b>, buy/finance ships at the <b>FINANCE OFFICE</b>, take a <b>LOAN</b>, queue <b>MANUFACTURING</b> jobs, craft at the <b>LIBRARY</b>, check your <b>DATA PAD</b>, and take contracts from the <b>GALACTIC NAVY</b>, <b>MINING CORP</b> and <b>TRANSPORTATION GUILD</b> offices</div>
     <div>Every station buys/sells at its own market prices and collects its own small <b>STATION TAX</b> on market trades, auction fees and Library crafting — funding the <b>SECTOR GOVERNMENT</b> panel's tax trust for that station</div>
     <div>STORAGE and crafting output are <b>per-station</b> — items you bank or craft at one station stay there until you fly back or move them yourself</div>
   </div>
 
   <div class="psection">MINING</div>
   <div class="keys">
-    <div>Equip a <b>Mining Laser</b> at FITTING, lock an asteroid, then hit <b>MINE</b> to extract iron/copper/silver/gold ore into your cargo hold</div>
+    <div>Equip a <b>Mining Laser</b> by clicking it in the <b>STORAGE</b> panel's cargo column, lock an asteroid, then hit <b>MINE</b> to extract iron/copper/silver/gold ore into your cargo hold</div>
     <div>Sell ore at any station's MARKET, or list it on the AUCTION HOUSE — richer ore types are worth more but rarer</div>
     <div>The Mining Corp office pays contracts for ore turn-ins and builds your reputation there</div>
   </div>
@@ -2318,8 +2317,17 @@
     <button class="cmdbtn" id="btnDockRepair">REPAIR HULL</button>
     <button class="cmdbtn" id="btnDockMarketPanel">MARKET</button>
     <button class="cmdbtn" id="btnDockAuctionPanel">AUCTION HOUSE</button>
-    <button class="cmdbtn" id="btnDockFittingPanel">FITTING</button>
+    <!-- (v0.31.0) item 2: FITTING removed from the station nav entirely -- weapon/
+         shield/mining-laser equip/unequip now happens by clicking the item straight
+         in the STORAGE panel's YOUR CARGO column (see the dockStorageShipGrid click
+         handler / openStorageUpgradeEquipPrompt below), same confirm-before-equip
+         flow the old FITTING panel used, just moved. -->
     <button class="cmdbtn" id="btnDockStoragePanel">STORAGE</button>
+    <!-- (v0.31.0) item 3: DATA PAD is now also reachable from the station nav column
+         (previously only via the 'D' key / #btnWallet while undocked) -- same toggle
+         function as btnWallet, so a second click closes it exactly like the other
+         nav buttons' own panels. -->
+    <button class="cmdbtn" id="btnDockDataPad">DATA PAD</button>
     <!-- item 16: standalone LOAN button removed -- loan info/payment now lives inside
          FINANCE OFFICE (see dockShipyardPanel) -->
     <button class="cmdbtn" id="btnDockShipyardPanel">FINANCE OFFICE</button>
@@ -2430,29 +2438,6 @@
     </div>
   </div>
 
-  <div id="dockFittingPanel" class="hud popupPanel dockFloatPanel">
-    <div class="popupBody">
-    <div class="sub" style="color:var(--amber); text-align:left;">FITTING — EQUIP OWNED GEAR (DOCKED ONLY)</div>
-    <div class="psection" style="margin-top:0;">WEAPON SYSTEMS</div>
-    <div id="fitWeaponList"></div>
-    <div class="psection">SHIELD EMITTERS</div>
-    <div id="fitShieldList"></div>
-    <div class="psection">MINING LASER</div>
-    <div id="fitMiningList"></div>
-    <!-- item 9: explicit click + confirm before any weapon/shield/mining-laser
-         swap actually takes effect -- see renderFittingPanel's click handlers below -->
-    <div id="fitEquipConfirmPrompt">
-      <div class="dpRow">
-        <span id="fitEquipConfirmLabel">EQUIP?</span>
-        <span>
-          <button class="cmdbtn" id="fitEquipConfirmYes">CONFIRM</button>
-          <button class="cmdbtn" id="fitEquipConfirmNo">CANCEL</button>
-        </span>
-      </div>
-    </div>
-    </div>
-  </div>
-
   <div id="dockManufacturingPanel" class="hud popupPanel dockFloatPanel">
     <div class="popupBody">
     <div class="sub" style="color:var(--amber); text-align:left;">MANUFACTURING — BUILT ITEMS GO TO STATION STORAGE</div>
@@ -2479,6 +2464,12 @@
   <div id="dockStoragePanel" class="hud popupPanel dockFloatPanel">
     <div class="popupBody">
     <div class="sub" style="color:var(--amber); text-align:left;">CLICK AN ITEM TO MOVE IT</div>
+    <!-- (v0.31.0) item 2: FITTING is gone -- clicking an owned Weapon/Shield/Mining
+         Laser tier tile in YOUR CARGO below now equips it (or unequips it, if it's
+         the one currently mounted) instead of opening the move/withdraw prompt, same
+         as ships already worked from the STATION STORAGE side. See
+         openStorageUpgradeEquipPrompt / the dockStorageShipGrid click handler. -->
+    <div class="sub" style="font-size:10px; color:var(--phosphor-dim); text-align:left; margin-top:-4px;">CLICK A WEAPON / SHIELD / MINING LASER IN YOUR CARGO TO EQUIP OR UNEQUIP IT</div>
     <!-- items 14/15: STORE CURRENT SHIP lives here now (moved out of the FINANCE
          OFFICE panel) -- storing your active ship is a storage action, consistent
          with boarding one already being done by clicking a ship item below. -->
@@ -2513,6 +2504,20 @@
         <button class="cmdbtn" id="dsCombineBtn" style="display:none;">COMBINE STACKS</button>
         <button class="cmdbtn" id="dsMoveConfirm">MOVE</button>
         <button class="cmdbtn" id="dsMoveCancel">CANCEL</button>
+      </div>
+    </div>
+    <!-- (v0.31.0) item 2: moved here from the now-removed FITTING panel -- same
+         explicit click + confirm before any weapon/shield/mining-laser swap actually
+         takes effect (see openStorageUpgradeEquipPrompt/openFitEquipConfirm and the
+         fitEquipConfirmYes/No handlers below), only reachable now via clicking an
+         upgrade tile in YOUR CARGO above rather than a dedicated FITTING list. -->
+    <div id="fitEquipConfirmPrompt">
+      <div class="dpRow">
+        <span id="fitEquipConfirmLabel">EQUIP?</span>
+        <span>
+          <button class="cmdbtn" id="fitEquipConfirmYes">CONFIRM</button>
+          <button class="cmdbtn" id="fitEquipConfirmNo">CANCEL</button>
+        </span>
       </div>
     </div>
     </div>
@@ -2655,9 +2660,9 @@
 // compatibility depends on it. Add new keys, don't rename old ones.
 
 // ---------- version / build info (shown in the ESC settings menu) ----------
-const GAME_VERSION = "0.30.2";
+const GAME_VERSION = "0.31.0";
 const GAME_LAST_EDITED = "2026-09-26";
-const GAME_BUILD_TIME = "04:15 PT"; // wall-clock time this build was published, not just the date
+const GAME_BUILD_TIME = "08:47 PT"; // wall-clock time this build was published, not just the date
 
 // ---------- update-available banner ----------
 // Periodically re-fetches this very page (same-origin -- works identically whether
@@ -7418,7 +7423,13 @@ function rollShipDebrisLoot(){
     } else {
       rareType = 'book';
       rareBookSkill = SKILL_ORDER[Math.floor(Math.random()*SKILL_ORDER.length)];
-      rareBookLevel = 1; // LV.1 needs no prerequisite book itself -- always a valid drop
+      // (v0.31.0) bugfix: this used to always roll LV.1 -- but no skill book is ever
+      // consumed to reach LV.1 (see startSkillTraining's `target >= 2` gate/
+      // libraryScribableBookLevels, which only ever offers LV.2+ to SCRIBE in the
+      // first place), so a LV.1 drop could never actually be used for anything -- dead
+      // cargo forever. Rolls LV.2..SKILL_MAX_LEVEL instead, matching the real range of
+      // usable/scribable book levels.
+      rareBookLevel = 2 + Math.floor(Math.random()*(SKILL_MAX_LEVEL-1));
     }
   }
   return { scrap, oreType, oreQty, rareType, rareBlueprint, rareBookSkill, rareBookLevel };
@@ -7849,6 +7860,20 @@ function openCargoActionPrompt(stackId){
   // only worth showing when another such stack actually exists (see combineCargoStack)
   const combineBtn = document.getElementById('dpCombine');
   if(combineBtn) combineBtn.style.display = cargoStacks.some(s => s.itemType === stack.itemType && s.stackId !== stack.stackId && (s.guildQuestId||null) === (stack.guildQuestId||null)) ? '' : 'none';
+  // (v0.31.0) item 1: an EQUIPPED item (currently-mounted ship weapon/shield/mining
+  // laser tier, or the currently-loaded ammo stack) can't be jettisoned straight into
+  // space -- disable JETTISON and tell the player why, rather than letting the button
+  // silently no-op (jettisonFromStack would otherwise let it through and then
+  // auto-fall-back to unequip, which is surprising mid-flight). Unequip first (UNEQUIP
+  // for ammo, or equip a different tier/nothing for weapon/shield/mining laser via the
+  // EQUIPMENT popup) then jettison is still fully allowed.
+  const confirmBtn = document.getElementById('dpConfirm');
+  const stackIsEquipped = isStackEquipped(stack);
+  if(confirmBtn){
+    confirmBtn.disabled = stackIsEquipped;
+    confirmBtn.style.opacity = stackIsEquipped ? '0.4' : '';
+    confirmBtn.title = stackIsEquipped ? 'UNEQUIP BEFORE JETTISONING' : '';
+  }
   prompt.classList.add('show');
   // item-inspector info box: a cargo tile click is a selection event too (see item 2)
   lastInspectorSource = 'cargo';
@@ -7970,6 +7995,9 @@ document.getElementById('dpConfirm').addEventListener('click', ()=>{
   if(cargoActionStackId == null) return;
   const stack = cargoStacks.find(s=>s.stackId===cargoActionStackId);
   if(!stack){ closeCargoActionPrompt(); return; }
+  // item 1: hard guard against jettisoning an equipped item, in case of any stale
+  // button state -- the disabled/greyed JETTISON button above is the primary defense
+  if(isStackEquipped(stack)){ flashMessage('UNEQUIP BEFORE JETTISONING', 'warn'); return; }
   const def = itemDisplayDef(stack.itemType);
   let amt = Math.round(parseFloat(document.getElementById('dpQty').value) || 0);
   amt = Math.max(1, Math.min(stack.qty, amt));
@@ -8147,7 +8175,7 @@ function updateDockedPanel(){
 // on its own -- opening MARKET no longer touches LIBRARY if it's already open, and
 // any number can be open together, exactly like the main HUD's own floating panels.
 const DOCK_SUBPANEL_IDS = ['dockStoragePanel','dockShipyardPanel','dockMarketPanel',
-  'dockAuctionPanel','dockGovPanel','dockFittingPanel','dockManufacturingPanel','dockLibraryPanel',
+  'dockAuctionPanel','dockGovPanel','dockManufacturingPanel','dockLibraryPanel',
   'dockNavyPanel','dockMiningPanel','dockTransportPanel'];
 // item 13: highlight whichever nav-column option(s) correspond to currently-open sub-panels.
 // (item 13: dockCargoPanel/SELL CARGO removed -- selling now happens from the MARKET
@@ -8155,7 +8183,7 @@ const DOCK_SUBPANEL_IDS = ['dockStoragePanel','dockShipyardPanel','dockMarketPan
 const DOCK_NAV_BTN_ID = { dockStoragePanel:'btnDockStoragePanel',
   dockShipyardPanel:'btnDockShipyardPanel', dockMarketPanel:'btnDockMarketPanel',
   dockAuctionPanel:'btnDockAuctionPanel', dockGovPanel:'btnDockGovPanel',
-  dockFittingPanel:'btnDockFittingPanel', dockManufacturingPanel:'btnDockManufacturingPanel',
+  dockManufacturingPanel:'btnDockManufacturingPanel',
   dockLibraryPanel:'btnDockLibraryPanel', dockNavyPanel:'btnDockNavyPanel',
   dockMiningPanel:'btnDockMiningPanel', dockTransportPanel:'btnDockTransportPanel' };
 function renderDockSubPanelContent(name){
@@ -8164,7 +8192,6 @@ function renderDockSubPanelContent(name){
   if(name === 'dockMarketPanel') renderMarketPanel();
   if(name === 'dockAuctionPanel') renderAuctionPanel();
   if(name === 'dockGovPanel') renderGovPanel();
-  if(name === 'dockFittingPanel') renderFittingPanel();
   if(name === 'dockManufacturingPanel') renderManufacturingPanel();
   if(name === 'dockLibraryPanel') renderLibraryPanel();
   if(name === 'dockNavyPanel') renderQuestPanel('navy');
@@ -8203,8 +8230,12 @@ function closeDockSubPanel(name){
     if(prompt) prompt.style.display = 'none';
     marketStorageSellStackId = null;
   }
-  if(name === 'dockStoragePanel' && typeof closeStorageMovePrompt === 'function') closeStorageMovePrompt();
-  if(name === 'dockFittingPanel' && typeof closeFitEquipConfirm === 'function') closeFitEquipConfirm();
+  if(name === 'dockStoragePanel'){
+    if(typeof closeStorageMovePrompt === 'function') closeStorageMovePrompt();
+    // (v0.31.0) item 2: the equip/unequip confirm prompt moved here from the
+    // now-removed FITTING panel -- close it too when STORAGE itself closes
+    if(typeof closeFitEquipConfirm === 'function') closeFitEquipConfirm();
+  }
 }
 // item 3: clicking a nav-column button a SECOND time (while its own sub-panel is
 // already open) now closes that panel instead of just re-focusing/re-rendering it --
@@ -8409,9 +8440,14 @@ let marketStock = [];
 let nextMarketId = 1;
 function initMarketStock(){
   marketStock = [];
-  for(let t=1; t<WEAPON_TIER_STATS.length; t++) marketStock.push({ id:nextMarketId++, itemType:'weaponTier'+t, qty:MARKET_EQUIP_STARTING_QTY['weaponTier'+t], unitPrice:WEAPON_TIER_COST[t] });
-  for(let t=1; t<SHIELD_TIER_STATS.length; t++) marketStock.push({ id:nextMarketId++, itemType:'shieldTier'+t, qty:MARKET_EQUIP_STARTING_QTY['shieldTier'+t], unitPrice:SHIELD_TIER_COST[t] });
-  marketStock.push({ id:nextMarketId++, itemType:'miningLaser', qty:MARKET_EQUIP_STARTING_QTY.miningLaser, unitPrice:MINING_LASER_COST });
+  // (v0.31.0) item 4a: upgrade-tier gear (Weapon/Shield/Mining Laser LV.1-3) is no
+  // longer seeded into ANY station market's initial FOR SALE stock at all -- a stopgap
+  // requested directly by the user after the "OWNED"/greyed-out market bug (see item 4b
+  // fix just below) kept resurfacing for exactly these item types. Upgrades are still a
+  // real, obtainable part of the game (Manufacturing/crafting, Ship Debris, sold back by
+  // other players via restockMarket, etc.) -- they're just never pre-stocked for direct
+  // market purchase any more. The old seed loops (weaponTier1-3/shieldTier1-3/
+  // miningLaser via MARKET_EQUIP_STARTING_QTY) are intentionally removed here.
   for(let i=0;i<3;i++) marketStock.push({ id:nextMarketId++, itemType:AMMO_ITEM_TYPE, qty:AMMO_MAX_STACK, unitPrice:AMMO_BUY_UNIT_PRICE });
   // item 6: Iron Bullet Blueprint -- finite stock (not Infinity/isUniqueEquipItem),
   // same shape as the ammo stacks above; buying extra copies once already LEARNED is
@@ -8557,14 +8593,16 @@ function renderMarketPanel(){
     ? '<div class="cargoTile empty">SOLD OUT</div>'
     : marketStock.map(m=>{
         const def = itemDisplayDef(m.itemType);
-        const owned = isUniqueEquipItem(m.itemType) && totalOfType(m.itemType) > 0;
-        // item 5 (v0.28.0): "OWNED" is purely a per-player display state now, never a
-        // stand-in for infinite stock -- the real remaining count is always shown
-        // alongside it (or on its own once you don't/no longer own one), and a legacy
-        // cloud row that still has the old 'inf'-decoded Infinity qty (pre-v0.28.0
-        // save) reads as a plain price rather than crashing the "N @ price" format.
-        const qtyLabel = (owned ? 'OWNED — ' : '') + (m.qty === Infinity ? m.unitPrice+'cr' : (m.qty + ' @ ' + m.unitPrice + 'cr'));
-        return '<div class="cargoTile' + (owned?' empty':'') + '" data-market-id="' + m.id + '">'
+        // (v0.31.0) item 4b bugfix: NO special-cased "OWNED" grey/dimmed state any more
+        // for weapon/shield/mining-laser tiers (or anything else) -- a legacy cloud row
+        // that still has the old 'inf'-decoded Infinity qty (pre-v0.28.0 save) reads as
+        // a plain price rather than crashing the "N @ price" format, same as before, but
+        // every market item now renders identically regardless of what the player
+        // already owns: real remaining stock, full stop. Grep for "isUniqueEquipItem" if
+        // this class of bug (an item type quietly treated as owned/greyed instead of
+        // stock-decremented) turns up anywhere else.
+        const qtyLabel = (m.qty === Infinity ? m.unitPrice+'cr' : (m.qty + ' @ ' + m.unitPrice + 'cr'));
+        return '<div class="cargoTile" data-market-id="' + m.id + '">'
           + '<div class="swatch' + (def.round?' round':'') + '" style="background:' + def.color + ';"></div>'
           + '<div class="tname">' + def.label + '</div>'
           + '<div class="qty">' + qtyLabel + '</div>'
@@ -8678,7 +8716,9 @@ document.getElementById('marketGrid').addEventListener('click', (e)=>{
   if(!tile || !tile.dataset.marketId) return;
   const m = marketStock.find(x=>x.id===parseInt(tile.dataset.marketId,10));
   if(!m) return;
-  if(isUniqueEquipItem(m.itemType) && totalOfType(m.itemType) > 0) return; // already owned
+  // (v0.31.0) item 4b bugfix: no more "already owned" click-block -- buying a second
+  // copy of a unique-equip item is allowed (same as any other market item), it just
+  // sits in cargo/storage unequipped until the player chooses to equip it
   marketActionId = m.id;
   const def = itemDisplayDef(m.itemType);
   document.getElementById('marketBuyLabel').textContent = def.label + ' — ' + m.unitPrice + ' cr each + 5% station tax';
@@ -8708,7 +8748,6 @@ document.getElementById('marketBuyConfirm').addEventListener('click', ()=>{
   let amt = unique ? 1 : Math.round(parseFloat(document.getElementById('marketBuyQty').value) || 0);
   amt = Math.max(0, Math.min(amt, m.qty));
   if(amt <= 0){ flashMessage('NOTHING TO BUY', 'warn'); return; }
-  if(isUniqueEquipItem(m.itemType) && totalOfType(m.itemType) > 0){ flashMessage('ALREADY OWNED', 'warn'); return; }
   const subtotal = amt * m.unitPrice;
   // item: 5% station tax on purchases too (sells already had STATION_SALES_TAX --
   // this was the missing buy-side half of that request), same ceil-rounding as the
@@ -9237,102 +9276,56 @@ async function handleAuctionGridClick(e){
 document.getElementById('auctionListingsGrid').addEventListener('click', handleAuctionGridClick);
 document.getElementById('auctionMyListingsGrid').addEventListener('click', handleAuctionGridClick);
 
-// ---------- item 11: station FITTING -- the only place weapon/shield/mining-laser
-// tiers can be actively (re-)equipped, since it lives entirely inside the docked-only
-// #dockedPanel. Ammo is deliberately NOT here -- see item 4, it stays field-equippable
-// from the EQUIPMENT popup or the cargo hold instead. ----------
-function renderFittingPanel(){
-  const wList = document.getElementById('fitWeaponList');
-  const sList = document.getElementById('fitShieldList');
-  const mList = document.getElementById('fitMiningList');
-  if(!wList) return;
-  // item 10: if a confirm prompt is currently open but the pending action has gone
-  // stale (the target now matches the CURRENT equip state -- e.g. it got equipped
-  // via another path, or the mining laser is no longer owned) since it was opened,
-  // there is nothing left to actually confirm -- close it rather than leave a
-  // dead/no-op prompt on screen. openFitEquipConfirm() (below) stops this happening
-  // for brand-new opens; this covers state that changes out from under an open one.
-  if(pendingFitAction){
-    const { kind, target } = pendingFitAction;
-    const stale = (kind === 'weapon' && target === equippedWeaponTier)
-      || (kind === 'shield' && target === equippedShieldTier)
-      || (kind === 'mining' && !hasMiningLaser);
-    if(stale) closeFitEquipConfirm();
-  }
-  if(inEscapePod || !activeShipInstance){
-    wList.innerHTML = '<div class="peq"><span>NO SHIP DOCKED — NOTHING TO FIT</span><span></span></div>';
-    sList.innerHTML = '';
-    mList.innerHTML = '';
+// ---------- item 11 (v0.28.0), moved in v0.31.0 (item 2): weapon/shield/mining-laser
+// tiers are actively (re-)equipped from the STATION STORAGE panel now -- clicking an
+// owned upgrade tile in YOUR CARGO there (see dockStorageShipGrid's click handler and
+// openStorageUpgradeEquipPrompt just below) routes here instead of the old standalone
+// FITTING panel, which is gone. Ammo is deliberately NOT here -- see item 4, it stays
+// field-equippable from the EQUIPMENT popup or the cargo hold instead. ----------
+// (v0.31.0) item 2: called when a weapon/shield/mining-laser tile is clicked in the
+// STORAGE panel's YOUR CARGO column -- works out what clicking THIS specific stack
+// should do (equip it, or unequip it if it's the one currently mounted) and opens the
+// same confirm-before-equip prompt the old FITTING panel used. Every gating rule
+// (ship-hardpoint availability, Weapon/Shield Upgrades skill level lock) is preserved
+// unchanged from the old renderFittingPanel, just evaluated for one clicked stack
+// instead of rendering a whole list.
+function openStorageUpgradeEquipPrompt(stack){
+  if(inEscapePod || !activeShipInstance){ flashMessage('NO SHIP DOCKED', 'warn'); return; }
+  const cls = SHIP_CLASSES[activeShipInstance.classKey];
+  if(stack.itemType.indexOf('weaponTier') === 0){
+    if(!cls.canWeapon){ flashMessage('THIS VESSEL HAS NO WEAPON HARDPOINTS', 'warn'); return; }
+    const tier = parseInt(stack.itemType.slice('weaponTier'.length), 10);
+    const eq = tier === equippedWeaponTier;
+    const target = eq ? -1 : tier;
+    const locked = !eq && tier > 0 && (skillLevels.weapon_upgrades||0) < tier;
+    if(locked){ flashMessage('NEEDS WEAPON UPGRADES LV.' + tier, 'warn'); return; }
+    const label = eq ? 'UNEQUIP WEAPON' : 'EQUIP WEAPON LV.' + target;
+    openFitEquipConfirm('weapon', target, label);
     return;
   }
-  // item 41: which slots even exist depends on the current hull -- the starter
-  // combat ship carries no mining-laser mount, the Prospector mining ship carries no
-  // weapon hardpoints at all (see SHIP_CLASSES); shields are common to both hulls
-  const cls = SHIP_CLASSES[activeShipInstance.classKey];
-  if(!cls.canWeapon){
-    wList.innerHTML = '<div class="peq"><span style="color:var(--danger);">THIS VESSEL HAS NO WEAPON HARDPOINTS</span><span></span></div>';
-  } else {
-    const ownedWeaponStacks = cargoStacks.filter(s=>s.itemType.indexOf('weaponTier')===0 && !s.guildQuestId)
-      .sort((a,b)=> parseInt(a.itemType.slice(10),10) - parseInt(b.itemType.slice(10),10));
-    // any equipped weapon/shield -- INCLUDING the base tier 0 -- can be fully
-    // UNEQUIPPED, leaving the ship with no weapon/shield mounted at all (target -1,
-    // see equipWeaponTier/equipShieldTier's -1 branch). A short status line up top
-    // makes the "nothing mounted" state visible even when the owned-tier list below
-    // doesn't have an obviously-equipped row any more.
-    const weaponStatus = equippedWeaponTier === -1
-      ? '<div class="peq"><span style="color:var(--danger);">NO WEAPON MOUNTED</span><span></span></div>' : '';
-    wList.innerHTML = weaponStatus + ownedWeaponStacks.map(stack=>{
-      const tier = parseInt(stack.itemType.slice('weaponTier'.length), 10);
-      const eq = tier === equippedWeaponTier;
-      const target = eq ? -1 : tier;
-      // tier 0 is the starter weapon -- equippable with no skill at all. Tier 1+
-      // needs a matching Weapon Upgrades skill level (see SKILLS) to EQUIP -- it can
-      // still be bought/carried at any time, just not mounted until trained.
-      const locked = !eq && tier > 0 && (skillLevels.weapon_upgrades||0) < tier;
-      const label = eq ? 'UNEQUIP' : (locked ? 'LOCKED' : 'EQUIP');
-      return '<div class="peq"><span>WEAPON LV.'+tier+' — dmg '+WEAPON_TIER_STATS[tier].damage+', rng '+WEAPON_TIER_STATS[tier].range+'m'
-        + (locked ? '<br><span style="font-size:10px; color:var(--danger);">NEEDS WEAPON UPGRADES LV.'+tier+'</span>' : '') + '</span>'
-        + '<button class="peqBtn'+(eq?' equipped':'')+'"'+(locked?' disabled style="opacity:0.4;"':'')+' data-weapon-tier="'+target+'">'+label+'</button></div>';
-    }).join('');
-  }
-  const ownedShieldStacks = cargoStacks.filter(s=>s.itemType.indexOf('shieldTier')===0 && !s.guildQuestId)
-    .sort((a,b)=> parseInt(a.itemType.slice(10),10) - parseInt(b.itemType.slice(10),10));
-  const shieldStatus = equippedShieldTier === -1
-    ? '<div class="peq"><span style="color:var(--danger);">NO SHIELD MOUNTED</span><span></span></div>' : '';
-  sList.innerHTML = shieldStatus + ownedShieldStacks.map(stack=>{
+  if(stack.itemType.indexOf('shieldTier') === 0){
+    // shields are common to every hull (see SHIP_CLASSES) -- no canShield gate,
+    // matching the old renderFittingPanel which never gated shields by ship class
     const tier = parseInt(stack.itemType.slice('shieldTier'.length), 10);
     const eq = tier === equippedShieldTier;
     const target = eq ? -1 : tier;
-    // same level-gating as weapons above, via the Shield Upgrades skill
     const locked = !eq && tier > 0 && (skillLevels.shield_upgrades||0) < tier;
-    const label = eq ? 'UNEQUIP' : (locked ? 'LOCKED' : 'EQUIP');
-    return '<div class="peq"><span>SHIELD LV.'+tier+' — '+SHIELD_TIER_STATS[tier].maxShield+' cap'
-      + (locked ? '<br><span style="font-size:10px; color:var(--danger);">NEEDS SHIELD UPGRADES LV.'+tier+'</span>' : '') + '</span>'
-      + '<button class="peqBtn'+(eq?' equipped':'')+'"'+(locked?' disabled style="opacity:0.4;"':'')+' data-shield-tier="'+target+'">'+label+'</button></div>';
-  }).join('');
-  if(!cls.canMining){
-    mList.innerHTML = '<div class="peq"><span style="color:var(--danger);">THIS VESSEL CANNOT MOUNT A MINING LASER</span><span></span></div>';
-  } else {
-    // (v0.26.0) the mining laser still mounts as a single slot (no per-tier EQUIP
-    // list like weapon/shield) -- the highest tier OWNED auto-runs, capped by the
-    // trained Mining skill level (see effectiveMiningLaserTier). LV.0 needs no skill
-    // at all; LV.1-3 need the matching Mining skill level to actually take effect.
-    const ownedLaserTier = maxOwnedMiningLaserTier();
-    // effective tier if it WERE mounted right now, regardless of current equip state --
-    // a straight preview of what Math.min(owned, trained Mining skill) would run at
-    const effLaserTier = Math.max(0, Math.min(ownedLaserTier, skillLevels.mining||0));
-    const laserSkillLocked = ownedLaserTier > 0 && (skillLevels.mining||0) < ownedLaserTier;
-    mList.innerHTML = !hasMiningLaser
-      ? '<div class="peq"><span>NOT OWNED</span><span></span></div>'
-      : '<div class="peq"><span>MINING LASER LV.'+ownedLaserTier
-        + (laserSkillLocked ? ' <span style="font-size:10px; color:var(--danger);">(RUNS AT LV.'+effLaserTier+' — NEEDS MINING LV.'+ownedLaserTier+')</span>' : '')
-        + '</span><button class="peqBtn'+(miningLaserEquipped?' equipped':'')+'" id="btnFitMining">'+(miningLaserEquipped?'UNEQUIP':'EQUIP')+'</button></div>';
+    if(locked){ flashMessage('NEEDS SHIELD UPGRADES LV.' + tier, 'warn'); return; }
+    const label = eq ? 'UNEQUIP SHIELD' : 'EQUIP SHIELD LV.' + target;
+    openFitEquipConfirm('shield', target, label);
+    return;
+  }
+  if(stack.itemType === 'miningLaser' || stack.itemType.indexOf('miningLaserTier') === 0){
+    if(!cls.canMining){ flashMessage('THIS VESSEL CANNOT MOUNT A MINING LASER', 'warn'); return; }
+    const label = miningLaserEquipped ? 'UNEQUIP MINING LASER' : 'EQUIP MINING LASER';
+    openFitEquipConfirm('mining', null, label);
+    return;
   }
 }
-// item 9: staged fitting action -- set by a first click on a fitting-list row
-// button, cleared/executed by the confirm prompt's CONFIRM/CANCEL buttons below.
-// { kind:'weapon'|'shield'|'mining', target } (target unused for 'mining', it's a
-// plain toggle)
+// item 9: staged fitting action -- set by a first click on an upgrade tile in STORAGE
+// (see openStorageUpgradeEquipPrompt above), cleared/executed by the confirm prompt's
+// CONFIRM/CANCEL buttons below. { kind:'weapon'|'shield'|'mining', target } (target
+// unused for 'mining', it's a plain toggle)
 let pendingFitAction = null;
 function openFitEquipConfirm(kind, target, label){
   // item 10: don't show the confirm at all when there's nothing genuinely
@@ -9355,25 +9348,10 @@ function closeFitEquipConfirm(){
   const prompt = document.getElementById('fitEquipConfirmPrompt');
   if(prompt) prompt.classList.remove('show');
 }
-document.getElementById('fitWeaponList').addEventListener('click', (e)=>{
-  const btn = e.target.closest('[data-weapon-tier]');
-  if(!btn) return;
-  const target = parseInt(btn.dataset.weaponTier,10);
-  const label = target === -1 ? 'UNEQUIP WEAPON' : 'EQUIP WEAPON LV.' + target;
-  openFitEquipConfirm('weapon', target, label);
-});
-document.getElementById('fitShieldList').addEventListener('click', (e)=>{
-  const btn = e.target.closest('[data-shield-tier]');
-  if(!btn) return;
-  const target = parseInt(btn.dataset.shieldTier,10);
-  const label = target === -1 ? 'UNEQUIP SHIELD' : 'EQUIP SHIELD LV.' + target;
-  openFitEquipConfirm('shield', target, label);
-});
-document.getElementById('fitMiningList').addEventListener('click', (e)=>{
-  if(!e.target.closest('#btnFitMining')) return;
-  const label = miningLaserEquipped ? 'UNEQUIP MINING LASER' : 'EQUIP MINING LASER';
-  openFitEquipConfirm('mining', null, label);
-});
+// (v0.31.0) item 2: fitWeaponList/fitShieldList/fitMiningList and btnDockFittingPanel
+// no longer exist -- their click listeners are replaced by openStorageUpgradeEquipPrompt,
+// wired into the dockStorageShipGrid click handler (see renderDockStorageRows/
+// openStorageMovePrompt above).
 document.getElementById('fitEquipConfirmYes').addEventListener('click', ()=>{
   if(!pendingFitAction) return;
   const { kind, target } = pendingFitAction;
@@ -9381,10 +9359,9 @@ document.getElementById('fitEquipConfirmYes').addEventListener('click', ()=>{
   else if(kind === 'shield') equipShieldTier(target, true);
   else if(kind === 'mining') toggleMiningLaserEquip();
   closeFitEquipConfirm();
-  renderFittingPanel();
+  renderDockStorageRows();
 });
 document.getElementById('fitEquipConfirmNo').addEventListener('click', ()=> closeFitEquipConfirm());
-document.getElementById('btnDockFittingPanel').addEventListener('click', ()=> toggleDockSubPanel('dockFittingPanel'));
 
 // ---------- item 7: MANUFACTURING -- queue-built items from known blueprints ----------
 // one queue per recipe (keyed by blueprint type), holding how many units are still
@@ -9501,6 +9478,18 @@ function mfgCostLine(recipe){
 function renderManufacturingPanel(){
   const wrap = document.getElementById('mfgRecipeList');
   if(!wrap) return;
+  // (v0.31.0) item 7 bugfix: this function used to only ever get called on panel
+  // open/build/a full-unit completion -- with NO periodic re-render loop (unlike
+  // LIBRARY's setInterval(renderLibraryPanel,1000) below), the progress bar's percent
+  // (computed fresh from Date.now() every time this runs) only ever visibly changed at
+  // those few trigger points. For a long craft (ingots/upgrade gear, 30-90s/unit) that
+  // was rarely enough to notice; for BULLETS specifically (4-6s/unit) a whole batch
+  // could complete between two renders, so the bar just sat still the entire time it
+  // was actually "crafting -- it just never got asked to redraw. Fixed by driving this
+  // off a real periodic timer too (see the setInterval right after this function),
+  // guarded here so it's a no-op whenever the panel isn't actually open/docked.
+  const panel = document.getElementById('dockManufacturingPanel');
+  if(!panel || !panel.classList.contains('show') || !docked || !dockedStation) return;
   checkManufacturingCompletion();
   const stationId = activeStationEntry().id;
   const known = Object.keys(MANUFACTURING_RECIPES).filter(k=>recipeBlueprintKnown(MANUFACTURING_RECIPES[k]));
@@ -9529,7 +9518,7 @@ function renderManufacturingPanel(){
       + (building
         ? '<div class="drow"><span>CRAFTING</span><span>' + (q.completed + 1) + ' / ' + q.total + '</span></div>'
         + '<div class="drow"><span>QUEUE REMAINING</span><span>' + (q.total - q.completed) + '</span></div>'
-        + '<div class="mfgBar"><i style="width:' + pct + '%;"></i></div>'
+        + '<div class="mfgBar" data-mfg-progress="' + bpType + '"><i style="width:' + pct + '%;"></i></div>'
         + '<div class="drow" style="font-size:10px; color:var(--phosphor-dim);"><span>Keeps building even if you undock or log off</span><span></span></div>'
         : '<div class="dockSubRow">'
           + '<span class="dsName">Quantity</span>'
@@ -9548,6 +9537,12 @@ document.getElementById('mfgRecipeList').addEventListener('click', (e)=>{
   startManufacturing(bpType, qty);
 });
 document.getElementById('btnDockManufacturingPanel').addEventListener('click', ()=> toggleDockSubPanel('dockManufacturingPanel'));
+// (v0.31.0) item 7: periodic re-render so the crafting progress bar visibly advances
+// in real time instead of only updating on the rare re-render triggers above -- same
+// pattern/interval as setInterval(renderLibraryPanel,1000) just below the LIBRARY
+// section; renderManufacturingPanel's own guard above makes this a cheap no-op
+// whenever the MANUFACTURING panel isn't actually open.
+setInterval(renderManufacturingPanel, 1000);
 
 // ---------- LIBRARY (Memory Cube crafting + Skill Book scribing) ----------
 // Available at every station. Two craftable items, both wall-clock-timed exactly like
@@ -9954,10 +9949,13 @@ function renderLibraryPanel(){
           + '</div>'
           + '<div class="drow" style="font-size:10px; color:var(--phosphor-dim);"><span>10 in-game min per knowledge point (x' + academicsCraftTimeMultiplier().toFixed(2) + ' Academics) + 100 cr/knowledge + ' + Math.round(STATION_SALES_TAX*100) + '% station tax</span></div>';
     }
-    // Skill Book form -- one row per basic/advanced skill that's at least LV.1
+    // Skill Book form -- one row per basic/advanced skill that's at least LV.1 (a
+    // skill below LV.1 has no book to scribe at all -- LV.2 is the lowest scribable
+    // book level and always needs LV.1 training first, so that gate stays; see item 6
+    // below for what changed).
     const bookWrap = document.getElementById('libraryBookForm');
     if(bookWrap){
-      const eligible = SKILL_ORDER.filter(k=> (skillLevels[k]||0) >= 1 && libraryScribableBookLevels(k).length > 0);
+      const eligible = SKILL_ORDER.filter(k=> (skillLevels[k]||0) >= 1);
       // (fix, same reasoning as the cube input above) preserve each skill's currently
       // selected book level across a rebuild instead of always resetting to option 0
       const preservedLevels = {};
@@ -9965,16 +9963,35 @@ function renderLibraryPanel(){
         const sel = document.querySelector('select[data-book-level-select="' + k + '"]');
         if(sel && sel.value) preservedLevels[k] = sel.value;
       });
+      // (v0.31.0) item 6 bugfix: the level <select> used to only ever list the
+      // CURRENTLY scribable levels (libraryScribableBookLevels(k), i.e. 2..cur+1) --
+      // every higher level was silently absent from the dropdown instead of shown
+      // disabled, so the player could never even see that e.g. a LV.4 book existed
+      // until LV.3 was trained. Now every level from 2 up to SKILL_MAX_LEVEL is always
+      // listed; levels beyond what's currently trainable are still selectable-looking
+      // in the dropdown but SCRIBE is disabled with the reason shown when one is
+      // picked (see the click handler / startBookScribe's own "CANNOT SCRIBE THAT
+      // LEVEL YET" guard, which still backstops this either way).
       bookWrap.innerHTML = !eligible.length
         ? '<div class="drow"><span>NO SKILL AT LV.1+ YET — TRAIN ONE FIRST</span></div>'
         : eligible.map(k=>{
             const def = SKILL_DEFS[k];
-            const levels = libraryScribableBookLevels(k);
+            const cur = skillLevels[k]||0;
+            const allowed = libraryScribableBookLevels(k);
+            const allLevels = [];
+            for(let l=2; l<=SKILL_MAX_LEVEL; l++) allLevels.push(l);
             const sel = preservedLevels[k];
+            const selectedLevel = sel ? parseInt(sel,10) : (allowed[0]||allLevels[0]);
+            const selectedLocked = allowed.indexOf(selectedLevel) < 0;
             return '<div class="dockSubRow">'
-              + '<span class="dsName">' + def.name + ' (LV.' + (skillLevels[k]||0) + ')</span>'
-              + '<select data-book-level-select="' + k + '">' + levels.map(l=> '<option value="' + l + '"' + (sel && String(l)===sel ? ' selected' : '') + '>LV.' + l + ' — ' + libraryBookKnowledgeCost(l) + ' KN + ' + libraryBookCreditsCost(l) + ' CR</option>').join('') + '</select>'
-              + '<button class="cmdbtn" data-book-scribe="' + k + '">SCRIBE</button>'
+              + '<span class="dsName">' + def.name + ' (LV.' + cur + ')</span>'
+              + '<select data-book-level-select="' + k + '">' + allLevels.map(l=>{
+                  const locked = allowed.indexOf(l) < 0;
+                  return '<option value="' + l + '"' + (sel ? (String(l)===sel?' selected':'') : (l===selectedLevel?' selected':''))
+                    + '>LV.' + l + ' — ' + libraryBookKnowledgeCost(l) + ' KN + ' + libraryBookCreditsCost(l) + ' CR'
+                    + (locked ? ' (NEEDS LV.' + (l-1) + ' FIRST)' : '') + '</option>';
+                }).join('') + '</select>'
+              + '<button class="cmdbtn" data-book-scribe="' + k + '"' + (selectedLocked ? ' disabled style="opacity:0.4;"' : '') + '>SCRIBE</button>'
               + '</div>';
           }).join('');
     }
@@ -10036,6 +10053,12 @@ document.getElementById('dockLibraryPanel').addEventListener('click', (e)=>{
   if(bpScribeBtn){
     startRecipeBlueprintScribe(bpScribeBtn.dataset.recipeBlueprintScribe);
   }
+});
+// (v0.31.0) item 6: re-render immediately on selecting a different book level so the
+// SCRIBE button's disabled/enabled state reflects the pick right away, rather than
+// waiting for the next periodic 1s renderLibraryPanel() tick
+document.getElementById('dockLibraryPanel').addEventListener('change', (e)=>{
+  if(e.target.closest('select[data-book-level-select]')) renderLibraryPanel();
 });
 document.getElementById('btnLibraryCancelConfirmYes').addEventListener('click', confirmLibraryCancel);
 document.getElementById('btnLibraryCancelConfirmNo').addEventListener('click', closeLibraryCancelConfirm);
@@ -10166,10 +10189,24 @@ function closeStorageMovePrompt(){
   storageMoveCtx = null;
   document.getElementById('dockStorageMovePrompt').classList.remove('show');
 }
+// (v0.31.0) item 2: weapon/shield/mining-laser tiers -- any of the item types
+// isStackEquipped() recognizes as mountable gear (minus ammo, which keeps its own
+// EQUIP/UNEQUIP buttons in the cargo-hold popup, see dpEquip/dpUnequip) -- route to
+// the equip/unequip confirm flow instead of the generic move/withdraw prompt.
+function isFittableGearItemType(itemType){
+  return itemType.indexOf('weaponTier') === 0 || itemType.indexOf('shieldTier') === 0
+    || itemType === 'miningLaser' || itemType.indexOf('miningLaserTier') === 0;
+}
 document.getElementById('dockStorageShipGrid').addEventListener('click', (e)=>{
   const tile = e.target.closest('.cargoTile');
   if(!tile || !tile.dataset.shipStackId) return;
-  openStorageMovePrompt('ship', parseInt(tile.dataset.shipStackId,10));
+  const stackId = parseInt(tile.dataset.shipStackId,10);
+  const stack = cargoStacks.find(s=>s.stackId===stackId);
+  if(stack && !stack.guildQuestId && isFittableGearItemType(stack.itemType)){
+    openStorageUpgradeEquipPrompt(stack);
+    return;
+  }
+  openStorageMovePrompt('ship', stackId);
 });
 document.getElementById('dockStorageStationGrid').addEventListener('click', (e)=>{
   const tile = e.target.closest('.cargoTile');
@@ -12747,6 +12784,11 @@ function refreshWalletPanel(){
   if(walletTab === 'server') refreshServerPanel();
 }
 document.getElementById('btnWallet').addEventListener('click', ()=> toggleWalletPanel());
+// (v0.31.0) item 3: DATA PAD is also openable from the station nav sidebar column now
+// -- same toggleWalletPanel() call (no arg = toggle open/closed), so a second click
+// closes it exactly like btnWallet already does in space.
+const btnDockDataPad = document.getElementById('btnDockDataPad');
+if(btnDockDataPad) btnDockDataPad.addEventListener('click', ()=> toggleWalletPanel());
 document.getElementById('btnCloseWallet').addEventListener('click', ()=> toggleWalletPanel(false));
 document.getElementById('btnWalletTabLedger').addEventListener('click', ()=> setWalletTab('ledger'));
 document.getElementById('btnWalletTabStats').addEventListener('click', ()=> setWalletTab('stats'));
@@ -15310,9 +15352,9 @@ async function sendWelcomeEmailIfNeeded(){
   welcomeEmailSent = true; // set before the await so a slow network never double-sends
   const body = 'Welcome to VOID DRIFT, pilot ' + mpIdentity.name + '!\n\n'
     + 'A few tips to get you started:\n'
-    + '- DOCK at any station (fly close and hold approach) to access the MARKET, LIBRARY, FITTING and contract boards.\n'
+    + '- DOCK at any station (fly close and hold approach) to access the MARKET, LIBRARY, STORAGE and contract boards.\n'
     + '- MINE asteroids in the Kestrel Belt with a mining laser (see EQUIPMENT) to earn ore you can sell or refine.\n'
-    + '- Pirates and bounty hunters fight back — mount a weapon and shield from FITTING before venturing into riskier (yellow/red) zones.\n'
+    + '- Pirates and bounty hunters fight back — mount a weapon and shield by clicking them in STORAGE before venturing into riskier (yellow/red) zones.\n'
     + '- Train up your SKILLS over real time; Memory Cubes and Skill Books (craftable at any station\'s LIBRARY) can speed that up.\n'
     + '- Check the WALLET popup for your ledger, stats, medals and now this MAIL tab.\n'
     + '- Contracts from the Navy, Mining Corp and Transportation Guild are a steady, low-risk way to build credits and reputation.\n\n'
@@ -19160,7 +19202,8 @@ makePanelManageable(document.getElementById('walletPanel'),     { title:'DATA PA
 makePanelManageable(document.getElementById('dockMarketPanel'),      { title:'MARKET',              minW:260, minH:220, onClose:()=> closeDockSubPanel('dockMarketPanel') , hideCollapse:true, group:'station' });
 makePanelManageable(document.getElementById('dockAuctionPanel'),     { title:'AUCTION HOUSE',       minW:280, minH:240, onClose:()=> closeDockSubPanel('dockAuctionPanel') , hideCollapse:true, group:'station' });
 makePanelManageable(document.getElementById('dockGovPanel'),         { title:'SECTOR GOVERNMENT',   minW:260, minH:200, onClose:()=> closeDockSubPanel('dockGovPanel') , hideCollapse:true, group:'station' });
-makePanelManageable(document.getElementById('dockFittingPanel'),     { title:'FITTING',             minW:260, minH:220, onClose:()=> closeDockSubPanel('dockFittingPanel') , hideCollapse:true, group:'station' });
+// (v0.31.0) item 2: dockFittingPanel removed -- weapon/shield/mining-laser equip is
+// now handled inside dockStoragePanel (already made manageable below)
 makePanelManageable(document.getElementById('dockManufacturingPanel'), { title:'MANUFACTURING',     minW:260, minH:220, onClose:()=> closeDockSubPanel('dockManufacturingPanel') , hideCollapse:true, group:'station' });
 makePanelManageable(document.getElementById('dockLibraryPanel'),     { title:'LIBRARY',             minW:280, minH:240, onClose:()=> closeDockSubPanel('dockLibraryPanel') , hideCollapse:true, group:'station' });
 makePanelManageable(document.getElementById('dockStoragePanel'),     { title:'STORAGE',             minW:280, minH:240, onClose:()=> closeDockSubPanel('dockStoragePanel') , hideCollapse:true, group:'station' });
