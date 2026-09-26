@@ -1970,14 +1970,33 @@
       <div class="walletTabs">
         <button class="clickable active" id="btnServerTabOnline">ONLINE</button>
         <button class="clickable" id="btnServerTabLeaderboard">LEADERBOARD</button>
+        <!-- (v0.32.0) item 2: HISTORY sub-tab -->
+        <button class="clickable" id="btnServerTabHistory">HISTORY</button>
       </div>
       <div class="walletTabSection active" id="serverOnlineSection">
         <div class="psection" style="margin-top:0;">WHO'S ONLINE</div>
         <div id="serverOnlineList"></div>
       </div>
+      <!-- (v0.32.0) item 3: reworked from a single "TOP KILLS TODAY" list into an
+           all-time Fame section plus four daily-reset sections; PVP KILLS is hidden
+           entirely (not just zeroed) on a PVE server -- see refreshServerPanel. -->
       <div class="walletTabSection" id="serverLeaderboardSection">
-        <div class="psection" style="margin-top:0;">TOP KILLS TODAY</div>
-        <div id="serverLeaderboardList"></div>
+        <div class="psection" style="margin-top:0;">TOP FAME — ALL-TIME</div>
+        <div id="lbFameList"></div>
+        <div class="psection">TOP NPC KILLS — TODAY</div>
+        <div id="lbNpcKillsList"></div>
+        <div class="psection">TOP ORE MINED — TODAY</div>
+        <div id="lbOreList"></div>
+        <div id="lbPvpBlock">
+          <div class="psection">TOP PVP KILLS — TODAY</div>
+          <div id="lbPvpList"></div>
+        </div>
+        <div class="psection">TOP QUESTS COMPLETED — TODAY</div>
+        <div id="lbQuestsList"></div>
+      </div>
+      <div class="walletTabSection" id="serverHistorySection">
+        <div class="psection" style="margin-top:0;">LOGIN HISTORY — LAST 100</div>
+        <div id="serverHistoryList"></div>
       </div>
     </div>
   </div>
@@ -2684,7 +2703,7 @@
 // compatibility depends on it. Add new keys, don't rename old ones.
 
 // ---------- version / build info (shown in the ESC settings menu) ----------
-const GAME_VERSION = "0.31.2";
+const GAME_VERSION = "0.32.0";
 const GAME_LAST_EDITED = "2026-09-26";
 const GAME_BUILD_TIME = "08:47 PT"; // wall-clock time this build was published, not just the date
 
@@ -9351,7 +9370,14 @@ function openStorageUpgradeEquipPrompt(stack){
   if(inEscapePod || !activeShipInstance){ flashMessage('NO SHIP DOCKED', 'warn'); return; }
   const cls = SHIP_CLASSES[activeShipInstance.classKey];
   if(stack.itemType.indexOf('weaponTier') === 0){
-    if(!cls.canWeapon){ flashMessage('THIS VESSEL HAS NO WEAPON HARDPOINTS', 'warn'); return; }
+    // (v0.32.0) item 1: a hull that can't mount this gear type at all (wrong slot
+    // for this ship class) should still let the player move the stack to STATION
+    // STORAGE -- only the EQUIP option is actually inapplicable here. Previously
+    // this returned outright, leaving the item stuck in cargo with no move prompt
+    // at all (distinct from the CSS-comment bug fixed in v0.31.2 -- that one hid
+    // the prompt for every gear item; this is a real short-circuit that skips it
+    // only for equip-incompatible gear).
+    if(!cls.canWeapon){ flashMessage('THIS VESSEL HAS NO WEAPON HARDPOINTS', 'warn'); openStorageMovePrompt('ship', stack.stackId); return; }
     const tier = parseInt(stack.itemType.slice('weaponTier'.length), 10);
     const eq = tier === equippedWeaponTier;
     const target = eq ? -1 : tier;
@@ -9374,7 +9400,9 @@ function openStorageUpgradeEquipPrompt(stack){
     return;
   }
   if(stack.itemType === 'miningLaser' || stack.itemType.indexOf('miningLaserTier') === 0){
-    if(!cls.canMining){ flashMessage('THIS VESSEL CANNOT MOUNT A MINING LASER', 'warn'); return; }
+    // (v0.32.0) item 1: same fix as the canWeapon branch above -- offer STORE even
+    // though this hull can't mount a mining laser at all.
+    if(!cls.canMining){ flashMessage('THIS VESSEL CANNOT MOUNT A MINING LASER', 'warn'); openStorageMovePrompt('ship', stack.stackId); return; }
     const label = miningLaserEquipped ? 'UNEQUIP MINING LASER' : 'EQUIP MINING LASER';
     openFitEquipConfirm('mining', null, label, stack);
     return;
@@ -10859,6 +10887,8 @@ function currentMiningInterval(){ return Math.max(0.6, MINING_INTERVAL - (skillL
 function gainMiningXP(amount){
   totalOreMinedTotal += amount;
   if(typeof refreshWalletPanel === 'function') refreshWalletPanel();
+  // (v0.32.0) item 3: daily TOP ORE MINED leaderboard counter -- best-effort
+  if(typeof recordDailyStat === 'function') recordDailyStat('ore_mined', amount);
 }
 // no-op stub kept so old call sites (elsewhere in the file) that still exist
 // from before the skills rework don't throw -- mining stats now live on the
@@ -11498,6 +11528,8 @@ function turnInQuest(questId){
   if(q.faction==='navy') navyContractsCompleted++;
   else if(q.faction==='mining') miningContractsCompleted++;
   else transportContractsCompleted++;
+  // (v0.32.0) item 3: daily TOP QUESTS COMPLETED leaderboard counter -- best-effort
+  if(typeof recordDailyStat === 'function') recordDailyStat('quests_completed', 1);
   flashMessage('CONTRACT COMPLETE — +' + q.reward + ' CR, +' + q.repReward + ' REP', 'good');
   logEvent('CONTRACT COMPLETE: ' + q.qty + 'x ' + q.itemLabel + ' — +' + q.reward + ' CR, +' + q.repReward + ' '
     + QUEST_FACTION_LABEL[q.faction] + ' REP at ' + q.stationName.toUpperCase(), 'good');
@@ -12092,6 +12124,9 @@ function updateFameFromPoints(){
     logEvent('=== FAME LEVEL UP — NOW FAME ' + fameLevel + ' ===', 'good');
     if(walletTab === 'medals') renderMedals();
   }
+  // (v0.32.0) item 3: keep the all-time Fame leaderboard's shared table in sync
+  // whenever our own Fame changes -- best-effort, see pushFameToLeaderboard()
+  if(typeof pushFameToLeaderboard === 'function') pushFameToLeaderboard();
 }
 
 // ---------- infinitely-scaling tiered medal chains ----------
@@ -12742,8 +12777,10 @@ function setServerTab(tab){
   serverTab = tab;
   document.getElementById('btnServerTabOnline').classList.toggle('active', tab==='online');
   document.getElementById('btnServerTabLeaderboard').classList.toggle('active', tab==='leaderboard');
+  document.getElementById('btnServerTabHistory').classList.toggle('active', tab==='history');
   document.getElementById('serverOnlineSection').classList.toggle('active', tab==='online');
   document.getElementById('serverLeaderboardSection').classList.toggle('active', tab==='leaderboard');
+  document.getElementById('serverHistorySection').classList.toggle('active', tab==='history');
   refreshServerPanel();
 }
 function refreshServerPanel(){
@@ -12782,20 +12819,64 @@ function refreshServerPanel(){
         row.addEventListener('click', ()=> openProfilePanel(serverRoster[id]));
       });
     }
-  } else {
-    const list = document.getElementById('serverLeaderboardList');
-    list.innerHTML = '<div class="ledgerEmpty">LOADING…</div>';
-    fetchDailyLeaderboard().then(rows=>{
-      if(serverTab !== 'leaderboard') return; // player switched tabs while this was in flight
-      if(!rows || rows.length === 0){ list.innerHTML = '<div class="ledgerEmpty">NO KILLS RECORDED TODAY YET</div>'; return; }
-      list.innerHTML = rows.map((r,i)=>
-        '<div class="prow"><span>#' + (i+1) + ' ' + (r.name || '???') + '</span><span>' + r.kills + ' kills</span></div>'
+  } else if(serverTab === 'leaderboard'){
+    // (v0.32.0) item 3: PVP KILLS block is omitted entirely (not shown zeroed) on
+    // a PVE server -- gated the same way every other PvP feature is (pvpEnabledForServer)
+    const pvpBlock = document.getElementById('lbPvpBlock');
+    if(pvpBlock) pvpBlock.style.display = pvpEnabledForServer() ? '' : 'none';
+    const renderRows = (elId, rows, emptyText, valFn)=>{
+      const el = document.getElementById(elId);
+      if(!el) return;
+      if(!rows || rows.length === 0){ el.innerHTML = '<div class="ledgerEmpty">' + emptyText + '</div>'; return; }
+      el.innerHTML = rows.map((r,i)=>
+        '<div class="prow"><span>#' + (i+1) + ' ' + (r.name || '???') + '</span><span>' + valFn(r) + '</span></div>'
       ).join('');
+    };
+    ['lbFameList','lbNpcKillsList','lbOreList','lbPvpList','lbQuestsList'].forEach(id=>{
+      const el = document.getElementById(id);
+      if(el) el.innerHTML = '<div class="ledgerEmpty">LOADING…</div>';
+    });
+    fetchFameLeaderboard(3).then(rows=>{
+      if(serverTab !== 'leaderboard') return;
+      renderRows('lbFameList', rows, 'NO FAME RECORDED YET', r=> 'FAME ' + r.fame_level);
+    });
+    fetchDailyStatLeaderboard('kills', 3).then(rows=>{
+      if(serverTab !== 'leaderboard') return;
+      renderRows('lbNpcKillsList', rows, 'NO KILLS RECORDED TODAY YET', r=> r.kills + ' kills');
+    });
+    fetchDailyStatLeaderboard('ore_mined', 3).then(rows=>{
+      if(serverTab !== 'leaderboard') return;
+      renderRows('lbOreList', rows, 'NO ORE MINED TODAY YET', r=> Math.round(r.ore_mined) + ' ore');
+    });
+    if(pvpEnabledForServer()){
+      fetchDailyStatLeaderboard('pvp_kills', 3).then(rows=>{
+        if(serverTab !== 'leaderboard') return;
+        renderRows('lbPvpList', rows, 'NO PVP KILLS RECORDED TODAY YET', r=> r.pvp_kills + ' kills');
+      });
+    }
+    fetchDailyStatLeaderboard('quests_completed', 3).then(rows=>{
+      if(serverTab !== 'leaderboard') return;
+      renderRows('lbQuestsList', rows, 'NO QUESTS COMPLETED TODAY YET', r=> r.quests_completed + ' quests');
+    });
+  } else if(serverTab === 'history'){
+    // (v0.32.0) item 2: HISTORY sub-tab -- shared server-wide login/logout log
+    const list = document.getElementById('serverHistoryList');
+    list.innerHTML = '<div class="ledgerEmpty">LOADING…</div>';
+    fetchLoginHistory().then(rows=>{
+      if(serverTab !== 'history') return; // player switched tabs while this was in flight
+      if(!rows || rows.length === 0){ list.innerHTML = '<div class="ledgerEmpty">NO LOGIN HISTORY RECORDED YET</div>'; return; }
+      list.innerHTML = rows.map(r=>{
+        const dur = Math.max(0, r.duration_seconds||0);
+        const durText = dur >= 3600 ? Math.floor(dur/3600) + 'h ' + Math.floor((dur%3600)/60) + 'm' : Math.floor(dur/60) + 'm';
+        const loginText = new Date(r.login_at).toLocaleString();
+        return '<div class="prow"><span>' + (r.name||'???') + ' — ' + loginText + '</span><span>' + durText + '</span></div>';
+      }).join('');
     });
   }
 }
 document.getElementById('btnServerTabOnline').addEventListener('click', ()=> setServerTab('online'));
 document.getElementById('btnServerTabLeaderboard').addEventListener('click', ()=> setServerTab('leaderboard'));
+document.getElementById('btnServerTabHistory').addEventListener('click', ()=> setServerTab('history'));
 
 // ---------- player profile popup (opened from the SERVER online list) ----------
 function openProfilePanel(p){
@@ -15026,6 +15107,70 @@ function cloudSyncSetupSql(){
     "create policy \"players update their own daily kill count 2\" on daily_kills",
     "  for update using (auth.uid() = user_id) with check (auth.uid() = user_id);",
     "",
+    // (v0.32.0) item 3: LEADERBOARD rework -- daily_kills already tracked one daily
+    // counter (NPC kills) per user/server/day; extended in place with three more
+    // daily counters (ore mined, PVP kills, quests completed) rather than standing up
+    // three parallel tables, since it's the exact same shape (one row per
+    // user/server/day, reset by just starting a fresh 'day' row). See
+    // recordDailyStat()/fetchDailyStatLeaderboard() below.
+    "alter table daily_kills add column if not exists ore_mined int not null default 0;",
+    "alter table daily_kills add column if not exists pvp_kills int not null default 0;",
+    "alter table daily_kills add column if not exists quests_completed int not null default 0;",
+    "",
+    // (v0.32.0) item 3: all-time (never resets) Fame leaderboard -- player_saves
+    // rows are NOT cross-readable (its RLS is owner-only, see 'players manage their
+    // own saves' above), so Fame needs its own small publicly-readable table that
+    // each client keeps in sync with its own fameLevel (see pushFameToLeaderboard()).
+    "create table if not exists player_fame (",
+    "  user_id uuid not null references auth.users(id) on delete cascade,",
+    "  server text not null,",
+    "  name text not null,",
+    "  fame_level int not null default 0,",
+    "  updated_at timestamptz not null default now(),",
+    "  primary key (user_id, server)",
+    ");",
+    "alter table player_fame add column if not exists fame_level int not null default 0;",
+    "alter table player_fame add column if not exists updated_at timestamptz not null default now();",
+    "alter table player_fame enable row level security;",
+    "drop policy if exists \"player fame is publicly readable\" on player_fame;",
+    "create policy \"player fame is publicly readable\" on player_fame for select using (true);",
+    "drop policy if exists \"players update their own fame\" on player_fame;",
+    "create policy \"players update their own fame\" on player_fame",
+    "  for insert with check (auth.uid() = user_id);",
+    "drop policy if exists \"players update their own fame 2\" on player_fame;",
+    "create policy \"players update their own fame 2\" on player_fame",
+    "  for update using (auth.uid() = user_id) with check (auth.uid() = user_id);",
+    "",
+    // (v0.32.0) item 2: SERVER popup -> HISTORY tab -- one row per completed login
+    // session, appended on logout (see recordSessionEnd()). Trimmed to the last 100
+    // rows per server client-side right after each insert (see recordSessionEnd) --
+    // there's no server-side cron available to a pure browser Supabase client, so
+    // opportunistic client-triggered trimming on every logout is the simplest
+    // reliable option given that constraint.
+    "create table if not exists login_history (",
+    "  id bigint generated always as identity primary key,",
+    "  server text not null,",
+    "  user_id uuid not null references auth.users(id) on delete cascade,",
+    "  name text not null,",
+    "  login_at timestamptz not null,",
+    "  logout_at timestamptz not null default now(),",
+    "  duration_seconds int not null default 0",
+    ");",
+    "alter table login_history add column if not exists duration_seconds int not null default 0;",
+    "alter table login_history enable row level security;",
+    "drop policy if exists \"login history is publicly readable\" on login_history;",
+    "create policy \"login history is publicly readable\" on login_history for select using (true);",
+    "drop policy if exists \"players insert their own login history\" on login_history;",
+    "create policy \"players insert their own login history\" on login_history",
+    "  for insert with check (auth.uid() = user_id);",
+    // delete is needed for the client-side 100-row trim (recordSessionEnd deletes
+    // OTHER players' old rows too, since everyone shares this history) -- any
+    // signed-in player may delete, matching the trim mechanism's needs; nothing
+    // else in this game ever deletes from this table
+    "drop policy if exists \"signed-in players can trim old login history\" on login_history;",
+    "create policy \"signed-in players can trim old login history\" on login_history",
+    "  for delete using (auth.uid() is not null);",
+    "",
     "-- shared, persistent station market stock (every player on a server sees/",
     "-- affects the same buy/sell inventory instead of each client generating its own)",
     "create table if not exists station_market (",
@@ -15552,6 +15697,103 @@ async function fetchDailyLeaderboard(){
     return (!error && data) ? data : [];
   }catch(e){ return []; }
 }
+// (v0.32.0) item 3: generic best-effort daily counter push, sharing the daily_kills
+// row/table recordKillForLeaderboard() already upserts into -- ore_mined/pvp_kills/
+// quests_completed are just three more columns on that same one-row-per-user/server/
+// day shape (see cloudSyncSetupSql). `amount` is ADDED to whatever's already on the
+// row today (read-then-upsert, same race caveat as recordKillForLeaderboard: an
+// acceptable undercount-by-a-bit tradeoff for a leaderboard, never the save/wallet
+// path). A partial-column upsert never touches the row's OTHER counters (Postgres
+// ON CONFLICT DO UPDATE only SETs the columns actually named in the payload).
+async function recordDailyStat(column, amount){
+  if(!supabaseClient || !currentUser || !mpIdentity || !amount) return;
+  try{
+    const day = todayKey();
+    const { data } = await supabaseClient.from('daily_kills').select(column)
+      .eq('user_id', currentUser.id).eq('server', currentServer).eq('day', day).maybeSingle();
+    const current = (data && data[column]) || 0;
+    const payload = { user_id: currentUser.id, server: currentServer, day, name: mpIdentity.name, updated_at: new Date().toISOString() };
+    payload[column] = current + amount;
+    await supabaseClient.from('daily_kills').upsert(payload, { onConflict: 'user_id,server,day' });
+  }catch(e){ /* best-effort, see recordKillForLeaderboard */ }
+}
+// top `limit` rows for one daily counter column, e.g. fetchDailyStatLeaderboard('ore_mined', 3)
+async function fetchDailyStatLeaderboard(column, limit){
+  if(!supabaseClient) return [];
+  try{
+    const { data, error } = await supabaseClient.from('daily_kills')
+      .select('name,' + column).eq('server', currentServer).eq('day', todayKey())
+      .gt(column, 0).order(column, { ascending:false }).limit(limit || 3);
+    return (!error && data) ? data : [];
+  }catch(e){ return []; }
+}
+// (v0.32.0) item 3: all-time (never resets) Fame leaderboard -- pushed to the
+// publicly-readable player_fame table (player_saves is owner-only, see its RLS)
+// whenever fameLevel changes, plus once on login so a name change/first-ever push
+// shows up promptly. Best-effort, same tolerance as the rest of this leaderboard infra.
+async function pushFameToLeaderboard(){
+  if(!supabaseClient || !currentUser || !mpIdentity) return;
+  try{
+    await supabaseClient.from('player_fame').upsert(
+      { user_id: currentUser.id, server: currentServer, name: mpIdentity.name, fame_level: fameLevel, updated_at: new Date().toISOString() },
+      { onConflict: 'user_id,server' }
+    );
+  }catch(e){ /* best-effort */ }
+}
+async function fetchFameLeaderboard(limit){
+  if(!supabaseClient) return [];
+  try{
+    const { data, error } = await supabaseClient.from('player_fame')
+      .select('name,fame_level').eq('server', currentServer)
+      .order('fame_level', { ascending:false }).limit(limit || 3);
+    return (!error && data) ? data : [];
+  }catch(e){ return []; }
+}
+// ---------- item 2 (v0.32.0): SERVER popup -> HISTORY tab ----------
+// One row per completed login session, appended on logout. Reliably captured for
+// every EXPLICIT logout path (SAVE & EXIT, AFK auto-logout, HARDCORE wipe -- all
+// three already funnel through leaveMultiplayer(), see its call sites) since those
+// have time to actually finish the network request before the page reloads. The
+// best-effort beforeunload listener below additionally tries to catch a plain tab
+// close/refresh/crash, but a browser gives an unload handler no guarantee an async
+// fetch started there ever completes -- that path is honestly unreliable, not just
+// cautious phrasing (see the final report).
+async function recordSessionEnd(){
+  if(!supabaseClient || !currentUser || !mpIdentity || !mpJoinedAtMs) return;
+  // dedup guard -- leaveMultiplayer() and the beforeunload listener can both fire
+  // for the same logout (e.g. SAVE & EXIT calls leaveMultiplayer() directly, then
+  // its own reload() triggers beforeunload too); keyed to mpJoinedAtMs so a genuine
+  // NEXT session (fresh mpJoinedAtMs on the next LAUNCH) is never suppressed by it.
+  if(recordSessionEnd._lastJoinedAtMs === mpJoinedAtMs) return;
+  recordSessionEnd._lastJoinedAtMs = mpJoinedAtMs;
+  try{
+    const now = Date.now();
+    const durationSeconds = Math.max(0, Math.round((now - mpJoinedAtMs)/1000));
+    await supabaseClient.from('login_history').insert({
+      server: currentServer, user_id: currentUser.id, name: mpIdentity.name,
+      login_at: new Date(mpJoinedAtMs).toISOString(), logout_at: new Date(now).toISOString(),
+      duration_seconds: durationSeconds
+    });
+    // best-effort trim to the last 100 rows FOR THIS SERVER -- no server-side cron
+    // available to a pure browser Supabase client, so the simplest reliable option
+    // is trimming opportunistically, client-side, right after each insert (rather
+    // than a scheduled trim, which this architecture has nowhere to run).
+    const { data: idRows } = await supabaseClient.from('login_history').select('id')
+      .eq('server', currentServer).order('login_at', { ascending:false }).range(100, 999);
+    if(idRows && idRows.length) await supabaseClient.from('login_history').delete().in('id', idRows.map(r=>r.id));
+  }catch(e){ /* best-effort */ }
+}
+async function fetchLoginHistory(){
+  if(!supabaseClient) return [];
+  try{
+    const { data, error } = await supabaseClient.from('login_history')
+      .select('name,login_at,logout_at,duration_seconds').eq('server', currentServer)
+      .order('login_at', { ascending:false }).limit(100);
+    return (!error && data) ? data : [];
+  }catch(e){ return []; }
+}
+// best-effort only -- see recordSessionEnd's comment above
+window.addEventListener('beforeunload', ()=>{ try{ recordSessionEnd(); }catch(e){} });
 
 function setAuthBusy(busy, statusText){
   const loginBtn = document.getElementById('btnAuthLogin');
@@ -15954,12 +16196,21 @@ function initMultiplayer(){
   joinChatChannel();
   joinZoneChannel(currentZoneKey());
   joinAccountSessionChannel();
+  // (v0.32.0) item 3: push our current Fame to the shared all-time leaderboard
+  // table right on login too, not just when it changes -- covers a name change
+  // and (defensively) a first-ever push if updateFameFromPoints never ran yet
+  if(typeof pushFameToLeaderboard === 'function') pushFameToLeaderboard();
   // settle any auction sales that came in while this account was offline right
   // away, rather than making the seller specifically dock somewhere first
   claimAuctionPayouts();
   updateMpStatusUI();
 }
 function leaveMultiplayer(){
+  // (v0.32.0) item 2: fire-and-forget -- every call site here either awaits/delays
+  // a page reload long enough for this fetch to land (SAVE & EXIT, AFK auto-logout,
+  // HARDCORE wipe) or is the best-effort beforeunload listener itself, so this is
+  // never awaited here (leaveMultiplayer is called from sync contexts too).
+  if(mpEnabled) recordSessionEnd();
   clearMpReconnectTimer('chat'); clearMpReconnectTimer('zone');
   mpReconnectAttempts = { chat:0, zone:0 };
   mpChatOk = false; mpZoneOk = false;
@@ -16200,6 +16451,16 @@ function joinZoneChannel(zoneKey){
   const ch = supabaseClient.channel('zone:' + key, { config:{ presence:{ key: mpIdentity.id }, broadcast:{ self:false } } });
   ch.on('broadcast', { event:'pos' }, (msg)=> handleRemotePos(msg.payload));
   ch.on('broadcast', { event:'hit' }, (msg)=> handleIncomingHit(msg.payload));
+  // (v0.32.0) item 3: PVP-kill credit -- broadcast by the VICTIM'S client the
+  // instant their own hull reaches 0 from a PvP hit (see damagePlayer's pvp branch),
+  // received here by whoever the payload names as the killer so THEIR client can
+  // record the daily PVP-kills counter (a kill can only ever credit the attacker
+  // that actually landed the fatal hit's client, this trust-based multiplayer model
+  // has no authoritative server to do it centrally -- see the PvP damage comments).
+  ch.on('broadcast', { event:'pvpKillCredit' }, (msg)=>{
+    const p = msg.payload || {};
+    if(mpIdentity && p.killerId === mpIdentity.id && typeof recordDailyStat === 'function') recordDailyStat('pvp_kills', 1);
+  });
   // plain (unprefixed) chat -- zone-scoped by construction: only players currently
   // subscribed to THIS zone's channel ever receive it. See sendChatMessage for
   // /a (all-zone) and /w (whisper), which go over the separate server-wide channel.
@@ -16300,7 +16561,7 @@ function handleIncomingHit(payload){
   const last = mpLastHitFrom[attackerId] || 0;
   if((now - last) / 1000 < MP_MIN_HIT_INTERVAL) return; // too soon after their last accepted hit -- drop it
   mpLastHitFrom[attackerId] = now;
-  damagePlayer(Math.min(dmg, MP_MAX_HIT_DAMAGE), { kind:'pvp', name: payload.attackerName });
+  damagePlayer(Math.min(dmg, MP_MAX_HIT_DAMAGE), { kind:'pvp', name: payload.attackerName, attackerId });
 }
 function damageRemotePlayer(entry, dmg){
   if(!entry.alive) return;
@@ -17323,6 +17584,12 @@ function damagePlayer(dmg, source){
     logEvent('=== YOUR SHIP WAS DESTROYED ===', 'warn');
     if(source && source.kind === 'pvp'){
       logEvent('DESTROYED BY ' + (source.name || 'ANOTHER PILOT').toUpperCase(), 'warn');
+      // (v0.32.0) item 3: credit the attacker's daily PVP-kills counter -- see the
+      // 'pvpKillCredit' zone-channel listener in joinZoneChannel(). Only ever sent
+      // when pvpEnabledForServer() (PvP/HARDCORE), matching every other PvP gate.
+      if(source.attackerId && mpZoneChannel && pvpEnabledForServer()){
+        try{ mpZoneChannel.send({ type:'broadcast', event:'pvpKillCredit', payload:{ killerId: source.attackerId } }); }catch(e){}
+      }
     }
 
     // HARDCORE server: death is final -- wipe the save and bail out of the normal
