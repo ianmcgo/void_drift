@@ -2655,9 +2655,9 @@
 // compatibility depends on it. Add new keys, don't rename old ones.
 
 // ---------- version / build info (shown in the ESC settings menu) ----------
-const GAME_VERSION = "0.30.0";
-const GAME_LAST_EDITED = "2026-09-25";
-const GAME_BUILD_TIME = "15:39 PT"; // wall-clock time this build was published, not just the date
+const GAME_VERSION = "0.30.2";
+const GAME_LAST_EDITED = "2026-09-26";
+const GAME_BUILD_TIME = "04:15 PT"; // wall-clock time this build was published, not just the date
 
 // ---------- update-available banner ----------
 // Periodically re-fetches this very page (same-origin -- works identically whether
@@ -8013,6 +8013,32 @@ document.getElementById('btnCloseInventory').addEventListener('click', ()=> togg
 
 // ---------- docking bay (interior view + repair/turn-in/undock menu) ----------
 let docked = false;
+// bug fix (v0.30.1) ROOT CAUSE: v0.30.0 tried to fix "space HUD flashes/stays
+// visible over the docked view on a docked relogin" by pre-hiding these panels
+// at LAUNCH and only restoring them once (right after the save-restore branches
+// settled) if the player wasn't docked. That missed a SECOND path that shows
+// them: applyCustomHudLayout('space', false), called unconditionally at the very
+// end of the LAUNCH handler (see its call site) to silently auto-apply a saved
+// custom SPACE HUD layout. That function does `panel.setAttribute('style', ...)`
+// / `panel.removeAttribute('style')` for every managed 'space'-group panel --
+// which is telemetry/clockPanel/overview/eventLog/targetPanel/itemInspector,
+// i.e. 6 of these 10 ids -- and EITHER outcome wipes out whatever `display`
+// value was just set (including the 'none' the docked-relogin fix had just
+// applied), unconditionally making the panel visible again. This only shows up
+// for an account/browser that actually has a saved space HUD layout in
+// localStorage, which is exactly the kind of thing a player who's used the game
+// for a while (or a tester re-logging into the same account repeatedly) would
+// have -- explaining why the first fix's test (which likely never saved a space
+// layout) saw 0 bad flashes while the real user still saw the HUD stay up. This
+// single list + helper is now the ONE place that knows which ids make up the
+// space HUD, and setSpaceHudVisible() is the ONE function allowed to touch their
+// display style, called every time visibility should change AND, critically,
+// re-called after ANY code path (like applyCustomHudLayout) that might have
+// clobbered it -- rather than a one-shot hide-then-maybe-show.
+const SPACE_HUD_IDS = ['telemetry','clockPanel','overview','eventLog','targetPanel','itemInspector','centerReticle','spawnAlert','zoneAlert','lockAlert'];
+function setSpaceHudVisible(visible){
+  SPACE_HUD_IDS.forEach(id=>{ const el = document.getElementById(id); if(el) el.style.display = visible ? '' : 'none'; });
+}
 
 function buildDockBayScene(){
   const dScene = new THREE.Scene();
@@ -8209,8 +8235,7 @@ function enterDock(station){
   lockedId = null;
   selectTarget(null);
   shipState.vel.set(0,0,0);
-  ['telemetry','clockPanel','overview','eventLog','targetPanel','itemInspector','centerReticle','spawnAlert','zoneAlert','lockAlert']
-    .forEach(id=>{ const el = document.getElementById(id); if(el) el.style.display = 'none'; });
+  setSpaceHudVisible(false);
   toggleInventoryPanel(false);
   toggleEquipmentPanel(false);
   toggleStarMapPanel(false);
@@ -8244,8 +8269,7 @@ function exitDock(){
   // item 8: manufacturing batches are wall-clock-timed now (see manufacturingQueues'
   // own rework comment) and deliberately KEEP building after undocking -- no more
   // cancel/refund here.
-  ['telemetry','clockPanel','overview','eventLog','targetPanel','itemInspector','centerReticle','spawnAlert','zoneAlert','lockAlert']
-    .forEach(id=>{ const el = document.getElementById(id); if(el) el.style.display = ''; });
+  setSpaceHudVisible(true);
   // regression fix (item E): close every individual floating station sub-panel
   // (there's no longer a single shared #dockedPanel box to hide)
   showDockSubPanel('dockMainPanel');
@@ -14186,6 +14210,16 @@ function applyCustomHudLayout(group, announce){
     if(styleText) p.panel.setAttribute('style', styleText);
     else p.panel.removeAttribute('style');
   });
+  // v0.30.1 ROOT CAUSE FIX: setAttribute('style', ...)/removeAttribute('style')
+  // above unconditionally overwrite each panel's ENTIRE style attribute,
+  // including any `display:none` a docked player's space HUD was just hidden
+  // with (see setSpaceHudVisible's own comment near `docked`) -- so restoring a
+  // saved SPACE layout could silently re-show the space HUD over the docking-bay
+  // UI regardless of who called this. Re-enforcing the live `docked` state here,
+  // inside the one function that can clobber it, makes this safe for every
+  // caller (LAUNCH's auto-apply, and the manual LOAD SPACE LAYOUT button alike)
+  // instead of relying on every call site to remember to re-check afterward.
+  if(group === 'space') setSpaceHudVisible(!docked);
   if(announce) flashMessage((group==='station' ? 'STATION' : 'SPACE') + ' HUD LAYOUT LOADED', 'good');
   return true;
 }
@@ -19540,9 +19574,12 @@ document.getElementById('startBtn').addEventListener('click', async ()=>{
   // hides, right here before any of that async work starts, means a docked
   // restore now stays hidden the whole way through instead of flashing; the
   // block below (after the save-restore branches settle) restores them for the
-  // common non-docked case, which is the only case that still needs them shown.
-  const SPACE_HUD_IDS = ['telemetry','clockPanel','overview','eventLog','targetPanel','itemInspector','centerReticle','spawnAlert','zoneAlert','lockAlert'];
-  SPACE_HUD_IDS.forEach(id=>{ const el = document.getElementById(id); if(el) el.style.display = 'none'; });
+  // common non-docked case, which is the only case that still needs them shown --
+  // and, since applyCustomHudLayout('space', false) near the bottom of this same
+  // handler can ALSO clobber this visibility (see setSpaceHudVisible's own
+  // comment, declared top-level near `docked`), it's re-enforced one more time
+  // right after that call too, rather than trusting this one-shot pre-hide alone.
+  setSpaceHudVisible(false);
   clock.start();
   gameStartTime = performance.now(); // starts the in-game clock (#clockPanel) at LAUNCH
   mpJoinedAtMs = Date.now(); // (v0.19.2) wall-clock twin of the above, see its declaration
@@ -19681,9 +19718,7 @@ document.getElementById('startBtn').addEventListener('click', async ()=>{
   // (rather than re-deriving it from savedGame) covers every branch correctly,
   // including the stale/unrecognized-dockedStationId case that also never calls
   // enterDock().
-  if(!docked){
-    SPACE_HUD_IDS.forEach(id=>{ const el = document.getElementById(id); if(el) el.style.display = ''; });
-  }
+  setSpaceHudVisible(!docked);
   pendingCloudSave = null;
   // surface a broken cloud-save setup loudly rather than let it silently look like
   // a data reset -- see fetchCloudSaveIntoPending()/cloudSyncSetupSql()
@@ -19717,6 +19752,16 @@ document.getElementById('startBtn').addEventListener('click', async ()=>{
   // exists -- no LOAD click needed. `false` suppresses the flash message so a
   // player with no saved layout yet (the common case, first login) sees nothing.
   applyCustomHudLayout('space', false);
+  // v0.30.1 ROOT CAUSE FIX: applyCustomHudLayout() rewrites/removes the `style`
+  // attribute on every managed 'space'-group panel (telemetry/clockPanel/
+  // overview/eventLog/targetPanel/itemInspector) when a saved layout exists --
+  // which silently wipes out the docked-hide from setSpaceHudVisible(false)
+  // above and makes those panels visible again even though the player is
+  // docked. Re-enforcing the current docked state here, as the very last thing
+  // before the space HUD could ever be seen, is what actually makes visibility
+  // an invariant of `docked` instead of a one-shot flag that anything later in
+  // this handler can quietly undo.
+  setSpaceHudVisible(!docked);
   gameLaunched = true;
   animate();
 });
