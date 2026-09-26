@@ -2703,9 +2703,9 @@
 // compatibility depends on it. Add new keys, don't rename old ones.
 
 // ---------- version / build info (shown in the ESC settings menu) ----------
-const GAME_VERSION = "0.32.0";
+const GAME_VERSION = "0.33.0";
 const GAME_LAST_EDITED = "2026-09-26";
-const GAME_BUILD_TIME = "08:47 PT"; // wall-clock time this build was published, not just the date
+const GAME_BUILD_TIME = "12:12 PT"; // wall-clock time this build was published, not just the date
 
 // ---------- update-available banner ----------
 // Periodically re-fetches this very page (same-origin -- works identically whether
@@ -7579,11 +7579,55 @@ const AMMO_ITEM_TYPE_SILVER = 'ammo_silver_bullets';
 const AMMO_ITEM_TYPE_GOLD = 'ammo_gold_bullets';
 const AMMO_ITEM_TYPES = [AMMO_ITEM_TYPE, AMMO_ITEM_TYPE_COPPER, AMMO_ITEM_TYPE_SILVER, AMMO_ITEM_TYPE_GOLD];
 function isAmmoItemType(t){ return AMMO_ITEM_TYPES.indexOf(t) >= 0; }
-// (v0.31.1) item 5 (related hardening): skill_book/memory_cube stacks each carry
-// their own per-instance identity fields (see itemInstanceExtraFields below) that a
-// qty-merge (COMBINE STACKS) would destroy -- two different-level books share
-// itemType 'skill_book' but are not interchangeable.
-function isUncombinableItemType(t){ return t === 'skill_book' || t === 'memory_cube'; }
+// (v0.31.1) item 5 (related hardening): skill_book stacks carry their own
+// per-instance identity fields (bookSkill+bookLevel, see itemInstanceExtraFields
+// below) that a qty-merge (COMBINE STACKS) would destroy -- two different-level
+// books share itemType 'skill_book' but are not interchangeable, and there's no
+// sensible single "level" a merged stack could represent.
+// (v0.33.0) item 4: memory_cube used to be listed here too (each cube had its own
+// player-chosen cubeKnowledge, so no two were ever guaranteed to match), but cubes
+// are now stackable up to MEMORY_CUBE_STACK_CAP -- ONLY with another cube sharing
+// the exact same cubeKnowledge value, since a merged stack can still only represent
+// one shared knowledge-per-cube amount. See stackCombineCap/stacksCombinable below,
+// which layer that extra same-value requirement on top of the plain itemType match
+// every COMBINE call site already does.
+function isUncombinableItemType(t){ return t === 'skill_book'; }
+const MEMORY_CUBE_STACK_CAP = 500;
+function stackCombineCap(itemType){
+  if(isAmmoItemType(itemType)) return AMMO_MAX_STACK;
+  if(itemType === 'memory_cube') return MEMORY_CUBE_STACK_CAP;
+  return Infinity;
+}
+// true if `other` is a valid combine/merge target for `stack`, beyond the plain
+// itemType match every caller already does -- memory cubes additionally require
+// the SAME cubeKnowledge value.
+function stacksCombinable(stack, other){
+  if(stack.itemType !== other.itemType) return false;
+  if(stack.itemType === 'memory_cube') return (other.cubeKnowledge||0) === (stack.cubeKnowledge||0);
+  return true;
+}
+// merges `count` freshly-produced memory cubes (all sharing `cubeKnowledge`) into
+// `arr` (cargoStacks or a stationStorage() bucket) -- tops up any existing
+// under-cap stack of the SAME knowledge value first, then spills any remainder into
+// new stack(s) at MEMORY_CUBE_STACK_CAP each. `makeStackId` supplies a fresh
+// stackId per new stack (cargo/station keep separate id counters).
+function mergeMemoryCubesIntoArray(arr, cubeKnowledge, count, makeStackId){
+  let remaining = Math.max(0, Math.round(count) || 0);
+  if(remaining <= 0) return;
+  for(let i=0; i<arr.length && remaining>0; i++){
+    const s = arr[i];
+    if(s.itemType === 'memory_cube' && (s.cubeKnowledge||0) === cubeKnowledge && s.qty < MEMORY_CUBE_STACK_CAP){
+      const add = Math.min(remaining, MEMORY_CUBE_STACK_CAP - s.qty);
+      s.qty += add;
+      remaining -= add;
+    }
+  }
+  while(remaining > 0){
+    const add = Math.min(remaining, MEMORY_CUBE_STACK_CAP);
+    arr.push({ stackId: makeStackId(), itemType:'memory_cube', qty: add, cubeKnowledge: cubeKnowledge });
+    remaining -= add;
+  }
+}
 // item 6: Iron Bullet Blueprint -- a fresh item-type key per the NAMING STABILITY
 // rule, never rename once introduced. A consumable: LEARN-ing it (see dpLearn in
 // openCargoActionPrompt) removes 1 from the stack and permanently unlocks the Iron
@@ -7864,10 +7908,19 @@ function updateInventoryPanel(){
     ? '<div class="cargoTile empty">EMPTY</div>'
     : cargoStacks.map(stack=>{
         const def = itemDisplayDef(stack.itemType);
+        // (v0.33.0) item 4 (related consistency fix): this generic tile never showed a
+        // memory cube's per-cube knowledge value or a skill book's level (both other
+        // cargo/storage tile renderers already did) -- now shown consistently here too.
+        let label = def.label, qtyText = stack.qty;
+        if(stack.itemType === 'memory_cube'){ qtyText = 'x' + stack.qty + ' · ' + (stack.cubeKnowledge||0) + ' KNOWLEDGE EA'; }
+        else if(stack.itemType === 'skill_book'){
+          const skDef = SKILL_DEFS[stack.bookSkill];
+          label = (skDef?skDef.name:stack.bookSkill) + ' Book'; qtyText = 'LV.' + stack.bookLevel;
+        }
         return '<div class="cargoTile" data-stack-id="' + stack.stackId + '">'
           + '<div class="swatch' + (def.round?' round':'') + '" style="background:' + def.color + ';"></div>'
-          + '<div class="tname">' + def.label + '</div>'
-          + '<div class="qty">' + stack.qty + '</div>'
+          + '<div class="tname">' + label + '</div>'
+          + '<div class="qty">' + qtyText + '</div>'
           + (isStackEquipped(stack) ? '<div class="eqTag">EQUIPPED</div>' : '')
           + (stack.guildQuestId ? '<div class="eqTag guildTag">GUILD DELIVERY</div>' : '')
           + '</div>';
@@ -7925,7 +7978,7 @@ function openCargoActionPrompt(stackId){
   // qty-merge would destroy (two different-level books sharing itemType 'skill_book'
   // are NOT the same item) -- never offer COMBINE for these, same reasoning as the
   // itemInstanceExtraFields guard added to addToCargo/addToStationStorage.
-  if(combineBtn) combineBtn.style.display = (!isUncombinableItemType(stack.itemType) && cargoStacks.some(s => s.itemType === stack.itemType && s.stackId !== stack.stackId && (s.guildQuestId||null) === (stack.guildQuestId||null))) ? '' : 'none';
+  if(combineBtn) combineBtn.style.display = (!isUncombinableItemType(stack.itemType) && cargoStacks.some(s => s.stackId !== stack.stackId && (s.guildQuestId||null) === (stack.guildQuestId||null) && stacksCombinable(stack, s))) ? '' : 'none';
   // (v0.31.0) item 1: an EQUIPPED item (currently-mounted ship weapon/shield/mining
   // laser tier, or the currently-loaded ammo stack) can't be jettisoned straight into
   // space -- disable JETTISON and tell the player why, rather than letting the button
@@ -8022,12 +8075,13 @@ function combineCargoStack(stackId){
   const stack = cargoStacks.find(s=>s.stackId===stackId);
   if(!stack) return;
   const itemType = stack.itemType;
-  const cap = isAmmoItemType(itemType) ? AMMO_MAX_STACK : Infinity;
+  const cap = stackCombineCap(itemType);
   const wasEquippedAmmo = stackId === equippedAmmoStackId;
   // guild delivery cargo only ever combines with the SAME delivery's cargo (and owned
-  // cargo never with guild cargo) so the earmark can't leak either way
-  const others = cargoStacks.filter(s => s.itemType === itemType && s.stackId !== stackId && s.qty < cap
-    && (s.guildQuestId||null) === (stack.guildQuestId||null));
+  // cargo never with guild cargo) so the earmark can't leak either way. (v0.33.0) item 4:
+  // stacksCombinable additionally requires the same cubeKnowledge for memory_cube.
+  const others = cargoStacks.filter(s => s.stackId !== stackId && s.qty < cap
+    && (s.guildQuestId||null) === (stack.guildQuestId||null) && stacksCombinable(stack, s));
   if(others.length === 0){ flashMessage('NO OTHER STACK TO COMBINE INTO', 'warn'); return; }
   let remaining = stack.qty;
   let lastReceiver = null;
@@ -8707,7 +8761,7 @@ function renderDockMarketStorageColumn(){
         const def = itemDisplayDef(stack.itemType);
         const isShip = isShipItemType(stack.itemType);
         let label = def.label, qtyText = stack.qty;
-        if(stack.itemType === 'memory_cube'){ label = 'Memory Cube'; qtyText = (stack.cubeKnowledge||0) + ' KNOWLEDGE'; }
+        if(stack.itemType === 'memory_cube'){ label = 'Memory Cube'; qtyText = 'x' + stack.qty + ' · ' + (stack.cubeKnowledge||0) + ' KNOWLEDGE EA'; }
         else if(stack.itemType === 'skill_book'){
           const skDef = SKILL_DEFS[stack.bookSkill];
           label = (skDef?skDef.name:stack.bookSkill) + ' Book'; qtyText = 'LV.' + stack.bookLevel;
@@ -9435,7 +9489,18 @@ function openFitEquipConfirm(kind, target, label, stack){
   if(labelEl) labelEl.textContent = label + '?';
   const storeBtn = document.getElementById('fitEquipConfirmStore');
   if(storeBtn) storeBtn.style.display = stack ? '' : 'none';
-  if(prompt) prompt.classList.add('show');
+  if(prompt){
+    prompt.classList.add('show');
+    // (v0.33.0) item 3: this box renders INLINE at the bottom of the STORAGE
+    // panel's own internal scroll region (.popupBody, overflow-y:auto -- see its
+    // CSS), below the ship/station grids and the move/withdraw prompt -- so its
+    // CONFIRM/STORE/CANCEL row could land below the fold, requiring a manual
+    // scroll to see it. Rather than resizing the panel itself (which would collide
+    // with makePanelManageable's persisted-height system, see lockPixelSize), just
+    // scroll this box into view the moment it's shown -- deferred one frame so the
+    // 'show' class has actually applied (display:block) before measuring it.
+    requestAnimationFrame(()=> prompt.scrollIntoView({ block:'nearest' }));
+  }
 }
 function closeFitEquipConfirm(){
   pendingFitAction = null;
@@ -9642,7 +9707,14 @@ function renderManufacturingPanel(){
       + (building
         ? '<div class="drow"><span>CRAFTING</span><span>' + (q.completed + 1) + ' / ' + q.total + '</span></div>'
         + '<div class="drow"><span>QUEUE REMAINING</span><span>' + (q.total - q.completed) + '</span></div>'
+        // (v0.33.0) item 1: TIME REMAINING readout on this unit's own load bar, same
+        // convention as SKILLS/LIBRARY's "X LEFT"/"TIME REMAINING" rows
+        + '<div class="drow"><span>TIME REMAINING</span><span>' + fmtLibraryDuration(Math.max(0, q.unitMs - elapsedInUnit)) + '</span></div>'
         + '<div class="mfgBar" data-mfg-progress="' + bpType + '"><i style="width:' + pct + '%;"></i></div>'
+        // item 1: "use a Memory Cube to speed up" now also works for a Manufacturing
+        // batch (never excluded here -- the memory-cube-scribe exception only applies
+        // to Library's own cube-craft form, not to Manufacturing at all)
+        + '<div class="dbtns" style="margin-top:6px;"><button class="cmdbtn" data-mfg-use-cube="' + bpType + '">USE MEMORY CUBE TO SPEED UP</button></div>'
         + '<div class="drow" style="font-size:10px; color:var(--phosphor-dim);"><span>Keeps building even if you undock or log off</span><span></span></div>'
         : '<div class="dockSubRow">'
           + '<span class="dsName">Quantity</span>'
@@ -9653,6 +9725,8 @@ function renderManufacturingPanel(){
   }).join('');
 }
 document.getElementById('mfgRecipeList').addEventListener('click', (e)=>{
+  const useCubeBtn = e.target.closest('[data-mfg-use-cube]');
+  if(useCubeBtn){ consumeMemoryCubeForManufacturing(useCubeBtn.dataset.mfgUseCube); return; }
   const btn = e.target.closest('[data-mfg-build]');
   if(!btn || btn.disabled) return;
   const bpType = btn.dataset.mfgBuild;
@@ -9746,6 +9820,23 @@ function libraryCraftRemainingMs(stationId){
   if(!c) return 0;
   return Math.max(0, c.durationMs - libraryCraftElapsedMs(stationId));
 }
+// (v0.33.0) item 4/1: per-UNIT elapsed/remaining -- for a batched kind:'cube' craft
+// this is time into the CURRENTLY-crafting cube of the batch (matching Manufacturing's
+// per-unit progress-bar convention, see renderManufacturingPanel); every other kind
+// is never batched, so this is just the same as the whole-craft elapsed/remaining.
+function libraryCraftUnitMs(c){ return c.kind === 'cube' ? (c.unitMs != null ? c.unitMs : c.durationMs) : c.durationMs; }
+function libraryCraftUnitElapsedMs(stationId){
+  const c = libraryCrafting[stationId];
+  if(!c) return 0;
+  const unitMs = libraryCraftUnitMs(c);
+  if(c.kind !== 'cube') return libraryCraftElapsedMs(stationId);
+  return Math.max(0, libraryCraftElapsedMs(stationId) - (c.qtyCompleted||0) * unitMs);
+}
+function libraryCraftUnitRemainingMs(stationId){
+  const c = libraryCrafting[stationId];
+  if(!c) return 0;
+  return Math.max(0, libraryCraftUnitMs(c) - libraryCraftUnitElapsedMs(stationId));
+}
 // which skill-book levels this skill is currently allowed to scribe -- "2..(currentLevel+1)",
 // per the spec: LV.3 in a skill lets you scribe LV.2, LV.3 AND LV.4 books for it (not just
 // the immediate next level), but only once the skill itself is at LV.1+ at all.
@@ -9758,10 +9849,12 @@ function libraryScribableBookLevels(key){
   return out;
 }
 // finds and consumes ONE matching Skill Book (bookSkill===key, bookLevel===target),
-// checking the ship's cargo hold first, then this station's storage -- a book scribed
-// at one station can be carried (via the existing generic STORAGE withdraw) to
-// wherever the player actually wants to start that level of training. Returns true if
-// a book was found and consumed.
+// checking the ship's cargo hold first, then -- ONLY WHILE DOCKED -- this station's
+// storage -- a book scribed at one station can be carried (via the existing generic
+// STORAGE withdraw) to wherever the player actually wants to start that level of
+// training. While undocked/in space, station storage isn't reachable (matches how
+// storage access works everywhere else in the game), so only cargo is checked.
+// Returns true if a book was found and consumed.
 function consumeMatchingSkillBook(key, target){
   let idx = cargoStacks.findIndex(s=> s.itemType==='skill_book' && s.bookSkill===key && s.bookLevel===target);
   if(idx >= 0){
@@ -9769,6 +9862,7 @@ function consumeMatchingSkillBook(key, target){
     updateCargoUI();
     return true;
   }
+  if(!docked || !dockedStation) return false;
   const stnArr = stationStorage();
   idx = stnArr.findIndex(s=> s.itemType==='skill_book' && s.bookSkill===key && s.bookLevel===target);
   if(idx >= 0){
@@ -9782,11 +9876,21 @@ function consumeMatchingSkillBook(key, target){
 // storage) -- used by the "USE" action on the SKILLS panel below
 function findBestMemoryCube(){
   const cargoCubes = cargoStacks.filter(s=> s.itemType==='memory_cube');
-  const stnCubes = stationStorage().filter(s=> s.itemType==='memory_cube');
+  const stnCubes = (docked && dockedStation) ? stationStorage().filter(s=> s.itemType==='memory_cube') : [];
   const all = cargoCubes.map(s=>({ from:'ship', stack:s })).concat(stnCubes.map(s=>({ from:'station', stack:s })));
   if(!all.length) return null;
   all.sort((a,b)=> (b.stack.cubeKnowledge||0) - (a.stack.cubeKnowledge||0));
   return all[0];
+}
+// (v0.33.0) item 1: removes exactly ONE cube from a findBestMemoryCube() result --
+// decrements that stack's qty by 1 rather than deleting the whole stack outright, so
+// a stack with qty>1 (see the memory-cube-stacking rework, isUncombinableItemType/
+// mergeStackableCube below) is correctly partially consumed instead of destroying
+// every cube in the stack for a single speed-up use.
+function consumeOneFoundMemoryCube(found){
+  if(found.from === 'ship'){ jettisonFromStack(found.stack.stackId, 1); return; }
+  found.stack.qty = Math.max(0, (found.stack.qty||1) - 1);
+  if(found.stack.qty <= 0) removeStationStorageStackRef(found.stack);
 }
 // consumes ONE Memory Cube (preferring the largest owned, across cargo + this
 // station's storage) to instantly advance whatever skill is CURRENTLY actively
@@ -9800,8 +9904,7 @@ function consumeMemoryCubeForTraining(){
   const found = findBestMemoryCube();
   if(!found){ flashMessage('NO MEMORY CUBE OWNED', 'warn'); return false; }
   const bonusMs = Math.round((found.stack.cubeKnowledge||0) * LIBRARY_CUBE_MS_PER_KNOWLEDGE);
-  if(found.from === 'ship') jettisonFromStack(found.stack.stackId, 1);
-  else removeStationStorageStackRef(found.stack);
+  consumeOneFoundMemoryCube(found);
   const key = activeTraining.key;
   // add straight to the LIVE elapsed clock by rewinding startedAtMs -- equivalent to
   // banking it into skillProgressMs but keeps the "still actively training" state intact
@@ -9815,25 +9918,92 @@ function consumeMemoryCubeForTraining(){
   renderLibraryPanel();
   return true;
 }
-function startMemoryCubeCraft(knowledgeAmt){
+// (v0.33.0) item 1: extends the "consume a Memory Cube to speed up an in-progress
+// job" mechanic (previously skill-training only, see consumeMemoryCubeForTraining
+// above) to LIBRARY scribing jobs -- skill books, blueprints, recipe blueprints --
+// EXCLUDING scribing MORE memory cubes (explicit exception in the request: the UI
+// never renders this button for kind:'cube', see renderLibraryPanel, but this is
+// re-checked here too in case it's ever called from anywhere else). Rewinds the
+// craft's own startedAtMs by the cube's worth of bonus time, same LIBRARY_CUBE_MS_
+// PER_KNOWLEDGE conversion consumeMemoryCubeForTraining already uses.
+function consumeMemoryCubeForLibraryCraft(){
+  if(!docked || !dockedStation) return false;
+  const stationId = dockedStation.id;
+  const c = libraryCrafting[stationId];
+  if(!c){ flashMessage('NOTHING CRAFTING HERE', 'warn'); return false; }
+  if(c.kind === 'cube'){ flashMessage('CANNOT USE A MEMORY CUBE TO SPEED UP SCRIBING MORE MEMORY CUBES', 'warn'); return false; }
+  const found = findBestMemoryCube();
+  if(!found){ flashMessage('NO MEMORY CUBE OWNED', 'warn'); return false; }
+  const bonusMs = Math.round((found.stack.cubeKnowledge||0) * LIBRARY_CUBE_MS_PER_KNOWLEDGE);
+  consumeOneFoundMemoryCube(found);
+  c.startedAtMs -= bonusMs;
+  flashMessage('MEMORY CUBE CONSUMED — +' + fmtLibraryDuration(bonusMs) + ' PROGRESS', 'good');
+  logEvent('LIBRARY: MEMORY CUBE CONSUMED TO ADVANCE ' + libraryCraftDesc(c) + ' BY ' + fmtLibraryDuration(bonusMs), 'good');
+  checkLibraryCraftCompletion();
+  renderLibraryPanel();
+  updateCargoUI();
+  if(typeof renderDockStorageRows === 'function') renderDockStorageRows();
+  return true;
+}
+// (v0.33.0) item 1: same mechanic, extended to MANUFACTURING batches -- rewinds the
+// batch's startedAtMs, which (same as Manufacturing's own wall-clock design) can
+// cascade to complete more than one queued unit at once if the bonus is large
+// enough, exactly like checkManufacturingCompletion's normal per-tick catch-up.
+function consumeMemoryCubeForManufacturing(bpType){
+  if(!docked || !dockedStation) return false;
+  const stationId = dockedStation.id;
+  const q = manufacturingQueues[stationId] && manufacturingQueues[stationId][bpType];
+  if(!q || q.total <= 0){ flashMessage('NOTHING BUILDING', 'warn'); return false; }
+  const found = findBestMemoryCube();
+  if(!found){ flashMessage('NO MEMORY CUBE OWNED', 'warn'); return false; }
+  const bonusMs = Math.round((found.stack.cubeKnowledge||0) * LIBRARY_CUBE_MS_PER_KNOWLEDGE);
+  consumeOneFoundMemoryCube(found);
+  q.startedAtMs -= bonusMs;
+  flashMessage('MEMORY CUBE CONSUMED — +' + fmtLibraryDuration(bonusMs) + ' PROGRESS', 'good');
+  logEvent('MANUFACTURING: MEMORY CUBE CONSUMED TO ADVANCE BATCH BY ' + fmtLibraryDuration(bonusMs), 'good');
+  checkManufacturingCompletion();
+  renderManufacturingPanel();
+  updateCargoUI();
+  if(typeof renderDockStorageRows === 'function') renderDockStorageRows();
+  return true;
+}
+// (v0.33.0) item 4: memory cubes are still scribed ONE AT A TIME (the per-cube craft
+// time below is unchanged, NOT divided across the batch), but the player now also
+// picks a QUANTITY to queue at that same knowledge-per-cube amount, exactly like
+// Manufacturing's batch-of-bullets qty field -- see checkLibraryCraftCompletion's
+// kind:'cube' branch for the per-unit wall-clock catch-up loop this feeds, and
+// mergeMemoryCubesIntoArray for how each completed cube merges into an existing
+// same-knowledge stack (capped at MEMORY_CUBE_STACK_CAP) instead of staying its own
+// separate stack. costKnowledge/costCredits below are for the WHOLE batch (so a
+// cancel mid-batch refunds everything not yet produced, same convention as an
+// in-flight book/blueprint craft) -- see confirmLibraryCancel.
+function startMemoryCubeCraft(knowledgeAmt, qty){
   if(!docked || !dockedStation) return;
   if((skillLevels.academics||0) < 1){ flashMessage('REQUIRES ACADEMICS LV.1', 'warn'); return; }
   if(libraryCraftState(dockedStation.id)){ flashMessage('ALREADY CRAFTING SOMETHING HERE', 'warn'); return; }
   knowledgeAmt = Math.max(1, Math.round(knowledgeAmt) || 0);
-  const creditsCost = libraryCubeCreditsCost(knowledgeAmt);
-  if(knowledge < knowledgeAmt){ flashMessage('NOT ENOUGH KNOWLEDGE', 'warn'); return; }
-  if(bountyCredits < creditsCost){ flashMessage('NOT ENOUGH CREDITS', 'warn'); return; }
-  knowledge -= knowledgeAmt;
-  bountyCredits -= creditsCost;
-  const cubeTaxAmt = libraryCubeTax(knowledgeAmt);
-  addLedgerEntry(-creditsCost, 'Memory Cube crafting (' + knowledgeAmt + ' knowledge, ' + cubeTaxAmt + ' cr tax)');
+  qty = Math.max(1, Math.min(500, Math.round(qty) || 0));
+  const creditsCostPerCube = libraryCubeCreditsCost(knowledgeAmt);
+  const totalKnowledge = knowledgeAmt * qty;
+  const totalCredits = creditsCostPerCube * qty;
+  if(knowledge < totalKnowledge){ flashMessage('NOT ENOUGH KNOWLEDGE FOR FULL BATCH', 'warn'); return; }
+  if(bountyCredits < totalCredits){ flashMessage('NOT ENOUGH CREDITS FOR FULL BATCH', 'warn'); return; }
+  knowledge -= totalKnowledge;
+  bountyCredits -= totalCredits;
+  const cubeTaxAmt = libraryCubeTax(knowledgeAmt) * qty;
+  addLedgerEntry(-totalCredits, 'Memory Cube crafting (' + knowledgeAmt + ' knowledge x' + qty + ', ' + cubeTaxAmt + ' cr tax)');
   addStationTax(dockedStation.id, cubeTaxAmt);
   libraryCrafting[dockedStation.id] = {
-    kind:'cube', startedAtMs: Date.now(), durationMs: libraryCubeDurationMs(knowledgeAmt),
-    costKnowledge: knowledgeAmt, costCredits: creditsCost, cubeKnowledge: knowledgeAmt
+    kind:'cube', startedAtMs: Date.now(), unitMs: libraryCubeDurationMs(knowledgeAmt),
+    // durationMs kept in sync as the WHOLE batch's total time -- only used by any
+    // pre-v0.33.0 code path that might still read it for a % display; the panel's
+    // own progress bar now reads per-unit elapsed (see renderLibraryPanel)
+    durationMs: libraryCubeDurationMs(knowledgeAmt) * qty,
+    costKnowledge: totalKnowledge, costCredits: totalCredits, cubeKnowledge: knowledgeAmt,
+    qtyTotal: qty, qtyCompleted: 0
   };
-  flashMessage('MEMORY CUBE CRAFTING STARTED', 'good');
-  logEvent('LIBRARY: STARTED CRAFTING A ' + knowledgeAmt + '-KNOWLEDGE MEMORY CUBE AT ' + dockedStation.name.toUpperCase(), 'good');
+  flashMessage('MEMORY CUBE BATCH STARTED — ' + qty + ' x ' + knowledgeAmt + ' KNOWLEDGE', 'good');
+  logEvent('LIBRARY: STARTED CRAFTING ' + qty + ' x ' + knowledgeAmt + '-KNOWLEDGE MEMORY CUBE AT ' + dockedStation.name.toUpperCase(), 'good');
   updateKnowledgeUI();
   updateDockedPanel();
   renderLibraryPanel();
@@ -9945,7 +10115,10 @@ let libraryCancelStationId = null;
 // working for any in-flight craft started before v0.28.0; new crafts use
 // kind:'recipe_blueprint' (item 1, one specific named blueprint) instead.
 function libraryCraftDesc(c){
-  if(c.kind === 'cube') return c.cubeKnowledge + '-KNOWLEDGE MEMORY CUBE';
+  if(c.kind === 'cube'){
+    const qtyTotal = c.qtyTotal || 1;
+    return c.cubeKnowledge + '-KNOWLEDGE MEMORY CUBE' + (qtyTotal>1 ? ' (' + Math.min(qtyTotal,(c.qtyCompleted||0)+1) + '/' + qtyTotal + ')' : '');
+  }
   if(c.kind === 'blueprint') return 'MANUFACTURING BLUEPRINT LV.' + c.blueprintLevel;
   if(c.kind === 'recipe_blueprint') return itemDisplayDef(c.recipeBlueprintType).label.toUpperCase();
   return SKILL_DEFS[c.bookSkill].name.toUpperCase() + ' LV.' + c.bookLevel + ' BOOK';
@@ -9987,16 +10160,37 @@ function checkLibraryCraftCompletion(){
   Object.keys(libraryCrafting).forEach(stationId=>{
     const c = libraryCrafting[stationId];
     if(!c) return;
-    if(libraryCraftElapsedMs(stationId) < c.durationMs) return;
-    any = true;
+    // (v0.33.0) item 4: memory cubes now craft as a BATCH, one at a time -- same
+    // wall-clock catch-up shape as checkManufacturingCompletion's per-unit loop
+    // (units elapsed = floor(elapsed / unitMs), clamped to the batch total), rather
+    // than the single-item all-or-nothing check every other Library craft kind uses.
+    // unitMs falls back to c.durationMs for a batch started before this version (an
+    // in-flight single cube from an old save has no unitMs/qtyTotal at all -- treated
+    // as a 1-cube "batch" so it completes exactly like it always did, no migration
+    // needed).
     if(c.kind === 'cube'){
+      const unitMs = c.unitMs != null ? c.unitMs : c.durationMs;
+      const qtyTotal = c.qtyTotal || 1;
+      const already = c.qtyCompleted || 0;
+      const unitsElapsed = Math.floor((Date.now() - c.startedAtMs) / unitMs);
+      const newlyDone = Math.max(0, Math.min(unitsElapsed, qtyTotal) - already);
+      if(newlyDone <= 0) return;
+      any = true;
       // deposited into THIS craft's own station bucket (stationId, the one it was
       // started at) -- a craft can finish while the player is docked elsewhere or
-      // undocked entirely, so this must never fall back to the current dockedStation
-      stationStorage(stationId).push({ stackId: nextStorageStackId++, itemType:'memory_cube', qty:1, cubeKnowledge: c.cubeKnowledge });
-      logEvent('LIBRARY: MEMORY CUBE (' + c.cubeKnowledge + ' KNOWLEDGE) COMPLETE AT ' + stationNameById(stationId).toUpperCase() + ' — DEPOSITED TO STORAGE', 'good');
-      flashMessage('MEMORY CUBE COMPLETE AT ' + stationNameById(stationId).toUpperCase(), 'good');
-    } else if(c.kind === 'blueprint'){
+      // undocked entirely, so this must never fall back to the current dockedStation.
+      // Merges into any existing same-knowledge-value stack (cap MEMORY_CUBE_STACK_CAP),
+      // spilling into new stacks past the cap -- see mergeMemoryCubesIntoArray.
+      mergeMemoryCubesIntoArray(stationStorage(stationId), c.cubeKnowledge, newlyDone, ()=> nextStorageStackId++);
+      c.qtyCompleted = already + newlyDone;
+      logEvent('LIBRARY: ' + newlyDone + ' x ' + c.cubeKnowledge + '-KNOWLEDGE MEMORY CUBE COMPLETE AT ' + stationNameById(stationId).toUpperCase() + ' — DEPOSITED TO STORAGE', 'good');
+      flashMessage(newlyDone + ' MEMORY CUBE' + (newlyDone>1?'S':'') + ' COMPLETE AT ' + stationNameById(stationId).toUpperCase(), 'good');
+      if(c.qtyCompleted >= qtyTotal) delete libraryCrafting[stationId];
+      return;
+    }
+    if(libraryCraftElapsedMs(stationId) < c.durationMs) return;
+    any = true;
+    if(c.kind === 'blueprint'){
       const bpType = BLUEPRINT_ITEM_TYPE_FOR_LEVEL[c.blueprintLevel];
       stationStorage(stationId).push({ stackId: nextStorageStackId++, itemType:bpType, qty:1 });
       // item 12: no event log entry for a blueprint scribe completing
@@ -10034,12 +10228,23 @@ function renderLibraryPanel(){
   const activeWrap = document.getElementById('libraryActiveCraft');
   const formsWrap = document.getElementById('libraryCraftForms');
   if(c){
-    const pct = Math.min(100, (libraryCraftElapsedMs(stationId) / c.durationMs) * 100);
+    // (v0.33.0) item 1/4: the progress bar/TIME REMAINING now reflect the CURRENT
+    // UNIT of the craft (matters for a batched cube craft, where the whole-batch
+    // elapsed time would otherwise make the bar look like it barely moves across a
+    // long batch) -- see libraryCraftUnitElapsedMs/RemainingMs above. For every
+    // other (never-batched) kind this is identical to the old whole-craft numbers.
+    const unitMs = libraryCraftUnitMs(c);
+    const pct = Math.min(100, (libraryCraftUnitElapsedMs(stationId) / unitMs) * 100);
     const desc = libraryCraftDesc(c);
+    // item 1: "use a Memory Cube to speed up" now also works for Library scribing --
+    // EXCEPT scribing MORE memory cubes (explicit exception in the request), so this
+    // button is omitted entirely for kind:'cube'.
+    const useCubeBtn = c.kind !== 'cube' ? '<button class="cmdbtn" id="btnLibraryUseCube" style="margin-top:6px;">USE MEMORY CUBE TO SPEED UP</button>' : '';
     activeWrap.innerHTML = '<div class="mfgCard">'
       + '<div class="drow"><span>CRAFTING</span><span>' + desc + '</span></div>'
-      + '<div class="drow"><span>TIME REMAINING</span><span>' + fmtLibraryDuration(libraryCraftRemainingMs(stationId)) + '</span></div>'
+      + '<div class="drow"><span>TIME REMAINING</span><span>' + fmtLibraryDuration(libraryCraftUnitRemainingMs(stationId)) + '</span></div>'
       + '<div class="mfgBar"><i style="width:' + pct.toFixed(1) + '%;"></i></div>'
+      + useCubeBtn
       + '<div class="dbtns" style="margin-top:8px;"><button class="cmdbtn danger" id="btnLibraryCancelCraft">CANCEL (REFUNDS)</button></div>'
       + '</div>';
     activeWrap.style.display = '';
@@ -10063,15 +10268,24 @@ function renderLibraryPanel(){
       // bug is already fixed above (preserves whatever's typed across rebuilds), this
       // was just the initial value a freshly-opened form started at.
       const preservedCubeAmt = existingCubeInput && existingCubeInput.value !== '' ? existingCubeInput.value : '1';
+      // (v0.33.0) item 4: separate QUANTITY field -- how many cubes to queue at that
+      // same knowledge-per-cube amount, same preserve-across-rebuild treatment as the
+      // knowledge input above (and as Manufacturing's own qty field).
+      const existingCubeQty = document.getElementById('libraryCubeQty');
+      const preservedCubeQty = existingCubeQty && existingCubeQty.value !== '' ? existingCubeQty.value : '1';
       cubeWrap.innerHTML = !cubeAcademicsOk
         ? '<div class="drow"><span>REQUIRES ACADEMICS LV.1</span></div>'
         : '<div class="dockSubRow">'
           // item 12: relabeled from "Knowledge to invest"
           + '<span class="dsName">Knowledge to scribe to cube</span>'
           + '<input type="number" min="1" step="1" value="' + preservedCubeAmt + '" id="libraryCubeAmt">'
+          + '</div>'
+          + '<div class="dockSubRow">'
+          + '<span class="dsName">Quantity (cubes, scribed one at a time)</span>'
+          + '<input type="number" min="1" max="500" step="1" value="' + preservedCubeQty + '" id="libraryCubeQty">'
           + '<button class="cmdbtn" id="btnLibraryCraftCube">CRAFT</button>'
           + '</div>'
-          + '<div class="drow" style="font-size:10px; color:var(--phosphor-dim);"><span>10 in-game min per knowledge point (x' + academicsCraftTimeMultiplier().toFixed(2) + ' Academics) + 100 cr/knowledge + ' + Math.round(STATION_SALES_TAX*100) + '% station tax</span></div>';
+          + '<div class="drow" style="font-size:10px; color:var(--phosphor-dim);"><span>10 in-game min per knowledge point PER CUBE (x' + academicsCraftTimeMultiplier().toFixed(2) + ' Academics) + 100 cr/knowledge/cube + ' + Math.round(STATION_SALES_TAX*100) + '% station tax — stacks up to ' + MEMORY_CUBE_STACK_CAP + ' per knowledge value</span></div>';
     }
     // Skill Book form -- one row per basic/advanced skill that's at least LV.1 (a
     // skill below LV.1 has no book to scribe at all -- LV.2 is the lowest scribable
@@ -10159,10 +10373,13 @@ document.getElementById('btnDockLibraryPanel').addEventListener('click', ()=> to
 document.getElementById('dockLibraryPanel').addEventListener('click', (e)=>{
   const cancelBtn = e.target.closest('#btnLibraryCancelCraft');
   if(cancelBtn){ openLibraryCancelConfirm(); return; }
+  const useCubeBtn = e.target.closest('#btnLibraryUseCube');
+  if(useCubeBtn){ consumeMemoryCubeForLibraryCraft(); return; }
   const craftCubeBtn = e.target.closest('#btnLibraryCraftCube');
   if(craftCubeBtn){
     const input = document.getElementById('libraryCubeAmt');
-    startMemoryCubeCraft(input ? parseFloat(input.value) : 0);
+    const qtyInput = document.getElementById('libraryCubeQty');
+    startMemoryCubeCraft(input ? parseFloat(input.value) : 0, qtyInput ? parseFloat(qtyInput.value) : 1);
     return;
   }
   const scribeBtn = e.target.closest('button[data-book-scribe]');
@@ -10232,7 +10449,7 @@ function renderDockStorageRows(){
     : cargoStacks.map(stack=>{
         const def = itemDisplayDef(stack.itemType);
         let label = def.label, qtyText = stack.qty;
-        if(stack.itemType === 'memory_cube'){ label = 'Memory Cube'; qtyText = (stack.cubeKnowledge||0) + ' KNOWLEDGE'; }
+        if(stack.itemType === 'memory_cube'){ label = 'Memory Cube'; qtyText = 'x' + stack.qty + ' · ' + (stack.cubeKnowledge||0) + ' KNOWLEDGE EA'; }
         else if(stack.itemType === 'skill_book'){
           const skDef = SKILL_DEFS[stack.bookSkill];
           label = (skDef?skDef.name:stack.bookSkill) + ' Book'; qtyText = 'LV.' + stack.bookLevel;
@@ -10254,7 +10471,7 @@ function renderDockStorageRows(){
         // one keeps its own size/skill/level), so the generic qty readout is replaced
         // with that per-stack detail here instead.
         let label = def.label, qtyText = stack.qty;
-        if(stack.itemType === 'memory_cube'){ label = 'Memory Cube'; qtyText = (stack.cubeKnowledge||0) + ' KNOWLEDGE'; }
+        if(stack.itemType === 'memory_cube'){ label = 'Memory Cube'; qtyText = 'x' + stack.qty + ' · ' + (stack.cubeKnowledge||0) + ' KNOWLEDGE EA'; }
         else if(stack.itemType === 'skill_book'){
           const skDef = SKILL_DEFS[stack.bookSkill];
           label = (skDef?skDef.name:stack.bookSkill) + ' Book'; qtyText = 'LV.' + stack.bookLevel;
@@ -10295,7 +10512,14 @@ function addToStationStorage(itemType, qty, stationId, extra){
   if(qty <= 0) return;
   // items with per-instance identity fields never merge into an existing stack of
   // the same itemType (each instance -- e.g. one specific-level book -- is its own
-  // stack, exactly like every other place these are created)
+  // stack, exactly like every other place these are created).
+  // (v0.33.0) item 4 EXCEPTION: memory_cube stacks up to MEMORY_CUBE_STACK_CAP with
+  // another cube sharing the exact same cubeKnowledge -- see addToCargo above (same
+  // reasoning, mirrored for the station-storage bucket).
+  if(extra && itemType === 'memory_cube'){
+    mergeMemoryCubesIntoArray(stationStorage(stationId), extra.cubeKnowledge||0, qty, ()=> nextStorageStackId++);
+    return;
+  }
   if(extra){
     stationStorage(stationId).push(Object.assign({ stackId: nextStorageStackId++, itemType, qty }, extra));
     return;
@@ -10330,9 +10554,11 @@ function openStorageMovePrompt(from, stackId){
   // same item type (and same guild-delivery earmark) actually exists on this same side
   const combineBtn = document.getElementById('dsCombineBtn');
   // (v0.31.1) item 5 (related hardening): see isUncombinableItemType -- never offer
-  // COMBINE for skill_book/memory_cube stacks, each is its own distinct instance
-  if(combineBtn) combineBtn.style.display = (!isUncombinableItemType(stack.itemType) && list.some(s => s !== stack && s.itemType === stack.itemType
-    && (s.guildQuestId||null) === (stack.guildQuestId||null))) ? '' : 'none';
+  // COMBINE for skill_book stacks, each is its own distinct instance. (v0.33.0) item 4:
+  // memory_cube stacks CAN combine now, but only with another stack of the exact same
+  // cubeKnowledge value -- see stacksCombinable.
+  if(combineBtn) combineBtn.style.display = (!isUncombinableItemType(stack.itemType) && list.some(s => s !== stack
+    && (s.guildQuestId||null) === (stack.guildQuestId||null) && stacksCombinable(stack, s))) ? '' : 'none';
   document.getElementById('dockStorageMovePrompt').classList.add('show');
 }
 function closeStorageMovePrompt(){
@@ -10380,10 +10606,10 @@ function combineStorageStack(from, stackId){
   const stack = list.find(s=>s.stackId===stackId);
   if(!stack) return;
   const itemType = stack.itemType;
-  const cap = isAmmoItemType(itemType) ? AMMO_MAX_STACK : Infinity;
+  const cap = stackCombineCap(itemType);
   const wasEquippedAmmo = from === 'ship' && stackId === equippedAmmoStackId;
-  const others = list.filter(s => s.itemType === itemType && s.stackId !== stackId && s.qty < cap
-    && (s.guildQuestId||null) === (stack.guildQuestId||null));
+  const others = list.filter(s => s.stackId !== stackId && s.qty < cap
+    && (s.guildQuestId||null) === (stack.guildQuestId||null) && stacksCombinable(stack, s));
   if(others.length === 0){ flashMessage('NO OTHER STACK TO COMBINE INTO', 'warn'); return; }
   let remaining = stack.qty;
   let lastReceiver = null;
@@ -11793,6 +12019,15 @@ function addToCargo(itemType, qty, extra){
   // (v0.31.1) item 5: see itemInstanceExtraFields above -- items with per-instance
   // identity fields never merge into an existing same-itemType stack, they're
   // always pushed as their own stack with those fields intact.
+  // (v0.33.0) item 4 EXCEPTION: memory_cube now stacks up to MEMORY_CUBE_STACK_CAP
+  // with another cube sharing the exact same cubeKnowledge (extra.cubeKnowledge) --
+  // see mergeMemoryCubesIntoArray/stacksCombinable. skill_book (the only other
+  // extra-bearing type) is untouched by this branch and still always pushes new.
+  if(extra && itemType === 'memory_cube'){
+    mergeMemoryCubesIntoArray(cargoStacks, extra.cubeKnowledge||0, qty, ()=> nextStackId++);
+    syncFlatCargoMirrors();
+    return;
+  }
   if(extra){
     cargoStacks.push(Object.assign({ stackId: nextStackId++, itemType, qty }, extra));
     syncFlatCargoMirrors();
@@ -11867,6 +12102,13 @@ function splitStack(stackId, amount){
   s.qty -= amt;
   const newStack = { stackId: nextStackId++, itemType: s.itemType, qty: amt };
   if(s.guildQuestId) newStack.guildQuestId = s.guildQuestId; // split guild cargo stays guild cargo
+  // (v0.33.0) item 4 bugfix: memory cubes can now hold qty>1 (see the stacking
+  // rework above), so splitting one used to silently drop its cubeKnowledge (this
+  // never mattered before since a cube's qty was always exactly 1) -- carry over
+  // any per-instance identity fields (same helper used everywhere else this
+  // matters, see itemInstanceExtraFields) so a split-off cube half keeps its value.
+  const instanceExtra = itemInstanceExtraFields(s);
+  if(instanceExtra) Object.assign(newStack, instanceExtra);
   cargoStacks.push(newStack);
   syncFlatCargoMirrors();
   return newStack;
