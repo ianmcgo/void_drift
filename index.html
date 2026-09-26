@@ -2328,6 +2328,13 @@
          function as btnWallet, so a second click closes it exactly like the other
          nav buttons' own panels. -->
     <button class="cmdbtn" id="btnDockDataPad">DATA PAD</button>
+    <!-- (v0.31.1) item 4: EVENT LOG is now also reachable from the station nav
+         column while docked -- it's the SAME #eventLog panel space uses (hidden by
+         setSpaceHudVisible(false) on docking, same as the rest of SPACE_HUD_IDS),
+         just given its own toggle here so it can be popped back open without
+         undocking. Second click closes it, same as every other nav-column button --
+         see toggleDockEventLog. -->
+    <button class="cmdbtn" id="btnDockEventLog">EVENT LOG</button>
     <!-- item 16: standalone LOAN button removed -- loan info/payment now lives inside
          FINANCE OFFICE (see dockShipyardPanel) -->
     <button class="cmdbtn" id="btnDockShipyardPanel">FINANCE OFFICE</button>
@@ -2516,6 +2523,10 @@
         <span id="fitEquipConfirmLabel">EQUIP?</span>
         <span>
           <button class="cmdbtn" id="fitEquipConfirmYes">CONFIRM</button>
+          <!-- (v0.31.1) item 1: lets a clicked weapon/shield/mining-laser tile in
+               YOUR CARGO be sent to STATION STORAGE instead of equipped/unequipped
+               -- see openFitEquipConfirm/fitEquipConfirmStoreBtn. -->
+          <button class="cmdbtn" id="fitEquipConfirmStore">STORE</button>
           <button class="cmdbtn" id="fitEquipConfirmNo">CANCEL</button>
         </span>
       </div>
@@ -2660,7 +2671,7 @@
 // compatibility depends on it. Add new keys, don't rename old ones.
 
 // ---------- version / build info (shown in the ESC settings menu) ----------
-const GAME_VERSION = "0.31.0";
+const GAME_VERSION = "0.31.1";
 const GAME_LAST_EDITED = "2026-09-26";
 const GAME_BUILD_TIME = "08:47 PT"; // wall-clock time this build was published, not just the date
 
@@ -3781,7 +3792,7 @@ function storeCurrentShipAndPod(){
   if(cargoStacks.length){
     // guild delivery cargo is NOT warehoused -- stowing the ship forfeits it (the
     // integrity check in syncFlatCargoMirrors below fails those deliveries)
-    cargoStacks.slice().forEach(s=>{ if(!s.guildQuestId) addToStationStorage(s.itemType, s.qty); });
+    cargoStacks.slice().forEach(s=>{ if(!s.guildQuestId) addToStationStorage(s.itemType, s.qty, undefined, itemInstanceExtraFields(s)); });
     cargoStacks = [];
     syncFlatCargoMirrors();
   }
@@ -3820,7 +3831,7 @@ function activateShipInstance(inst){
   if(!inEscapePod && activeShipInstance){
     addShipToStationStorage({ instId: activeShipInstance.instId, classKey: activeShipInstance.classKey, name: activeShipInstance.name }, activeStationEntry().id);
     if(cargoStacks.length){
-      cargoStacks.slice().forEach(s=>{ if(!s.guildQuestId) addToStationStorage(s.itemType, s.qty, activeStationEntry().id); });
+      cargoStacks.slice().forEach(s=>{ if(!s.guildQuestId) addToStationStorage(s.itemType, s.qty, activeStationEntry().id, itemInstanceExtraFields(s)); });
       cargoStacks = [];
       syncFlatCargoMirrors();
     }
@@ -7536,6 +7547,11 @@ const AMMO_ITEM_TYPE_SILVER = 'ammo_silver_bullets';
 const AMMO_ITEM_TYPE_GOLD = 'ammo_gold_bullets';
 const AMMO_ITEM_TYPES = [AMMO_ITEM_TYPE, AMMO_ITEM_TYPE_COPPER, AMMO_ITEM_TYPE_SILVER, AMMO_ITEM_TYPE_GOLD];
 function isAmmoItemType(t){ return AMMO_ITEM_TYPES.indexOf(t) >= 0; }
+// (v0.31.1) item 5 (related hardening): skill_book/memory_cube stacks each carry
+// their own per-instance identity fields (see itemInstanceExtraFields below) that a
+// qty-merge (COMBINE STACKS) would destroy -- two different-level books share
+// itemType 'skill_book' but are not interchangeable.
+function isUncombinableItemType(t){ return t === 'skill_book' || t === 'memory_cube'; }
 // item 6: Iron Bullet Blueprint -- a fresh item-type key per the NAMING STABILITY
 // rule, never rename once introduced. A consumable: LEARN-ing it (see dpLearn in
 // openCargoActionPrompt) removes 1 from the stack and permanently unlocks the Iron
@@ -7583,7 +7599,20 @@ const BLUEPRINT_GOLD_BULLETS = 'blueprint_gold_bullets';
 // metadata for every new per-recipe blueprint: which Academics tier gates scribing it
 // (same tier system the old LV.1/2/3 blueprints used) and its clear, specific label.
 // Order here is display order in the LIBRARY's blueprint form (see renderLibraryPanel).
+// (v0.31.1) item 3: Iron Bullet Blueprint used to be MARKET-ONLY (see the finite,
+// non-restocking 5-unit seed in initMarketStock) with no LIBRARY scribe option at
+// all -- once that market stock ran out (any player buying/learning their copy
+// depletes the shared shared stock same as any other finite listing), there was no
+// way to ever obtain another one again short of another player selling one back.
+// Reported as "learning it makes it disappear from the library" -- the real bug is
+// that it was never repeatably scribable in the first place, unlike every other
+// per-recipe blueprint here (which stay in this same list, SCRIBE button intact,
+// regardless of knownBlueprints -- see renderLibraryPanel's rowFor/`already` handling).
+// Added here as tier 1 (same gate as the other tier-1 recipes) so it's now ALSO
+// scribable at the Library, in addition to remaining purchasable at the Market --
+// scribing it never runs out and isn't blocked by already knowing it.
 const BLUEPRINT_RECIPE_DEFS = {
+  [BLUEPRINT_IRON_BULLETS]:   { tier:1, label:'Iron Bullet Blueprint',       recipeKey:'blueprint_iron_bullets' },
   [BLUEPRINT_SMELT_IRON]:     { tier:1, label:'Iron Ingot Blueprint',        recipeKey:'mfg_smelt_iron' },
   [BLUEPRINT_SMELT_COPPER]:   { tier:1, label:'Copper Ingot Blueprint',      recipeKey:'mfg_smelt_copper' },
   [BLUEPRINT_SMELT_SILVER]:   { tier:1, label:'Silver Ingot Blueprint',      recipeKey:'mfg_smelt_silver' },
@@ -7859,7 +7888,12 @@ function openCargoActionPrompt(stackId){
   // COMBINE merges this stack into any other stack(s) of the same item type --
   // only worth showing when another such stack actually exists (see combineCargoStack)
   const combineBtn = document.getElementById('dpCombine');
-  if(combineBtn) combineBtn.style.display = cargoStacks.some(s => s.itemType === stack.itemType && s.stackId !== stack.stackId && (s.guildQuestId||null) === (stack.guildQuestId||null)) ? '' : 'none';
+  // (v0.31.1) item 5 (related hardening): skill_book/memory_cube stacks each carry
+  // their own per-instance identity (bookSkill+bookLevel / cubeKnowledge) that a
+  // qty-merge would destroy (two different-level books sharing itemType 'skill_book'
+  // are NOT the same item) -- never offer COMBINE for these, same reasoning as the
+  // itemInstanceExtraFields guard added to addToCargo/addToStationStorage.
+  if(combineBtn) combineBtn.style.display = (!isUncombinableItemType(stack.itemType) && cargoStacks.some(s => s.itemType === stack.itemType && s.stackId !== stack.stackId && (s.guildQuestId||null) === (stack.guildQuestId||null))) ? '' : 'none';
   // (v0.31.0) item 1: an EQUIPPED item (currently-mounted ship weapon/shield/mining
   // laser tier, or the currently-loaded ammo stack) can't be jettisoned straight into
   // space -- disable JETTISON and tell the player why, rather than letting the button
@@ -8203,7 +8237,18 @@ function renderDockSubPanelContent(name){
 // legacy name (naming-stability -- the "go back to base state" callers already used
 // it) meaning "close every sub-panel", used by enterDock/exitDock to reset state.
 function showDockSubPanel(name){
-  if(name === 'dockMainPanel'){ DOCK_SUBPANEL_IDS.forEach(closeDockSubPanel); return; }
+  if(name === 'dockMainPanel'){
+    DOCK_SUBPANEL_IDS.forEach(closeDockSubPanel);
+    // (v0.31.1) item 4: EVENT LOG's own nav toggle lives outside DOCK_SUBPANEL_IDS
+    // (it's the pre-existing #eventLog space HUD panel, not a .dockFloatPanel), but
+    // its nav button's "active" highlight still needs resetting whenever the dock
+    // nav resets to its base state (on docking and on undocking) -- the panel's
+    // actual visibility is independently handled by setSpaceHudVisible, never here,
+    // so this never fights that on undock.
+    const logBtn = document.getElementById('btnDockEventLog');
+    if(logBtn) logBtn.classList.remove('active');
+    return;
+  }
   const el = document.getElementById(name);
   if(el) el.classList.add('show');
   const navBtnId = DOCK_NAV_BTN_ID[name];
@@ -9300,7 +9345,7 @@ function openStorageUpgradeEquipPrompt(stack){
     const locked = !eq && tier > 0 && (skillLevels.weapon_upgrades||0) < tier;
     if(locked){ flashMessage('NEEDS WEAPON UPGRADES LV.' + tier, 'warn'); return; }
     const label = eq ? 'UNEQUIP WEAPON' : 'EQUIP WEAPON LV.' + target;
-    openFitEquipConfirm('weapon', target, label);
+    openFitEquipConfirm('weapon', target, label, stack);
     return;
   }
   if(stack.itemType.indexOf('shieldTier') === 0){
@@ -9312,13 +9357,13 @@ function openStorageUpgradeEquipPrompt(stack){
     const locked = !eq && tier > 0 && (skillLevels.shield_upgrades||0) < tier;
     if(locked){ flashMessage('NEEDS SHIELD UPGRADES LV.' + tier, 'warn'); return; }
     const label = eq ? 'UNEQUIP SHIELD' : 'EQUIP SHIELD LV.' + target;
-    openFitEquipConfirm('shield', target, label);
+    openFitEquipConfirm('shield', target, label, stack);
     return;
   }
   if(stack.itemType === 'miningLaser' || stack.itemType.indexOf('miningLaserTier') === 0){
     if(!cls.canMining){ flashMessage('THIS VESSEL CANNOT MOUNT A MINING LASER', 'warn'); return; }
     const label = miningLaserEquipped ? 'UNEQUIP MINING LASER' : 'EQUIP MINING LASER';
-    openFitEquipConfirm('mining', null, label);
+    openFitEquipConfirm('mining', null, label, stack);
     return;
   }
 }
@@ -9327,7 +9372,13 @@ function openStorageUpgradeEquipPrompt(stack){
 // CONFIRM/CANCEL buttons below. { kind:'weapon'|'shield'|'mining', target } (target
 // unused for 'mining', it's a plain toggle)
 let pendingFitAction = null;
-function openFitEquipConfirm(kind, target, label){
+// (v0.31.1) item 1: openFitEquipConfirm now also remembers WHICH cargo stack was
+// clicked (stack) so the fitEquipConfirmPrompt can offer a STORE option alongside
+// CONFIRM/CANCEL -- previously clicking a weapon/shield/mining-laser tile in YOUR
+// CARGO only ever routed to the equip flow, with no way left to move that same item
+// to STATION STORAGE without equipping/unequipping it first. See fitEquipConfirmStore
+// handler below.
+function openFitEquipConfirm(kind, target, label, stack){
   // item 10: don't show the confirm at all when there's nothing genuinely
   // actionable to confirm -- covers (a) nothing unequipped left to equip in this
   // slot category, (b) the target is already the current equip state (everything
@@ -9337,10 +9388,12 @@ function openFitEquipConfirm(kind, target, label){
   if(kind === 'weapon' && target === equippedWeaponTier) return;
   if(kind === 'shield' && target === equippedShieldTier) return;
   if(kind === 'mining' && !hasMiningLaser) return;
-  pendingFitAction = { kind, target };
+  pendingFitAction = { kind, target, stack };
   const prompt = document.getElementById('fitEquipConfirmPrompt');
   const labelEl = document.getElementById('fitEquipConfirmLabel');
   if(labelEl) labelEl.textContent = label + '?';
+  const storeBtn = document.getElementById('fitEquipConfirmStore');
+  if(storeBtn) storeBtn.style.display = stack ? '' : 'none';
   if(prompt) prompt.classList.add('show');
 }
 function closeFitEquipConfirm(){
@@ -9362,6 +9415,17 @@ document.getElementById('fitEquipConfirmYes').addEventListener('click', ()=>{
   renderDockStorageRows();
 });
 document.getElementById('fitEquipConfirmNo').addEventListener('click', ()=> closeFitEquipConfirm());
+// (v0.31.1) item 1: STORE from within the equip-confirm prompt -- lets the player
+// move the clicked weapon/shield/mining-laser stack straight to STATION STORAGE
+// instead of equipping/unequipping it, reusing the exact same generic move/withdraw
+// prompt (openStorageMovePrompt) every other item type already uses.
+const fitEquipConfirmStoreBtn = document.getElementById('fitEquipConfirmStore');
+if(fitEquipConfirmStoreBtn) fitEquipConfirmStoreBtn.addEventListener('click', ()=>{
+  if(!pendingFitAction || !pendingFitAction.stack) return;
+  const stackId = pendingFitAction.stack.stackId;
+  closeFitEquipConfirm();
+  openStorageMovePrompt('ship', stackId);
+});
 
 // ---------- item 7: MANUFACTURING -- queue-built items from known blueprints ----------
 // one queue per recipe (keyed by blueprint type), holding how many units are still
@@ -9497,6 +9561,25 @@ function renderManufacturingPanel(){
     wrap.innerHTML = '<div class="drow"><span>NO MANUFACTURING PLANS KNOWN — SCRIBE OR LEARN A BLUEPRINT</span></div>';
     return;
   }
+  // (v0.31.1) item 6 bugfix: the periodic 1s tick added in v0.31.0 (see the
+  // setInterval just below this function) fixed the progress bar going stale, but
+  // it fully rebuilds this panel's innerHTML -- including every recipe's Quantity
+  // <input>, always re-stamped with a hardcoded value="10" -- every single second.
+  // Any amount the player was mid-typing (or had already changed) got silently
+  // snapped back within a second of editing it. Same fix shape as the LIBRARY
+  // cube/book forms just below (see "preserve whatever the player currently has
+  // entered... across the rebuild"): read back whatever's currently in each
+  // recipe's qty input (if that input still exists from the previous render) and
+  // re-apply it instead of the hardcoded default, so a rebuild never clobbers a
+  // live in-progress edit. Only resets to the default (10) when the input doesn't
+  // exist yet (panel freshly opened) or after a build is actually submitted (the
+  // completion/queue-start re-render swaps that row to the CRAFTING view entirely,
+  // which has no qty input at all, so the next freshly-opened Quantity row starts
+  // at the default again).
+  const preservedQty = {};
+  wrap.querySelectorAll('[data-mfg-qty]').forEach(inp=>{
+    if(inp.value !== '') preservedQty[inp.dataset.mfgQty] = inp.value;
+  });
   wrap.innerHTML = known.map(bpType=>{
     const recipe = MANUFACTURING_RECIPES[bpType];
     const q = getManufacturingQueue(bpType, stationId);
@@ -9522,7 +9605,7 @@ function renderManufacturingPanel(){
         + '<div class="drow" style="font-size:10px; color:var(--phosphor-dim);"><span>Keeps building even if you undock or log off</span><span></span></div>'
         : '<div class="dockSubRow">'
           + '<span class="dsName">Quantity</span>'
-          + '<input type="number" min="1" max="100" step="1" value="10" data-mfg-qty="' + bpType + '">'
+          + '<input type="number" min="1" max="100" step="1" value="' + (preservedQty[bpType] !== undefined ? preservedQty[bpType] : '10') + '" data-mfg-qty="' + bpType + '">'
           + '<button class="cmdbtn" data-mfg-build="' + bpType + '"' + (locked ? ' disabled style="opacity:0.4;"' : '') + '>BUILD</button>'
           + '</div>')
       + '</div>';
@@ -10004,7 +10087,7 @@ function renderLibraryPanel(){
     if(bpWrap){
       const scribableTiers = libraryScribableRecipeBlueprintTiers();
       const ingotTypes = [BLUEPRINT_SMELT_IRON, BLUEPRINT_SMELT_COPPER, BLUEPRINT_SMELT_SILVER, BLUEPRINT_SMELT_GOLD];
-      const bulletTypes = [BLUEPRINT_COPPER_BULLETS, BLUEPRINT_SILVER_BULLETS, BLUEPRINT_GOLD_BULLETS];
+      const bulletTypes = [BLUEPRINT_IRON_BULLETS, BLUEPRINT_COPPER_BULLETS, BLUEPRINT_SILVER_BULLETS, BLUEPRINT_GOLD_BULLETS];
       const upgradeTypes = [BLUEPRINT_MINING_LASER_1, BLUEPRINT_WEAPON_1, BLUEPRINT_SHIELD_1,
         BLUEPRINT_MINING_LASER_2, BLUEPRINT_WEAPON_2, BLUEPRINT_SHIELD_2,
         BLUEPRINT_MINING_LASER_3, BLUEPRINT_WEAPON_3, BLUEPRINT_SHIELD_3];
@@ -10149,9 +10232,33 @@ function renderDockStorageRows(){
       }).join('');
 }
 document.getElementById('btnDockStoragePanel').addEventListener('click', ()=> toggleDockSubPanel('dockStoragePanel'));
-function addToStationStorage(itemType, qty, stationId){
+// (v0.31.1) item 5: some item types carry extra per-instance identity fields
+// beyond itemType/qty (skill_book: bookSkill/bookLevel; memory_cube: cubeKnowledge)
+// that every OTHER creation site (scribing/Ship Debris loot, see the "direct push
+// (not addToCargo)" comment near the rare-book-loot push below) is careful to keep.
+// addToCargo/addToStationStorage previously had no way to carry those fields at
+// all -- any caller that bulk-moved an existing stack through them (STORAGE's
+// move/withdraw prompt, STORE CURRENT SHIP, swapping active ships) silently
+// reconstructed a bare {itemType,qty} stack, which is exactly what turned a
+// correctly-identified book/cube into an "undefined Book"/blank-looking one the
+// moment it was moved. Returns those extra fields for a given stack (or null for
+// an ordinary item with no such identity), for passing through to the `extra`
+// param below.
+function itemInstanceExtraFields(stack){
+  if(stack.itemType === 'skill_book') return { bookSkill: stack.bookSkill, bookLevel: stack.bookLevel };
+  if(stack.itemType === 'memory_cube') return { cubeKnowledge: stack.cubeKnowledge };
+  return null;
+}
+function addToStationStorage(itemType, qty, stationId, extra){
   qty = Math.max(0, Math.round(qty));
   if(qty <= 0) return;
+  // items with per-instance identity fields never merge into an existing stack of
+  // the same itemType (each instance -- e.g. one specific-level book -- is its own
+  // stack, exactly like every other place these are created)
+  if(extra){
+    stationStorage(stationId).push(Object.assign({ stackId: nextStorageStackId++, itemType, qty }, extra));
+    return;
+  }
   // mirror addToCargo's per-stack cap for ammo so a stored ammo stack can't exceed
   // what could ever be re-equipped from it
   const cap = isAmmoItemType(itemType) ? AMMO_MAX_STACK : Infinity;
@@ -10181,8 +10288,10 @@ function openStorageMovePrompt(from, stackId){
   // item 11: COMBINE STACKS -- only worth showing when another stack of the exact
   // same item type (and same guild-delivery earmark) actually exists on this same side
   const combineBtn = document.getElementById('dsCombineBtn');
-  if(combineBtn) combineBtn.style.display = list.some(s => s !== stack && s.itemType === stack.itemType
-    && (s.guildQuestId||null) === (stack.guildQuestId||null)) ? '' : 'none';
+  // (v0.31.1) item 5 (related hardening): see isUncombinableItemType -- never offer
+  // COMBINE for skill_book/memory_cube stacks, each is its own distinct instance
+  if(combineBtn) combineBtn.style.display = (!isUncombinableItemType(stack.itemType) && list.some(s => s !== stack && s.itemType === stack.itemType
+    && (s.guildQuestId||null) === (stack.guildQuestId||null))) ? '' : 'none';
   document.getElementById('dockStorageMovePrompt').classList.add('show');
 }
 function closeStorageMovePrompt(){
@@ -10286,8 +10395,13 @@ document.getElementById('dsMoveConfirm').addEventListener('click', ()=>{
       renderDockStorageRows();
       return;
     }
+    // (v0.31.1) item 5: capture bookSkill/bookLevel/cubeKnowledge etc. BEFORE
+    // jettisonFromStack potentially mutates/removes the source stack, so a moved
+    // book/cube keeps its identity instead of landing in storage as a bare,
+    // unidentified {itemType,qty} entry.
+    const moveExtra = itemInstanceExtraFields(stack);
     jettisonFromStack(stackId, amt);
-    addToStationStorage(itemType, amt);
+    addToStationStorage(itemType, amt, undefined, moveExtra);
     // item 12: no event log entry for storing an item -- the storage grid's own
     // refresh below is the feedback (a quick flashMessage still confirms it)
     flashMessage('STORED ' + amt + ' ' + itemDisplayDef(itemType).label.toUpperCase(), 'good');
@@ -10300,9 +10414,17 @@ document.getElementById('dsMoveConfirm').addEventListener('click', ()=>{
     amt = Math.min(amt, maxByWeight);
     if(amt <= 0){ closeStorageMovePrompt(); return; }
     const itemType = stack.itemType;
+    // (v0.31.1) item 5: same identity capture as the STORE direction above -- this
+    // is the exact path the user's report described ("move a book from station
+    // storage to cargo... turns books into unidentified books"): withdraw used to
+    // call addToCargo(itemType, amt) with no bookSkill/bookLevel at all, which both
+    // dropped the level entirely AND could silently merge into an unrelated book
+    // stack of a different skill/level already in cargo (addToCargo's old merge-by-
+    // itemType-alone rule). Captured before the qty decrement/possible removal below.
+    const withdrawExtra = itemInstanceExtraFields(stack);
     stack.qty -= amt;
     if(stack.qty <= 0) removeStationStorageStackRef(stack);
-    addToCargo(itemType, amt);
+    addToCargo(itemType, amt, withdrawExtra);
     // item 12: no event log entry for withdrawing an item -- a quick flashMessage
     // confirms it instead
     flashMessage('WITHDREW ' + amt + ' ' + itemDisplayDef(itemType).label.toUpperCase(), 'good');
@@ -11606,7 +11728,7 @@ function totalOfType(itemType){
 // merges into the first existing stack of that item type if one exists, otherwise
 // creates a fresh stack -- the player can manually SPLIT a merged stack apart
 // afterward from the cargo grid if they want separate piles
-function addToCargo(itemType, qty){
+function addToCargo(itemType, qty, extra){
   qty = Math.max(0, Math.round(qty));
   if(qty <= 0) return;
   // ammo stacks cap at AMMO_MAX_STACK per stack (item 4) -- spill into new stacks
@@ -11620,6 +11742,14 @@ function addToCargo(itemType, qty){
       const add = Math.min(room, remaining);
       stack.qty += add; remaining -= add;
     }
+    syncFlatCargoMirrors();
+    return;
+  }
+  // (v0.31.1) item 5: see itemInstanceExtraFields above -- items with per-instance
+  // identity fields never merge into an existing same-itemType stack, they're
+  // always pushed as their own stack with those fields intact.
+  if(extra){
+    cargoStacks.push(Object.assign({ stackId: nextStackId++, itemType, qty }, extra));
     syncFlatCargoMirrors();
     return;
   }
@@ -12789,6 +12919,19 @@ document.getElementById('btnWallet').addEventListener('click', ()=> toggleWallet
 // closes it exactly like btnWallet already does in space.
 const btnDockDataPad = document.getElementById('btnDockDataPad');
 if(btnDockDataPad) btnDockDataPad.addEventListener('click', ()=> toggleWalletPanel());
+// (v0.31.1) item 4: EVENT LOG nav button -- toggles the SAME #eventLog panel space
+// already uses (see SPACE_HUD_IDS/setSpaceHudVisible), independent of every other
+// dock sub-panel, second click closes it again same as the rest of the nav column.
+function toggleDockEventLog(){
+  const el = document.getElementById('eventLog');
+  if(!el) return;
+  const willShow = el.style.display === 'none';
+  el.style.display = willShow ? '' : 'none';
+  const btn = document.getElementById('btnDockEventLog');
+  if(btn) btn.classList.toggle('active', willShow);
+}
+const btnDockEventLog = document.getElementById('btnDockEventLog');
+if(btnDockEventLog) btnDockEventLog.addEventListener('click', toggleDockEventLog);
 document.getElementById('btnCloseWallet').addEventListener('click', ()=> toggleWalletPanel(false));
 document.getElementById('btnWalletTabLedger').addEventListener('click', ()=> setWalletTab('ledger'));
 document.getElementById('btnWalletTabStats').addEventListener('click', ()=> setWalletTab('stats'));
