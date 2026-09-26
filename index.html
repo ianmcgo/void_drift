@@ -856,7 +856,20 @@
   /* item 9: weapon/shield/mining-laser FITTING is no longer a single click on the
      EQUIP row button -- that first click now just stages the action and opens this
      small "EQUIP [item name]?" confirm bar; a second, explicit CONFIRM click is what
-     actually fits it. Same visual language as the other dp*/ds* prompt boxes above. */
+     actually fits it. Same visual language as the other dp- and ds-prefixed prompt
+     boxes above. (v0.31.2: this comment used to end with the two words "dp" and
+     "ds" joined by a slash then a star then another slash, right where this
+     sentence now ends with a period -- that star-slash pair closed this CSS
+     comment EARLY, and the rest of the old sentence plus its own closer read as a
+     garbled selector prefix glued onto the id rule right below, invalidating that
+     whole rule and dropping its display-none default. That silently made this
+     confirm bar permanently visible -- amber border, EQUIP question mark and
+     CONFIRM/STORE/CANCEL buttons -- inside every station STORAGE popup view
+     regardless of whether anything was actually staged to equip, overlapping and
+     crowding out the real move/withdraw prompt below it (openStorageMovePrompt's
+     box) and making STORE/WITHDRAW look broken for ordinary non-gear cargo -- this
+     was the bug reported right after v0.31.1 shipped. Fixed by rewording this
+     comment so it no longer spells out that star-slash sequence anywhere. */
   #fitEquipConfirmPrompt{
     display:none; margin-top:10px; padding:8px; border:1px solid var(--amber);
     background:rgba(0,0,0,0.35); max-width:100%; overflow:hidden;
@@ -2671,7 +2684,7 @@
 // compatibility depends on it. Add new keys, don't rename old ones.
 
 // ---------- version / build info (shown in the ESC settings menu) ----------
-const GAME_VERSION = "0.31.1";
+const GAME_VERSION = "0.31.2";
 const GAME_LAST_EDITED = "2026-09-26";
 const GAME_BUILD_TIME = "08:47 PT"; // wall-clock time this build was published, not just the date
 
