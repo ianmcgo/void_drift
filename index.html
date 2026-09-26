@@ -768,6 +768,19 @@
   .walletTabs button.active{ background:var(--phosphor); color:#001108; font-weight:bold; }
   .walletTabSection{display:none;}
   .walletTabSection.active{display:block;}
+  /* (v0.34.0) items 6/7/9: generic version of the .walletTabs/.walletTabSection pair
+     above, for the same tab-row look/behavior on station sub-panels that aren't the
+     Data Pad (LIBRARY, FINANCE OFFICE, GALACTIC NAVY OFFICE) -- kept as its own class
+     rather than reusing .walletTabs directly so it reads correctly by name outside
+     the Data Pad, but the rules are identical on purpose for visual consistency. */
+  .subTabs{display:flex; gap:4px; margin-bottom:8px; flex-wrap:wrap;}
+  .subTabs button{
+    flex:1 1 auto; font-family:'VT323',monospace; font-size:13px; letter-spacing:1px; padding:5px 4px;
+    background:transparent; border:1px solid var(--panel-border); color:var(--phosphor-dim); cursor:pointer;
+  }
+  .subTabs button.active{ background:var(--phosphor); color:#001108; font-weight:bold; }
+  .subTabSection{display:none;}
+  .subTabSection.active{display:block;}
   .ledgerRow{
     display:flex; justify-content:space-between; gap:8px; font-size:11.5px; padding:4px 0;
     border-bottom:1px solid rgba(109,255,194,0.1); color:var(--phosphor-dim);
@@ -2488,14 +2501,35 @@
     <div class="popupBody">
     <div class="sub" style="color:var(--amber); text-align:left;">LIBRARY — MEMORY CUBES &amp; SKILL BOOKS (TO STATION STORAGE)</div>
     <div style="color:var(--phosphor-dim); font-size:11px; margin-top:2px;">CREDITS: <span id="libraryCreditsRead">0</span> cr &nbsp;·&nbsp; KNOWLEDGE: <span id="libraryKnowledgeRead">0</span></div>
-    <div id="libraryActiveCraft" style="margin-top:8px; display:none;"></div>
+    <!-- (v0.34.0) item 6: LIBRARY split into three sub-tabs (MEMORY CUBES / BOOKS /
+         BLUEPRINTS) -- previously all three forms were stacked in one long scroll.
+         Same .subTabs/.subTabSection pattern the Data Pad's own tab row uses (see
+         .walletTabs/.walletTabSection), just under a station-panel-generic class name.
+         Defaults to MEMORY CUBES on open every time (libraryTab is reset in
+         toggleDockSubPanel's dockLibraryPanel-specific branch) -- see setLibraryTab. -->
+    <div class="subTabs" style="margin-top:8px;">
+      <button class="clickable" id="btnLibraryTabCubes">MEMORY CUBES</button>
+      <button class="clickable" id="btnLibraryTabBooks">BOOKS</button>
+      <button class="clickable" id="btnLibraryTabBlueprints">BLUEPRINTS</button>
+    </div>
+    <!-- libraryActiveCraft (the single in-progress craft card, whichever kind it is)
+         is shown ABOVE the tabs regardless of which tab is selected -- a player who's
+         mid-craft on one tab should still see it (and its cancel button) while
+         browsing another, rather than it seeming to vanish. -->
+    <div id="libraryActiveCraft" style="margin-top:0; display:none;"></div>
     <div id="libraryCraftForms">
-      <div class="psection" style="margin-top:10px;">MEMORY CUBE — instantly completes N × 10 in-game min of whatever skill is training when consumed</div>
-      <div id="libraryCubeForm"></div>
-      <div class="psection">SKILL BOOKS — unlock starting LV.2+ training in that skill when consumed</div>
-      <div id="libraryBookForm"></div>
-      <div class="psection">MANUFACTURING BLUEPRINTS — LEARN at cargo/STORAGE to unlock that tier's smelting/crafting at MANUFACTURING (needs ACADEMICS LV.N per blueprint tier N)</div>
-      <div id="libraryBlueprintForm"></div>
+      <div class="subTabSection active" id="libraryCubesSection">
+        <div class="psection" style="margin-top:10px;">MEMORY CUBE — instantly completes N × 10 in-game min of whatever skill is training when consumed</div>
+        <div id="libraryCubeForm"></div>
+      </div>
+      <div class="subTabSection" id="libraryBooksSection">
+        <div class="psection" style="margin-top:10px;">SKILL BOOKS — unlock starting LV.2+ training in that skill when consumed</div>
+        <div id="libraryBookForm"></div>
+      </div>
+      <div class="subTabSection" id="libraryBlueprintsSection">
+        <div class="psection" style="margin-top:10px;">MANUFACTURING BLUEPRINTS — LEARN at cargo/STORAGE to unlock that tier's smelting/crafting at MANUFACTURING (needs ACADEMICS LV.N per blueprint tier N)</div>
+        <div id="libraryBlueprintForm"></div>
+      </div>
     </div>
     </div>
   </div>
@@ -2571,10 +2605,25 @@
     <div class="sub" style="color:var(--amber); text-align:left;">FINANCE OFFICE</div>
     <div class="drow"><span>CURRENT VESSEL</span><span id="shipyardCurrentRead">—</span></div>
     <div class="drow"><span>YOUR CREDITS</span><span id="shipyardCreditsRead">0 cr</span></div>
-    <div class="psection" style="margin-top:14px;">FINANCE A NEW SHIP — GOES TO STORAGE</div>
-    <div id="shipyardBuyList"></div>
-    <div class="psection">FINANCE STARTER GEAR — GOES TO STORAGE</div>
-    <div id="shipyardFinanceGearList"></div>
+    <!-- (v0.34.0) item 7: FINANCE OFFICE split into three sub-tabs -- SHIP LOANS
+         (financing a hull), UPGRADE LOANS (financing weapon/shield/mining-laser/ammo
+         gear), PAYING LOAN (balance/payment/early-payoff, formerly "STATION LOAN").
+         Same .subTabs/.subTabSection pattern as LIBRARY above/the Data Pad's own tab
+         row. One-ship-loan + one-equipment-loan exclusivity, docked-only payment, and
+         PAY OFF IN FULL are all unchanged -- this is layout only. -->
+    <div class="subTabs" style="margin-top:8px;">
+      <button class="clickable" id="btnShipyardTabShipLoans">SHIP LOANS</button>
+      <button class="clickable" id="btnShipyardTabUpgradeLoans">UPGRADE LOANS</button>
+      <button class="clickable" id="btnShipyardTabPaying">PAYING LOAN</button>
+    </div>
+    <div class="subTabSection active" id="shipyardShipLoansSection">
+      <div class="psection" style="margin-top:10px;">FINANCE A NEW SHIP — GOES TO STORAGE</div>
+      <div id="shipyardBuyList"></div>
+    </div>
+    <div class="subTabSection" id="shipyardUpgradeLoansSection">
+      <div class="psection" style="margin-top:10px;">FINANCE STARTER GEAR — GOES TO STORAGE</div>
+      <div id="shipyardFinanceGearList"></div>
+    </div>
     <!-- items 14/15: "STORE CURRENT SHIP" moved to the STORAGE panel (storing your
          ship is now consistent with equipping one, which already happens by clicking
          a ship item there) and the "STORED SHIPS — BOARD OR SELL" section removed
@@ -2586,22 +2635,24 @@
          merged straight into the FINANCE OFFICE (this panel), since financing and
          managing/paying down that same financing belong in one place. The Data Pad's
          own LOANS tab is unrelated and stays as-is. -->
-    <div class="psection" style="margin-top:14px;">STATION LOAN</div>
-    <div class="drow"><span>PRINCIPAL OWED</span><span id="loanPrincipalRead">0 cr</span></div>
-    <div class="drow"><span>MISSED PAYMENTS</span><span id="loanMissedRead">0 / 3</span></div>
-    <div class="drow"><span>BOUNTY STATUS</span><span id="loanBountyRead">CLEAR</span></div>
-    <div class="dockSubRow">
-      <span class="dsName">Pay down loan</span>
-      <input type="number" id="loanPayInput" min="1" step="1" value="100">
-      <button class="cmdbtn" id="btnLoanPay">PAY</button>
+    <div class="subTabSection" id="shipyardPayingSection">
+      <div class="psection" style="margin-top:10px;">PAYING LOAN</div>
+      <div class="drow"><span>PRINCIPAL OWED</span><span id="loanPrincipalRead">0 cr</span></div>
+      <div class="drow"><span>MISSED PAYMENTS</span><span id="loanMissedRead">0 / 3</span></div>
+      <div class="drow"><span>BOUNTY STATUS</span><span id="loanBountyRead">CLEAR</span></div>
+      <div class="dockSubRow">
+        <span class="dsName">Pay down loan</span>
+        <input type="number" id="loanPayInput" min="1" step="1" value="100">
+        <button class="cmdbtn" id="btnLoanPay">PAY</button>
+      </div>
+      <!-- item 2 (v0.24.0): early/full payoff -- available at any station's FINANCE
+           OFFICE while docked, same as the PAY box above (see clearLoanBountyIfPaidOff /
+           the btnLoanPayOff handler) -->
+      <div class="dbtns" style="margin-top:6px;">
+        <button class="cmdbtn" id="btnLoanPayOff">PAY OFF IN FULL</button>
+      </div>
+      <div class="prow" style="font-size:10px; color:var(--phosphor-dim);"><span id="loanPayOffMsg"></span><span></span></div>
     </div>
-    <!-- item 2 (v0.24.0): early/full payoff -- available at any station's FINANCE
-         OFFICE while docked, same as the PAY box above (see clearLoanBountyIfPaidOff /
-         the btnLoanPayOff handler) -->
-    <div class="dbtns" style="margin-top:6px;">
-      <button class="cmdbtn" id="btnLoanPayOff">PAY OFF IN FULL</button>
-    </div>
-    <div class="prow" style="font-size:10px; color:var(--phosphor-dim);"><span id="loanPayOffMsg"></span><span></span></div>
     </div>
   </div>
 
@@ -2613,16 +2664,30 @@
     <div class="drow"><span>OFFICE</span><span id="navyStationRead">—</span></div>
     <div class="drow"><span>NEXT NEW CONTRACT</span><span id="navyNextQuestRead">—</span></div>
     <div class="drow"><span>NAVY REP (THIS STATION)</span><span id="navyRepPanelRead">0 (Level 1)</span></div>
-    <div class="psection">AVAILABLE CONTRACTS</div>
-    <div id="navyQuestList" style="margin-top:8px;"></div>
-    <div class="psection">ACCEPTED CONTRACTS</div>
-    <div id="navyActiveQuestList" style="margin-top:8px;"></div>
-    <!-- item 6: individual black-box bounty turn-in -- separate from the contract
-         board above, pays straight out of THIS station's treasury (see
-         renderBlackBoxBountyPanel/turnInBlackBoxes) -->
-    <div class="psection">BLACK BOX BOUNTY (INDIVIDUAL TURN-IN)</div>
-    <div class="drow"><span>STATION TREASURY</span><span id="navyBountyTreasuryRead">0 cr</span></div>
-    <div id="navyBlackBoxBountyList" style="margin-top:8px;"></div>
+    <!-- (v0.34.0) item 9: GALACTIC NAVY split into two sub-tabs -- BOUNTY TURN-IN
+         (the individual black-box turn-in, formerly its own section below the quest
+         board) and DAILY QUESTS (the contract board, formerly "AVAILABLE
+         CONTRACTS"/"ACCEPTED CONTRACTS"). Same .subTabs/.subTabSection pattern as
+         LIBRARY/FINANCE OFFICE above. Partial turn-in and the per-quest-giver daily
+         countdown are unchanged -- layout only. -->
+    <div class="subTabs" style="margin-top:8px;">
+      <button class="clickable" id="btnNavyTabBounty">BOUNTY TURN-IN</button>
+      <button class="clickable" id="btnNavyTabDaily">DAILY QUESTS</button>
+    </div>
+    <div class="subTabSection" id="navyBountySection">
+      <!-- item 6: individual black-box bounty turn-in -- separate from the contract
+           board, pays straight out of THIS station's treasury (see
+           renderBlackBoxBountyPanel/turnInBlackBoxes) -->
+      <div class="psection" style="margin-top:10px;">BLACK BOX BOUNTY (INDIVIDUAL TURN-IN)</div>
+      <div class="drow"><span>STATION TREASURY</span><span id="navyBountyTreasuryRead">0 cr</span></div>
+      <div id="navyBlackBoxBountyList" style="margin-top:8px;"></div>
+    </div>
+    <div class="subTabSection active" id="navyDailySection">
+      <div class="psection" style="margin-top:10px;">AVAILABLE CONTRACTS</div>
+      <div id="navyQuestList" style="margin-top:8px;"></div>
+      <div class="psection">ACCEPTED CONTRACTS</div>
+      <div id="navyActiveQuestList" style="margin-top:8px;"></div>
+    </div>
     </div>
   </div>
 
@@ -2703,9 +2768,9 @@
 // compatibility depends on it. Add new keys, don't rename old ones.
 
 // ---------- version / build info (shown in the ESC settings menu) ----------
-const GAME_VERSION = "0.33.0";
+const GAME_VERSION = "0.34.0";
 const GAME_LAST_EDITED = "2026-09-26";
-const GAME_BUILD_TIME = "12:12 PT"; // wall-clock time this build was published, not just the date
+const GAME_BUILD_TIME = "15:14 PT"; // wall-clock time this build was published, not just the date
 
 // ---------- update-available banner ----------
 // Periodically re-fetches this very page (same-origin -- works identically whether
@@ -7711,7 +7776,14 @@ const BLUEPRINT_RECIPE_TYPES = Object.keys(BLUEPRINT_RECIPE_DEFS);
 // dsLearnBtn/learnBlueprint don't need a per-blueprint hardcoded branch (see
 // openCargoActionPrompt/openStorageMovePrompt below). Old tier blueprints stay in this
 // list too (a player might still be holding an unlearned one from before v0.28.0).
-const BLUEPRINT_ITEM_TYPES = [BLUEPRINT_IRON_BULLETS, BLUEPRINT_MFG_LV1, BLUEPRINT_MFG_LV2, BLUEPRINT_MFG_LV3].concat(BLUEPRINT_RECIPE_TYPES);
+// (v0.34.0) item 5 bugfix: BLUEPRINT_IRON_BULLETS used to ALSO be hardcoded here
+// directly, on top of already being a key in BLUEPRINT_RECIPE_DEFS (added there in
+// v0.31.1, see the comment above) and therefore already present via
+// BLUEPRINT_RECIPE_TYPES below -- that made it appear twice in this list, which is
+// exactly what made "Iron Bullet Blueprint -- KNOWN" show up twice in the Stats tab's
+// MANUFACTURING PLANS section (see updateStatsUI's statBlueprints block, which just
+// filters this array). Removed the redundant explicit entry; it's still covered.
+const BLUEPRINT_ITEM_TYPES = [BLUEPRINT_MFG_LV1, BLUEPRINT_MFG_LV2, BLUEPRINT_MFG_LV3].concat(BLUEPRINT_RECIPE_TYPES);
 // (v0.26.0) Refined Ingots -- smelted from raw ore at MANUFACTURING (see the
 // mfg_smelt_* recipes below), one per ore/material tier. NAMING STABILITY: these are
 // brand-new keys, chosen to be permanent -- 'ingot_<ore>', matching the existing
@@ -8402,6 +8474,19 @@ function enterDock(station){
   toggleEquipmentPanel(false);
   toggleStarMapPanel(false);
   toggleWalletPanel(false);
+  // (v0.34.0) item 1: "no need for collapse-to-dock buttons for the Data Pad or the
+  // Event Log while in station" -- both panels are the SAME single #walletPanel/
+  // #eventLog elements the space HUD uses (see SPACE_HUD_IDS / toggleDockDataPad/
+  // toggleDockEventLog), just also reachable from the station nav column, so they
+  // can't take opts.hideCollapse at their one shared makePanelManageable call site
+  // without also removing it from the space HUD. Instead, hide just the collapse
+  // button itself for the duration of being docked (restored in exitDock below) --
+  // the close (X) button and drag/resize still work identically either way.
+  if(typeof eventLogPanelApi !== 'undefined' && eventLogPanelApi && eventLogPanelApi.collapseBtn) eventLogPanelApi.collapseBtn.style.display = 'none';
+  if(typeof walletPanelApi !== 'undefined' && walletPanelApi && walletPanelApi.collapseBtn) walletPanelApi.collapseBtn.style.display = 'none';
+  // (v0.34.0) item 2: EVENT LOG's X close box is the mirror image of the collapse
+  // hide above -- shown only while docked (station context), hidden in space.
+  if(typeof eventLogPanelApi !== 'undefined' && eventLogPanelApi && eventLogPanelApi.closeBtn) eventLogPanelApi.closeBtn.style.display = '';
   // item 13: nav column is always visible while docked; #dockedPanel (the sub-panel
   // fill area) is controlled by showDockSubPanel itself based on which panel is open
   document.getElementById('dockNavColumn').classList.add('show');
@@ -8432,6 +8517,12 @@ function exitDock(){
   // own rework comment) and deliberately KEEP building after undocking -- no more
   // cancel/refund here.
   setSpaceHudVisible(true);
+  // (v0.34.0) item 1: restore the Data Pad/Event Log collapse buttons hidden in
+  // enterDock above -- back in space, collapse-to-dock is meaningful again.
+  if(typeof eventLogPanelApi !== 'undefined' && eventLogPanelApi && eventLogPanelApi.collapseBtn) eventLogPanelApi.collapseBtn.style.display = '';
+  if(typeof walletPanelApi !== 'undefined' && walletPanelApi && walletPanelApi.collapseBtn) walletPanelApi.collapseBtn.style.display = '';
+  // (v0.34.0) item 2: hide EVENT LOG's X close box again back in space.
+  if(typeof eventLogPanelApi !== 'undefined' && eventLogPanelApi && eventLogPanelApi.closeBtn) eventLogPanelApi.closeBtn.style.display = 'none';
   // regression fix (item E): close every individual floating station sub-panel
   // (there's no longer a single shared #dockedPanel box to hide)
   showDockSubPanel('dockMainPanel');
@@ -8798,7 +8889,10 @@ document.getElementById('marketStorageSellGrid').addEventListener('click', (e)=>
     : def.label + ' ×' + stack.qty + ' — ' + def.sellPrice + ' cr each';
   const input = document.getElementById('marketStorageSellQty');
   input.min = 1; input.max = stack.qty; input.value = stack.qty;
-  document.getElementById('marketStorageSellPrompt').style.display = 'block';
+  const sellPrompt = document.getElementById('marketStorageSellPrompt');
+  sellPrompt.style.display = 'block';
+  // (v0.34.0) item 8: same scroll-into-view fix as the buy-confirm box above.
+  requestAnimationFrame(()=> sellPrompt.scrollIntoView({ block:'nearest' }));
 });
 document.getElementById('marketStorageSellCancel').addEventListener('click', ()=>{
   marketStorageSellStackId = null;
@@ -8865,7 +8959,13 @@ document.getElementById('marketGrid').addEventListener('click', (e)=>{
   } else {
     qtyInput.min = 1; qtyInput.max = m.qty; qtyInput.value = Math.min(m.qty, m.itemType === AMMO_ITEM_TYPE ? 100 : m.qty); qtyInput.disabled = false;
   }
-  document.getElementById('marketBuyPrompt').style.display = '';
+  const buyPrompt = document.getElementById('marketBuyPrompt');
+  buyPrompt.style.display = '';
+  // (v0.34.0) item 8: same scroll-into-view fix v0.33.0 gave the STORAGE equip-confirm
+  // prompt -- this MARKET buy-confirm box renders inline below the FOR SALE grid, so
+  // it could land below the fold on a long list, same as every other item-click popup
+  // in STORAGE/MARKET. Deferred one frame so display:'' has actually applied first.
+  requestAnimationFrame(()=> buyPrompt.scrollIntoView({ block:'nearest' }));
 });
 document.getElementById('marketBuyCancel').addEventListener('click', ()=>{
   document.getElementById('marketBuyPrompt').style.display = 'none';
@@ -10216,6 +10316,24 @@ function checkLibraryCraftCompletion(){
 }
 setInterval(checkLibraryCraftCompletion, 5000);
 function fmtLibraryDuration(ms){ return fmtSkillDuration(ms); }
+// (v0.34.0) item 6: which LIBRARY sub-tab is showing -- 'cubes' (default)/'books'/
+// 'blueprints'. Deliberately module-level (not reset on open/close) so re-opening
+// LIBRARY later the same session comes back to whichever tab the player was last on,
+// same "remembers last tab" choice as everywhere else in this batch that added tabs.
+let libraryTab = 'cubes';
+function setLibraryTab(tab){
+  libraryTab = tab;
+  document.getElementById('btnLibraryTabCubes').classList.toggle('active', tab==='cubes');
+  document.getElementById('btnLibraryTabBooks').classList.toggle('active', tab==='books');
+  document.getElementById('btnLibraryTabBlueprints').classList.toggle('active', tab==='blueprints');
+  document.getElementById('libraryCubesSection').classList.toggle('active', tab==='cubes');
+  document.getElementById('libraryBooksSection').classList.toggle('active', tab==='books');
+  document.getElementById('libraryBlueprintsSection').classList.toggle('active', tab==='blueprints');
+}
+document.getElementById('btnLibraryTabCubes').addEventListener('click', ()=> setLibraryTab('cubes'));
+document.getElementById('btnLibraryTabBooks').addEventListener('click', ()=> setLibraryTab('books'));
+document.getElementById('btnLibraryTabBlueprints').addEventListener('click', ()=> setLibraryTab('blueprints'));
+setLibraryTab(libraryTab); // sync initial active classes (HTML already marks 'cubes' active, this just keeps JS/markup in lockstep)
 function renderLibraryPanel(){
   const panel = document.getElementById('dockLibraryPanel');
   if(!panel || !panel.classList.contains('show') || !docked || !dockedStation) return;
@@ -10276,8 +10394,13 @@ function renderLibraryPanel(){
       cubeWrap.innerHTML = !cubeAcademicsOk
         ? '<div class="drow"><span>REQUIRES ACADEMICS LV.1</span></div>'
         : '<div class="dockSubRow">'
-          // item 12: relabeled from "Knowledge to invest"
-          + '<span class="dsName">Knowledge to scribe to cube</span>'
+          // (v0.34.0) item 3: the old standalone "Knowledge to scribe to cube" label
+          // line is gone -- it read as a redundant extra row once the v0.33.0 batching
+          // rework put a QUANTITY field directly below it, making the pair look like
+          // two separate line items instead of one "how many, of what size" form. The
+          // per-cube knowledge amount now gets its own short label right on the input
+          // (item 12's relabel is preserved, just shortened to fit inline).
+          + '<span class="dsName">Knowledge/cube</span>'
           + '<input type="number" min="1" step="1" value="' + preservedCubeAmt + '" id="libraryCubeAmt">'
           + '</div>'
           + '<div class="dockSubRow">'
@@ -10559,7 +10682,14 @@ function openStorageMovePrompt(from, stackId){
   // cubeKnowledge value -- see stacksCombinable.
   if(combineBtn) combineBtn.style.display = (!isUncombinableItemType(stack.itemType) && list.some(s => s !== stack
     && (s.guildQuestId||null) === (stack.guildQuestId||null) && stacksCombinable(stack, s))) ? '' : 'none';
-  document.getElementById('dockStorageMovePrompt').classList.add('show');
+  const movePrompt = document.getElementById('dockStorageMovePrompt');
+  movePrompt.classList.add('show');
+  // (v0.34.0) item 8: same scroll-into-view fix v0.33.0 gave the equip-confirm prompt
+  // (see openFitEquipConfirm above) -- this move/withdraw/combine box renders inline
+  // at the bottom of STORAGE's own scrolling column too, so it could land below the
+  // fold exactly the same way. Deferred one frame so 'show' (display:block) has
+  // actually applied before measuring/scrolling.
+  requestAnimationFrame(()=> movePrompt.scrollIntoView({ block:'nearest' }));
 }
 function closeStorageMovePrompt(){
   storageMoveCtx = null;
@@ -10710,6 +10840,23 @@ document.getElementById('dsMoveConfirm').addEventListener('click', ()=>{
 // from here. See activateShipInstance/boardStoredShip/sellStoredShip/buyNewShip/
 // financeStarterGear above (defined alongside the ship-ownership state).
 document.getElementById('btnDockShipyardPanel').addEventListener('click', ()=> toggleDockSubPanel('dockShipyardPanel'));
+// (v0.34.0) item 7: which FINANCE OFFICE sub-tab is showing -- 'shipLoans' (default)/
+// 'upgradeLoans'/'paying'. Module-level, not reset on open/close, same "remembers
+// last tab" choice as LIBRARY's own tab state above.
+let shipyardTab = 'shipLoans';
+function setShipyardTab(tab){
+  shipyardTab = tab;
+  document.getElementById('btnShipyardTabShipLoans').classList.toggle('active', tab==='shipLoans');
+  document.getElementById('btnShipyardTabUpgradeLoans').classList.toggle('active', tab==='upgradeLoans');
+  document.getElementById('btnShipyardTabPaying').classList.toggle('active', tab==='paying');
+  document.getElementById('shipyardShipLoansSection').classList.toggle('active', tab==='shipLoans');
+  document.getElementById('shipyardUpgradeLoansSection').classList.toggle('active', tab==='upgradeLoans');
+  document.getElementById('shipyardPayingSection').classList.toggle('active', tab==='paying');
+}
+document.getElementById('btnShipyardTabShipLoans').addEventListener('click', ()=> setShipyardTab('shipLoans'));
+document.getElementById('btnShipyardTabUpgradeLoans').addEventListener('click', ()=> setShipyardTab('upgradeLoans'));
+document.getElementById('btnShipyardTabPaying').addEventListener('click', ()=> setShipyardTab('paying'));
+setShipyardTab(shipyardTab);
 function renderDockShipyardPanel(){
   const curEl = document.getElementById('shipyardCurrentRead');
   if(!curEl) return;
@@ -10780,6 +10927,20 @@ document.getElementById('shipyardFinanceGearList').addEventListener('click', (e)
 
 // ---------- station LOAN section (item 16: now embedded in dockShipyardPanel) ----------
 document.getElementById('btnDockNavyPanel').addEventListener('click', ()=> toggleDockSubPanel('dockNavyPanel'));
+// (v0.34.0) item 9: which GALACTIC NAVY sub-tab is showing -- 'bounty'/'daily'
+// (default). Module-level, not reset on open/close, same "remembers last tab" choice
+// as LIBRARY/FINANCE OFFICE's own tab state above.
+let navyTab = 'daily';
+function setNavyTab(tab){
+  navyTab = tab;
+  document.getElementById('btnNavyTabBounty').classList.toggle('active', tab==='bounty');
+  document.getElementById('btnNavyTabDaily').classList.toggle('active', tab==='daily');
+  document.getElementById('navyBountySection').classList.toggle('active', tab==='bounty');
+  document.getElementById('navyDailySection').classList.toggle('active', tab==='daily');
+}
+document.getElementById('btnNavyTabBounty').addEventListener('click', ()=> setNavyTab('bounty'));
+document.getElementById('btnNavyTabDaily').addEventListener('click', ()=> setNavyTab('daily'));
+setNavyTab(navyTab);
 document.getElementById('btnDockMiningPanel').addEventListener('click', ()=> toggleDockSubPanel('dockMiningPanel'));
 document.getElementById('btnDockTransportPanel').addEventListener('click', ()=> toggleDockSubPanel('dockTransportPanel'));
 // item 4c: shows the COMBINED balance (ship + gear) here -- the DATA PAD's LOANS tab
@@ -12975,10 +13136,22 @@ function renderSkillRow(key){
   // whichever skill is CURRENTLY training -- shown on every row (not just this one)
   // would be redundant, so it's only rendered on the row that's actually training
   const useCubeBtn = (isTraining) ? '<button class="cmdbtn peqBtn" data-use-cube="' + key + '" style="margin-top:4px;">USE MEMORY CUBE</button>' : '';
+  // (v0.34.0) item 4: explicit "TIME REMAINING" row on the currently-training skill,
+  // same drow/label convention Library and Manufacturing already use for their own
+  // live countdowns (see fmtLibraryDuration's TIME REMAINING rows) -- statusLine
+  // above already said "X LEFT" inline, but only as part of a longer sentence; this
+  // adds the same standalone labeled readout the other two panels have, so all three
+  // read consistently. Uses fmtSkillDuration (this panel's own existing formatter,
+  // same units/rounding it already used inside statusLine) rather than Library's
+  // fmtLibraryDuration, since skill training was never split into per-unit batches.
+  const timeRemainingRow = isTraining
+    ? '<div class="drow" style="margin-top:2px;"><span>TIME REMAINING</span><span>' + fmtSkillDuration(Math.max(0, need - now)) + '</span></div>'
+    : '';
   return '<div class="peq">'
     + '<span>' + def.name + ' — LV.' + level + '<br><span style="font-size:10px; color:var(--phosphor-dim);">' + def.desc + '</span>'
     + '<br><span style="font-size:10px; color:' + (isTraining ? 'var(--phosphor)' : 'var(--phosphor-dim)') + ';">' + statusLine + '</span>'
     + (maxed ? '' : '<div class="pbar' + (isTraining?'':' full') + '" style="margin-top:3px;"><i style="width:' + pct.toFixed(1) + '%;"></i></div>')
+    + timeRemainingRow
     + '</span><span style="display:flex; flex-direction:column; gap:4px;">' + btnHtml + useCubeBtn + '</span>'
     + '</div>';
 }
@@ -19530,8 +19703,13 @@ function makePanelManageable(panel, opts){
   // two stacked header bars with two different titles/close controls for one panel
   // (see walletPanel/"Data Pad", which used to show "WALLET" here AND a redundant
   // "DATA PAD" + X row directly below it).
+  // closeBtn hoisted to function scope (was block-scoped to this if) so it can be
+  // exposed on the returned api below -- see EVENT LOG's use of it in enterDock/
+  // exitDock (v0.34.0 item 2: EVENT LOG's own X close box is hidden while in space,
+  // matching the collapse-button hide/show pattern used for the opposite direction).
+  let closeBtn = null;
   if(typeof opts.onClose === 'function'){
-    const closeBtn = document.createElement('button');
+    closeBtn = document.createElement('button');
     closeBtn.type = 'button';
     closeBtn.textContent = '✕';
     closeBtn.title = 'Close';
@@ -19813,7 +19991,12 @@ function makePanelManageable(panel, opts){
   // that's the actual right source of truth for its height, and #targetPanel's
   // content is effectively fixed (a command-button row), so neither panel
   // benefits from a persisted height at all -- only from CSS/content driving it.
-  const api = { collapse, expand, resetLayout, state, panel, ensureContentFits, group: opts.group || 'space', noPersistHeight: !!opts.noPersistHeight };
+  // (v0.34.0) item 1: collapseBtn exposed on the returned api so a caller can hide/
+  // show it after the fact for a panel that's shared between the space HUD and the
+  // station dock nav column (EVENT LOG, DATA PAD) -- see its use in enterDock/
+  // exitDock below. Panels that already pass opts.hideCollapse (every station-only
+  // sub-panel) never had this button created at all, so this is null for them.
+  const api = { collapse, expand, resetLayout, state, panel, ensureContentFits, collapseBtn, closeBtn, group: opts.group || 'space', noPersistHeight: !!opts.noPersistHeight };
   managedPanels.push(api);
   return api;
 }
@@ -19830,7 +20013,16 @@ makePanelManageable(document.getElementById('clockPanel'),   { title:'CLOCK',   
 // only has to cover the drag strip + header row + enough left over for a handful of
 // visible contact rows, not the list's full 38vh default.
 makePanelManageable(document.getElementById('overview'),     { title:'OVERVIEW',       minW:220, minH:190 });
-const eventLogPanelApi = makePanelManageable(document.getElementById('eventLog'), { title:'EVENT LOG', minW:220, minH:180 });
+// (v0.34.0) item 2: EVENT LOG now gets an X close box too (every other dockNavList-
+// opened station panel already has one) -- onClose calls toggleDockEventLog() when
+// docked (same toggle-closed behavior the btnDockEventLog sidebar button itself
+// uses, so either one closes it). While in space this button is hidden (see
+// enterDock/exitDock below) since EVENT LOG has no "close" concept there -- only
+// collapse-to-dock, same as before.
+const eventLogPanelApi = makePanelManageable(document.getElementById('eventLog'), { title:'EVENT LOG', minW:220, minH:180, onClose:()=>{ if(docked) toggleDockEventLog(); } });
+// starts hidden -- the game boots undocked (docked=false, see its declaration), so
+// the close box has no reason to show until enterDock() reveals it (item 2 above).
+if(eventLogPanelApi && eventLogPanelApi.closeBtn) eventLogPanelApi.closeBtn.style.display = 'none';
 // item: EVENT LOG and ITEM INSPECTOR used to default-collapse to small dock tabs
 // on touch devices, because back when that was written a phone-width viewport
 // genuinely wasn't wide enough to fit TELEMETRY/EVENT LOG/TARGET/ITEM INSPECTOR
@@ -19860,7 +20052,9 @@ const itemInspectorPanelApi = makePanelManageable(document.getElementById('itemI
 // minimum size, with .popupBody handling anything beyond that via internal scroll.
 makePanelManageable(document.getElementById('inventoryPanel'),  { title:'CARGO HOLD',  minW:230, minH:320 });
 makePanelManageable(document.getElementById('starMapPanel'),    { title:'STAR MAP',    minW:230, minH:220 });
-makePanelManageable(document.getElementById('walletPanel'),     { title:'DATA PAD',    minW:420, minH:460, onClose:()=> toggleWalletPanel(false) });
+// (v0.34.0) item 1: walletPanelApi captured (was previously discarded) so its
+// collapseBtn can be hidden while docked -- see enterDock/exitDock.
+const walletPanelApi = makePanelManageable(document.getElementById('walletPanel'),     { title:'DATA PAD',    minW:420, minH:460, onClose:()=> toggleWalletPanel(false) });
 // regression fix (item E): station sub-panels are now independent floating windows,
 // draggable/resizable via the same makePanelManageable system as every other HUD
 // panel, each closing only itself (see closeDockSubPanel) rather than a shared modal.
