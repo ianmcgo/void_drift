@@ -2780,7 +2780,7 @@
 // compatibility depends on it. Add new keys, don't rename old ones.
 
 // ---------- version / build info (shown in the ESC settings menu) ----------
-const GAME_VERSION = "0.36.0";
+const GAME_VERSION = "0.37.0";
 const GAME_LAST_EDITED = "2026-09-26";
 const GAME_BUILD_TIME = "15:14 PT"; // wall-clock time this build was published, not just the date
 
@@ -3623,9 +3623,14 @@ function pauseActiveTraining(){
   activeTraining = null;
 }
 // (Library update) LV.2+ used to be unconditionally hard-blocked here pending a book
-// system -- that system now exists (see LIBRARY section below): starting LV.2+
-// training now CONSUMES one matching Skill Book (bookSkill===key, bookLevel===target)
-// from cargo/storage via consumeMatchingSkillBook() instead of refusing outright.
+// system -- that system existed briefly as a single-step "consume a book the moment
+// you click START" flow (see the removed consumeMatchingSkillBook call, kept below
+// for backward-compat use elsewhere), but item 5 (v0.37.0) reworked it into a real
+// two-step flow, mirroring how Manufacturing Blueprints already work: LEARN the book
+// first (a one-time consumable action, see learnSkillBook/learnSkillBookFrom above)
+// to permanently set the knownSkillBooks flag for that skill+level, THEN start
+// training is just a flag check here -- no book is consumed at this point any more,
+// and starting/pausing/resuming training never touches inventory.
 function startSkillTraining(key){
   const def = SKILL_DEFS[key];
   if(!def) return;
@@ -3636,14 +3641,14 @@ function startSkillTraining(key){
     flashMessage('NEEDS ' + req.name.toUpperCase() + ' LV.' + target + ' FIRST', 'warn');
     return;
   }
-  if(target >= 2 && !consumeMatchingSkillBook(key, target)){
-    flashMessage('REQUIRES A LV.' + target + ' ' + def.name.toUpperCase() + ' BOOK — SCRIBE ONE AT A LIBRARY', 'warn');
+  if(target >= 2 && !skillBookLearned(key, target)){
+    flashMessage('LEARN THE LV.' + target + ' ' + def.name.toUpperCase() + ' BOOK FIRST', 'warn');
     return;
   }
   if(activeTraining && activeTraining.key === key) return; // already training this one
   pauseActiveTraining(); // switching skills auto-pauses whatever was running, progress preserved
   activeTraining = { key, startedAtMs: Date.now() };
-  logEvent('SKILL TRAINING STARTED — ' + def.name.toUpperCase() + ' LV.' + target + (target>=2?' (BOOK CONSUMED)':''), 'good');
+  logEvent('SKILL TRAINING STARTED — ' + def.name.toUpperCase() + ' LV.' + target, 'good');
   renderSkillsPanel();
 }
 function stopSkillTraining(key){
@@ -4539,25 +4544,32 @@ function buildAsteroidDebrisField(centerPos, scale){
 // be tuned to feel more/less rewarding depending on the zone's danger level.
 // YELLOW (Kestrel Belt, mildly dangerous): boosted rare-ore weighting (silver+gold
 // ~35% combined, up from a flatter original 20%) as the payoff for the added risk.
-const ORE_WEIGHTS_YELLOW = { iron:0.45, copper:0.20, silver:0.22, gold:0.13 };
+// item 2 (v0.37.0): diamond added as a 5th ore tier, rarer than gold, to every
+// asteroid field (both weight tables below are shared/reused by every zone's
+// buildAsteroidField call -- see the NEW_GALAXY_ZONE_DEFS loop further down -- so
+// adding it here alone threads it through every field in the game at once).
+const ORE_WEIGHTS_YELLOW = { iron:0.44, copper:0.19, silver:0.22, gold:0.13, diamond:0.02 };
 // GREEN (Haven Reach, safe): the reverse -- rare ore is noticeably scarcer here
-// (silver+gold ~8% combined) since there's no danger premium to justify it.
-const ORE_WEIGHTS_GREEN = { iron:0.66, copper:0.26, silver:0.06, gold:0.02 };
+// (silver+gold+diamond combined stays roughly the same share as before, diamond
+// carved out of iron's share since there's no danger premium to justify it here).
+const ORE_WEIGHTS_GREEN = { iron:0.657, copper:0.26, silver:0.06, gold:0.02, diamond:0.003 };
 // distinct palette per ore type so a rock's likely content reads visually at a
 // glance: iron dull rust-grey/reddish-brown, copper warm metallic orange-brown,
-// silver a light grey/white sheen, gold a yellowish amber
-const ORE_COLORS = { iron:0x8a5a44, copper:0xb5651d, silver:0xd7dbe0, gold:0xd4af37 };
-const ORE_BASE_YIELD = { iron:220, copper:150, silver:90, gold:45 };
+// silver a light grey/white sheen, gold a yellowish amber, diamond a pale icy
+// cyan-white sparkle (visually distinct from silver's flatter grey)
+const ORE_COLORS = { iron:0x8a5a44, copper:0xb5651d, silver:0xd7dbe0, gold:0xd4af37, diamond:0xd7f5ff };
+const ORE_BASE_YIELD = { iron:220, copper:150, silver:90, gold:45, diamond:22 };
 // ore-based flavor name per type -- an asteroid's name now always reflects its
 // CURRENT rolled content rather than an arbitrary flavor word (see assignAsteroidOre)
-const ORE_DISPLAY_NAMES = { iron:'Iron Deposit', copper:'Copper Vein', silver:'Silver Lode', gold:'Gold Vein' };
+const ORE_DISPLAY_NAMES = { iron:'Iron Deposit', copper:'Copper Vein', silver:'Silver Lode', gold:'Gold Vein', diamond:'Diamond Cluster' };
 function rollOreType(weights){
   weights = weights || ORE_WEIGHTS_YELLOW;
   let r = Math.random();
   if((r -= weights.iron) < 0) return 'iron';
   if((r -= weights.copper) < 0) return 'copper';
   if((r -= weights.silver) < 0) return 'silver';
-  return 'gold';
+  if((r -= weights.gold) < 0) return 'gold';
+  return 'diamond';
 }
 // visual scale (and collision/overview radius) tracks the FRACTION of that ore
 // type's typical max yield still remaining, not the raw amount -- so a near-empty
@@ -7627,6 +7639,16 @@ const BOUNTY_PER_BLACKBOX = 75;
 // keys, e.g. BLUEPRINT_IRON_BULLETS. Never persisted (this file has no save system),
 // but kept as its own top-level piece of player state alongside bountyCredits/etc.
 let knownBlueprints = new Set();
+// item 5 (v0.37.0): skill-book two-step rework -- LEARN-ing a skill book (see
+// learnSkillBook/learnSkillBookFrom below, same consume-and-unlock pattern as
+// knownBlueprints/learnBlueprint above) permanently unlocks the ABILITY to start
+// training that skill+level; it no longer instantly starts training on its own.
+// Keyed by 'skillKey:level' strings (see skillBookKey()) since a skill book's
+// identity is the (skill, level) pair, not a single item type the way a blueprint's
+// knownBlueprints entry is. Persisted in save data (see saveGameState/loadGameState).
+let knownSkillBooks = new Set();
+function skillBookKey(key, level){ return key + ':' + level; }
+function skillBookLearned(key, level){ return knownSkillBooks.has(skillBookKey(key, level)); }
 // ---------- weight-limited cargo hold ----------
 // per-unit weight, heavier/rarer materials weigh a bit more; capacity chosen to feel
 // meaningful against typical per-trip mining/salvage yields (a full asteroid's worth
@@ -7654,7 +7676,10 @@ const AMMO_SELL_UNIT_PRICE = 1;  // cr/bullet when sold back to the station from
 const AMMO_ITEM_TYPE_COPPER = 'ammo_copper_bullets';
 const AMMO_ITEM_TYPE_SILVER = 'ammo_silver_bullets';
 const AMMO_ITEM_TYPE_GOLD = 'ammo_gold_bullets';
-const AMMO_ITEM_TYPES = [AMMO_ITEM_TYPE, AMMO_ITEM_TYPE_COPPER, AMMO_ITEM_TYPE_SILVER, AMMO_ITEM_TYPE_GOLD];
+// item 4 (v0.37.0): Diamond Bullets -- 5th ammo tier, above Gold, same naming
+// convention ('ammo_<metal>_bullets'). NAMING-STABLE once introduced.
+const AMMO_ITEM_TYPE_DIAMOND = 'ammo_diamond_bullets';
+const AMMO_ITEM_TYPES = [AMMO_ITEM_TYPE, AMMO_ITEM_TYPE_COPPER, AMMO_ITEM_TYPE_SILVER, AMMO_ITEM_TYPE_GOLD, AMMO_ITEM_TYPE_DIAMOND];
 function isAmmoItemType(t){ return AMMO_ITEM_TYPES.indexOf(t) >= 0; }
 // (v0.31.1) item 5 (related hardening): skill_book stacks carry their own
 // per-instance identity fields (bookSkill+bookLevel, see itemInstanceExtraFields
@@ -7749,6 +7774,19 @@ const BLUEPRINT_WEAPON_3 = 'blueprint_weapon_3';
 const BLUEPRINT_SHIELD_3 = 'blueprint_shield_3';
 const BLUEPRINT_SILVER_BULLETS = 'blueprint_silver_bullets';
 const BLUEPRINT_GOLD_BULLETS = 'blueprint_gold_bullets';
+// item 2/3/4 (v0.37.0): Diamond material tier -- smelting blueprint (tier 1, same as
+// every other ore's smelt blueprint -- smelting tier gates the SKILL of smelting, not
+// the ore's own rarity) plus the new real Tier-4 gear blueprints (Shield/Weapon/
+// Mining Laser LV.4) and Diamond Bullets, all gated at the new tier 4 (see
+// libraryScribableRecipeBlueprintTiers' extension to LV.4 below) -- now that a LV.4
+// blueprint tier actually exists, Diamond Bullets gets its own tier instead of being
+// bundled into LV.3 the way Gold Bullets was (per the superseded no-tier-4 design
+// decision above).
+const BLUEPRINT_SMELT_DIAMOND = 'blueprint_smelt_diamond';
+const BLUEPRINT_DIAMOND_BULLETS = 'blueprint_diamond_bullets';
+const BLUEPRINT_MINING_LASER_4 = 'blueprint_mining_laser_4';
+const BLUEPRINT_WEAPON_4 = 'blueprint_weapon_4';
+const BLUEPRINT_SHIELD_4 = 'blueprint_shield_4';
 // metadata for every new per-recipe blueprint: which Academics tier gates scribing it
 // (same tier system the old LV.1/2/3 blueprints used) and its clear, specific label.
 // Order here is display order in the LIBRARY's blueprint form (see renderLibraryPanel).
@@ -7781,7 +7819,12 @@ const BLUEPRINT_RECIPE_DEFS = {
   [BLUEPRINT_WEAPON_3]:       { tier:3, label:'Weapon LV.3 Blueprint',       recipeKey:'mfg_weapon_3' },
   [BLUEPRINT_SHIELD_3]:       { tier:3, label:'Shield LV.3 Blueprint',       recipeKey:'mfg_shield_3' },
   [BLUEPRINT_SILVER_BULLETS]: { tier:3, label:'Silver Bullets Blueprint',    recipeKey:'mfg_silver_bullets' },
-  [BLUEPRINT_GOLD_BULLETS]:   { tier:3, label:'Gold Bullets Blueprint',      recipeKey:'mfg_gold_bullets' }
+  [BLUEPRINT_GOLD_BULLETS]:   { tier:3, label:'Gold Bullets Blueprint',      recipeKey:'mfg_gold_bullets' },
+  [BLUEPRINT_SMELT_DIAMOND]:  { tier:1, label:'Diamond Ingot Blueprint',     recipeKey:'mfg_smelt_diamond' },
+  [BLUEPRINT_MINING_LASER_4]: { tier:4, label:'Mining Laser LV.4 Blueprint', recipeKey:'mfg_mining_laser_4' },
+  [BLUEPRINT_WEAPON_4]:       { tier:4, label:'Weapon LV.4 Blueprint',       recipeKey:'mfg_weapon_4' },
+  [BLUEPRINT_SHIELD_4]:       { tier:4, label:'Shield LV.4 Blueprint',       recipeKey:'mfg_shield_4' },
+  [BLUEPRINT_DIAMOND_BULLETS]:{ tier:4, label:'Diamond Bullets Blueprint',   recipeKey:'mfg_diamond_bullets' }
 };
 const BLUEPRINT_RECIPE_TYPES = Object.keys(BLUEPRINT_RECIPE_DEFS);
 // every LEARN-able blueprint item type in the game -- generic list so dpLearn/
@@ -7807,10 +7850,13 @@ const INGOT_IRON = 'ingot_iron';
 const INGOT_COPPER = 'ingot_copper';
 const INGOT_SILVER = 'ingot_silver';
 const INGOT_GOLD = 'ingot_gold';
+// item 2 (v0.37.0): Diamond Ingot -- 5th material tier, above Gold, same naming
+// convention ('ingot_<ore>'), NAMING-STABLE once introduced.
+const INGOT_DIAMOND = 'ingot_diamond';
 // ore-type key -> its ingot's item type, and the reverse -- used generically by the
-// MANUFACTURING panel's "SMELT" row (one unified action across all 4 ore types, per
-// the design-decision comment above) instead of 4 separate hardcoded branches
-const INGOT_FOR_ORE = { iron:INGOT_IRON, copper:INGOT_COPPER, silver:INGOT_SILVER, gold:INGOT_GOLD };
+// MANUFACTURING panel's "SMELT" row (one unified action across all ore types, per
+// the design-decision comment above) instead of separate hardcoded branches
+const INGOT_FOR_ORE = { iron:INGOT_IRON, copper:INGOT_COPPER, silver:INGOT_SILVER, gold:INGOT_GOLD, diamond:INGOT_DIAMOND };
 const ORE_PER_INGOT = 5; // flat ratio across every material tier -- keeps the smelting math simple and consistent
 // item 4 (v0.28.0) economy rebalance: an ingot's sell value = this multiplier x the
 // raw-ore cost of the ore it took to smelt it (ORE_PRICES[type] * ORE_PER_INGOT) --
@@ -7819,8 +7865,8 @@ const ORE_PER_INGOT = 5; // flat ratio across every material tier -- keeps the s
 const INGOT_VALUE_MULT_OVER_ORE_COST = 2.5;
 // smelting fee (credits/ingot) scales with the ore's own market value (same ~2x
 // multiplier across all four tiers, mirroring ORE_PRICES' own escalation)
-const SMELT_FEE_PER_INGOT = { iron:2, copper:10, silver:25, gold:60 };
-const SMELT_SECONDS_PER_INGOT = { iron:5, copper:8, silver:12, gold:20 };
+const SMELT_FEE_PER_INGOT = { iron:2, copper:10, silver:25, gold:60, diamond:150 };
+const SMELT_SECONDS_PER_INGOT = { iron:5, copper:8, silver:12, gold:20, diamond:35 };
 const ITEM_WEIGHTS = {
   scrap:1, blackBox:2, blackBoxCaptain:2, iron:1, copper:2, silver:3, gold:4,
   ammo_iron_bullets:0.05, ammo_copper_bullets:0.05, ammo_silver_bullets:0.05, ammo_gold_bullets:0.05,
@@ -7882,6 +7928,9 @@ const MANUFACTURING_RECIPES = {
   mfg_smelt_copper: { requiresBlueprint: BLUEPRINT_SMELT_COPPER, legacyBlueprint: BLUEPRINT_MFG_LV1, outputType: INGOT_COPPER, outputQtyPerUnit: 1, label: 'Smelt Copper Ore', inputs: [{ type:'copper', qty:ORE_PER_INGOT }], creditsPerUnit: SMELT_FEE_PER_INGOT.copper, craftSeconds: SMELT_SECONDS_PER_INGOT.copper },
   mfg_smelt_silver: { requiresBlueprint: BLUEPRINT_SMELT_SILVER, legacyBlueprint: BLUEPRINT_MFG_LV1, outputType: INGOT_SILVER, outputQtyPerUnit: 1, label: 'Smelt Silver Ore', inputs: [{ type:'silver', qty:ORE_PER_INGOT }], creditsPerUnit: SMELT_FEE_PER_INGOT.silver, craftSeconds: SMELT_SECONDS_PER_INGOT.silver },
   mfg_smelt_gold:   { requiresBlueprint: BLUEPRINT_SMELT_GOLD,   legacyBlueprint: BLUEPRINT_MFG_LV1, outputType: INGOT_GOLD,   outputQtyPerUnit: 1, label: 'Smelt Gold Ore',   inputs: [{ type:'gold',   qty:ORE_PER_INGOT }], creditsPerUnit: SMELT_FEE_PER_INGOT.gold,   craftSeconds: SMELT_SECONDS_PER_INGOT.gold },
+  // item 2 (v0.37.0): Diamond Ingot -- same shape as the other three, just pricier/
+  // slower per SMELT_FEE_PER_INGOT.diamond/SMELT_SECONDS_PER_INGOT.diamond above.
+  mfg_smelt_diamond:{ requiresBlueprint: BLUEPRINT_SMELT_DIAMOND, outputType: INGOT_DIAMOND, outputQtyPerUnit: 1, label: 'Smelt Diamond Ore', inputs: [{ type:'diamond', qty:ORE_PER_INGOT }], creditsPerUnit: SMELT_FEE_PER_INGOT.diamond, craftSeconds: SMELT_SECONDS_PER_INGOT.diamond },
   // ---- LV.1 gear (Iron Ingots @75cr/ea, gated on the matching skill at level 1 to
   // BUILD -- same as the EQUIP gate). Weapon/Shield LV.1 build cost: 3*75+80=305cr vs
   // 500cr to buy the same tier at the MARKET (39% cheaper). Mining Laser LV.1 (build-
@@ -7904,7 +7953,22 @@ const MANUFACTURING_RECIPES = {
   mfg_weapon_3:       { requiresBlueprint: BLUEPRINT_WEAPON_3,       legacyBlueprint: BLUEPRINT_MFG_LV3, outputType: 'weaponTier3',      outputQtyPerUnit: 1, label: 'Weapon LV.3 (Crafted)', inputs: [{ type:INGOT_SILVER, qty:3 }], creditsPerUnit: 300, craftSeconds: 90, minSkill: { key:'weapon_upgrades', level:3 } },
   mfg_shield_3:       { requiresBlueprint: BLUEPRINT_SHIELD_3,       legacyBlueprint: BLUEPRINT_MFG_LV3, outputType: 'shieldTier3',      outputQtyPerUnit: 1, label: 'Shield LV.3 (Crafted)', inputs: [{ type:INGOT_SILVER, qty:3 }], creditsPerUnit: 300, craftSeconds: 90, minSkill: { key:'shield_upgrades', level:3 } },
   mfg_silver_bullets: { requiresBlueprint: BLUEPRINT_SILVER_BULLETS, legacyBlueprint: BLUEPRINT_MFG_LV3, outputType: AMMO_ITEM_TYPE_SILVER, outputQtyPerUnit: 5, label: 'Silver Bullet Manufacturing', inputs: [{ type:INGOT_SILVER, qty:1 }], creditsPerUnit: 20, craftSeconds: 5 },
-  mfg_gold_bullets:   { requiresBlueprint: BLUEPRINT_GOLD_BULLETS,   legacyBlueprint: BLUEPRINT_MFG_LV3, outputType: AMMO_ITEM_TYPE_GOLD,   outputQtyPerUnit: 5, label: 'Gold Bullet Manufacturing',   inputs: [{ type:INGOT_GOLD,   qty:1 }], creditsPerUnit: 45, craftSeconds: 6 }
+  mfg_gold_bullets:   { requiresBlueprint: BLUEPRINT_GOLD_BULLETS,   legacyBlueprint: BLUEPRINT_MFG_LV3, outputType: AMMO_ITEM_TYPE_GOLD,   outputQtyPerUnit: 5, label: 'Gold Bullet Manufacturing',   inputs: [{ type:INGOT_GOLD,   qty:1 }], creditsPerUnit: 45, craftSeconds: 6 },
+  // ---- LV.4 gear (Diamond Ingots) + Diamond Bullets -- item 3/4 (v0.37.0): real
+  // Tier-4 gear, superseding the earlier "no LV.4 gear tier, level 4 = Gold Bullets"
+  // design decision (see the DESIGN DECISION comment above) per direct user request.
+  // Gated at BUILD time on the SAME existing weapon_upgrades/shield_upgrades/mining
+  // skills at their already-existing LV.4 cap (SKILL_MAX_LEVEL=4) -- no new skill
+  // needed for this. NOTE for the next agent (batch item 2, new Manufacturing skill
+  // tree): these `minSkill` gates are meant to be REPLACED by the new "Manufacturing -
+  // Weapons/Shields/Mining Lasers" skills once those exist, same as every other tier's
+  // minSkill here likely will be too -- this is just the minimal/consistent interim gate.
+  mfg_mining_laser_4: { requiresBlueprint: BLUEPRINT_MINING_LASER_4, outputType: 'miningLaserTier4', outputQtyPerUnit: 1, label: 'Mining Laser LV.4', inputs: [{ type:INGOT_DIAMOND, qty:6 }], creditsPerUnit: 2000, craftSeconds: 150, minSkill: { key:'mining', level:4 } },
+  mfg_weapon_4:       { requiresBlueprint: BLUEPRINT_WEAPON_4,       outputType: 'weaponTier4',       outputQtyPerUnit: 1, label: 'Weapon LV.4 (Crafted)', inputs: [{ type:INGOT_DIAMOND, qty:3 }], creditsPerUnit: 900, craftSeconds: 150, minSkill: { key:'weapon_upgrades', level:4 } },
+  mfg_shield_4:       { requiresBlueprint: BLUEPRINT_SHIELD_4,       outputType: 'shieldTier4',       outputQtyPerUnit: 1, label: 'Shield LV.4 (Crafted)', inputs: [{ type:INGOT_DIAMOND, qty:3 }], creditsPerUnit: 900, craftSeconds: 150, minSkill: { key:'shield_upgrades', level:4 } },
+  // Diamond Bullets: no minSkill, same as every other bullet-tier recipe (iron/copper/
+  // silver/gold bullets are gated purely by knowing the blueprint, never a skill level).
+  mfg_diamond_bullets:{ requiresBlueprint: BLUEPRINT_DIAMOND_BULLETS, outputType: AMMO_ITEM_TYPE_DIAMOND, outputQtyPerUnit: 5, label: 'Diamond Bullet Manufacturing', inputs: [{ type:INGOT_DIAMOND, qty:1 }], creditsPerUnit: 100, craftSeconds: 7 }
 };
 // item 1 (v0.28.0): a recipe is buildable if the player knows its own new specific
 // blueprint OR (backward compatibility) still has the old tier blueprint that used to
@@ -8082,7 +8146,10 @@ function openCargoActionPrompt(stackId){
   // it hasn't already been learned -- once knownBlueprints has it, hides for good
   // (owning extra copies afterward is just wasted cargo)
   const learnBtn = document.getElementById('dpLearn');
-  if(learnBtn) learnBtn.style.display = (BLUEPRINT_ITEM_TYPES.indexOf(stack.itemType) >= 0 && !knownBlueprints.has(stack.itemType) && !stack.guildQuestId) ? '' : 'none';
+  // item 5 (v0.37.0): LEARN also now shows for an unlearned skill_book stack (same
+  // consume-and-unlock shape as a blueprint -- see learnSkillBook/skillBookLearned).
+  const isLearnableBook = stack.itemType === 'skill_book' && !skillBookLearned(stack.bookSkill, stack.bookLevel);
+  if(learnBtn) learnBtn.style.display = ((BLUEPRINT_ITEM_TYPES.indexOf(stack.itemType) >= 0 && !knownBlueprints.has(stack.itemType)) || isLearnableBook) && !stack.guildQuestId ? '' : 'none';
   // COMBINE merges this stack into any other stack(s) of the same item type --
   // only worth showing when another such stack actually exists (see combineCargoStack)
   const combineBtn = document.getElementById('dpCombine');
@@ -8149,9 +8216,30 @@ function learnBlueprint(stackId){
   updateCargoUI();
   if(typeof renderManufacturingPanel === 'function') renderManufacturingPanel();
 }
+// item 5 (v0.37.0): LEARN a skill book -- consumes 1 copy from the clicked cargo
+// stack and permanently unlocks the ability to START TRAINING that skill+level (see
+// knownSkillBooks/skillBookLearned above). Mirrors learnBlueprint's shape exactly,
+// just a different unlock flag since a book's identity is (bookSkill, bookLevel),
+// not its bare item type.
+function learnSkillBook(stackId){
+  const stack = cargoStacks.find(s=>s.stackId===stackId);
+  if(!stack || stack.itemType !== 'skill_book') return;
+  if(stack.guildQuestId){ flashMessage('GUILD DELIVERY CARGO — CANNOT BE LEARNED', 'warn'); return; }
+  if(skillBookLearned(stack.bookSkill, stack.bookLevel)){ flashMessage('ALREADY LEARNED', 'warn'); return; }
+  const skDef = SKILL_DEFS[stack.bookSkill];
+  const label = (skDef?skDef.name:stack.bookSkill) + ' LV.' + stack.bookLevel + ' Book';
+  jettisonFromStack(stackId, 1); // consumes 1 copy (not jettisoned into space -- just removed from cargo)
+  knownSkillBooks.add(skillBookKey(stack.bookSkill, stack.bookLevel));
+  flashMessage('LEARNED: ' + label.toUpperCase(), 'good');
+  logEvent('LEARNED SKILL BOOK — ' + label.toUpperCase(), 'good');
+  updateCargoUI();
+  if(typeof renderSkillsPanel === 'function') renderSkillsPanel();
+}
 document.getElementById('dpLearn').addEventListener('click', ()=>{
   if(cargoActionStackId == null) return;
-  learnBlueprint(cargoActionStackId);
+  const stack = cargoStacks.find(s=>s.stackId===cargoActionStackId);
+  if(stack && stack.itemType === 'skill_book') learnSkillBook(cargoActionStackId);
+  else learnBlueprint(cargoActionStackId);
   closeCargoActionPrompt();
 });
 // item: LEARN from the station STORAGE panel -- same effect as learnBlueprint()
@@ -8173,9 +8261,29 @@ function learnBlueprintFrom(from, stackId){
   renderDockStorageRows();
   if(typeof renderManufacturingPanel === 'function') renderManufacturingPanel();
 }
+// item 5 (v0.37.0): LEARN a skill book from the station STORAGE panel -- same effect
+// as learnSkillBook() above, but the book may be sitting in EITHER the ship's cargo
+// hold or the station's own storage bank, same 'from' dispatch as learnBlueprintFrom.
+function learnSkillBookFrom(from, stackId){
+  if(from === 'ship'){ learnSkillBook(stackId); return; }
+  const stack = stationStorage().find(s=>s.stackId===stackId);
+  if(!stack || stack.itemType !== 'skill_book') return;
+  if(skillBookLearned(stack.bookSkill, stack.bookLevel)){ flashMessage('ALREADY LEARNED', 'warn'); return; }
+  const skDef = SKILL_DEFS[stack.bookSkill];
+  const label = (skDef?skDef.name:stack.bookSkill) + ' LV.' + stack.bookLevel + ' Book';
+  stack.qty -= 1;
+  if(stack.qty <= 0) removeStationStorageStackRef(stack);
+  knownSkillBooks.add(skillBookKey(stack.bookSkill, stack.bookLevel));
+  flashMessage('LEARNED: ' + label.toUpperCase(), 'good');
+  logEvent('LEARNED SKILL BOOK — ' + label.toUpperCase(), 'good');
+  renderDockStorageRows();
+  if(typeof renderSkillsPanel === 'function') renderSkillsPanel();
+}
 document.getElementById('dsLearnBtn').addEventListener('click', ()=>{
   if(!storageMoveCtx) return;
-  learnBlueprintFrom(storageMoveCtx.from, storageMoveCtx.stackId);
+  const stack = (storageMoveCtx.from === 'ship' ? cargoStacks : stationStorage()).find(s=>s.stackId===storageMoveCtx.stackId);
+  if(stack && stack.itemType === 'skill_book') learnSkillBookFrom(storageMoveCtx.from, storageMoveCtx.stackId);
+  else learnBlueprintFrom(storageMoveCtx.from, storageMoveCtx.stackId);
   closeStorageMovePrompt();
 });
 // merges a stack into any other existing stack(s) of the same item type (e.g. two
@@ -9741,14 +9849,23 @@ function startManufacturing(bpType, qty){
   const q = getManufacturingQueue(bpType, stationId);
   if(q.total > 0){ flashMessage('ALREADY BUILDING A BATCH', 'warn'); return; }
   const creditsNeeded = recipe.creditsPerUnit * qty;
+  // item 1 (v0.37.0) bugfix: manufacturing consumes its raw-material inputs from the
+  // STATION'S OWN STORAGE (stationStorageStacks), not ship cargo -- matching the panel's
+  // own "MANUFACTURING — BUILT ITEMS GO TO STATION STORAGE" messaging, which already
+  // frames station storage as manufacturing's home. Previously this checked/consumed
+  // totalOfType()/removeFromCargo() (ship cargo) instead, so a player with materials
+  // sitting in storage but nothing in cargo got a false "not enough" block, and a build
+  // would silently drain cargo even though the panel implied storage was the source.
+  // No cargo fallback: if storage alone doesn't have enough, the build is blocked with
+  // a clear message even if cargo has plenty.
   for(const inp of recipe.inputs){
-    if(totalOfType(inp.type) < inp.qty * qty){
-      flashMessage('NOT ENOUGH ' + itemDisplayDef(inp.type).label.toUpperCase() + ' FOR FULL BATCH', 'warn');
+    if(totalInStationStorage(inp.type, stationId) < inp.qty * qty){
+      flashMessage('NOT ENOUGH ' + itemDisplayDef(inp.type).label.toUpperCase() + ' IN STATION STORAGE FOR FULL BATCH', 'warn');
       return;
     }
   }
   if(bountyCredits < creditsNeeded){ flashMessage('NOT ENOUGH CREDITS FOR FULL BATCH', 'warn'); return; }
-  recipe.inputs.forEach(inp=> removeFromCargo(inp.type, inp.qty * qty));
+  recipe.inputs.forEach(inp=> removeFromStationStorage(inp.type, inp.qty * qty, stationId));
   bountyCredits -= creditsNeeded;
   addLedgerEntry(-creditsNeeded, 'Manufacturing: ' + recipe.label + ' x' + qty);
   q.total = qty;
@@ -10014,6 +10131,12 @@ function libraryScribableBookLevels(key){
 // training. While undocked/in space, station storage isn't reachable (matches how
 // storage access works everywhere else in the game), so only cargo is checked.
 // Returns true if a book was found and consumed.
+// NOTE (item 5, v0.37.0): no longer called by startSkillTraining -- that flow now
+// consumes the book earlier, as its own explicit LEARN action (see learnSkillBook/
+// learnSkillBookFrom), and starting training itself just checks the resulting
+// knownSkillBooks flag (skillBookLearned) rather than consuming anything at start
+// time. Left defined/unused rather than deleted in case anything else still wants
+// this exact "find and consume one matching book" behavior.
 function consumeMatchingSkillBook(key, target){
   let idx = cargoStacks.findIndex(s=> s.itemType==='skill_book' && s.bookSkill===key && s.bookLevel===target);
   if(idx >= 0){
@@ -10236,7 +10359,10 @@ function libraryRecipeBlueprintCreditsCost(tier){ return libraryRecipeBlueprintB
 function libraryRecipeBlueprintDurationMs(tier){ return Math.round(SKILL_REAL_SECONDS_PER_INGAME_DAY * 0.12 * tier * 1000 * academicsCraftTimeMultiplier()); }
 function libraryScribableRecipeBlueprintTiers(){
   const out = [];
-  for(let l=1; l<=3; l++){ if((skillLevels.academics||0) >= l) out.push(l); }
+  // item 3/4 (v0.37.0): extended 3->4 so the new Tier-4 blueprints (Shield/Weapon/
+  // Mining Laser LV.4, Diamond Bullets -- see BLUEPRINT_RECIPE_DEFS) become scribable
+  // at Academics LV.4, the same already-existing skill/level every other tier uses.
+  for(let l=1; l<=4; l++){ if((skillLevels.academics||0) >= l) out.push(l); }
   return out;
 }
 function startRecipeBlueprintScribe(bpType){
@@ -10523,11 +10649,12 @@ function renderLibraryPanel(){
     const bpWrap = document.getElementById('libraryBlueprintForm');
     if(bpWrap){
       const scribableTiers = libraryScribableRecipeBlueprintTiers();
-      const ingotTypes = [BLUEPRINT_SMELT_IRON, BLUEPRINT_SMELT_COPPER, BLUEPRINT_SMELT_SILVER, BLUEPRINT_SMELT_GOLD];
-      const bulletTypes = [BLUEPRINT_IRON_BULLETS, BLUEPRINT_COPPER_BULLETS, BLUEPRINT_SILVER_BULLETS, BLUEPRINT_GOLD_BULLETS];
+      const ingotTypes = [BLUEPRINT_SMELT_IRON, BLUEPRINT_SMELT_COPPER, BLUEPRINT_SMELT_SILVER, BLUEPRINT_SMELT_GOLD, BLUEPRINT_SMELT_DIAMOND];
+      const bulletTypes = [BLUEPRINT_IRON_BULLETS, BLUEPRINT_COPPER_BULLETS, BLUEPRINT_SILVER_BULLETS, BLUEPRINT_GOLD_BULLETS, BLUEPRINT_DIAMOND_BULLETS];
       const upgradeTypes = [BLUEPRINT_MINING_LASER_1, BLUEPRINT_WEAPON_1, BLUEPRINT_SHIELD_1,
         BLUEPRINT_MINING_LASER_2, BLUEPRINT_WEAPON_2, BLUEPRINT_SHIELD_2,
-        BLUEPRINT_MINING_LASER_3, BLUEPRINT_WEAPON_3, BLUEPRINT_SHIELD_3];
+        BLUEPRINT_MINING_LASER_3, BLUEPRINT_WEAPON_3, BLUEPRINT_SHIELD_3,
+        BLUEPRINT_MINING_LASER_4, BLUEPRINT_WEAPON_4, BLUEPRINT_SHIELD_4];
       const rowFor = (bpType)=>{
         const bd = BLUEPRINT_RECIPE_DEFS[bpType];
         const label = itemDisplayDef(bpType).label;
@@ -10754,7 +10881,9 @@ function openStorageMovePrompt(from, stackId){
   // item: LEARN available here too, same gating as the ship cargo hold's dpLearn
   // (see openCargoActionPrompt) -- shown for any known-blueprint item type while unlearned
   const learnBtn = document.getElementById('dsLearnBtn');
-  if(learnBtn) learnBtn.style.display = (BLUEPRINT_ITEM_TYPES.indexOf(stack.itemType) >= 0 && !knownBlueprints.has(stack.itemType) && !stack.guildQuestId) ? '' : 'none';
+  // item 5 (v0.37.0): also shown for an unlearned skill_book stack, same as dpLearn above
+  const dsIsLearnableBook = stack.itemType === 'skill_book' && !skillBookLearned(stack.bookSkill, stack.bookLevel);
+  if(learnBtn) learnBtn.style.display = ((BLUEPRINT_ITEM_TYPES.indexOf(stack.itemType) >= 0 && !knownBlueprints.has(stack.itemType)) || dsIsLearnableBook) && !stack.guildQuestId ? '' : 'none';
   // item 11: COMBINE STACKS -- only worth showing when another stack of the exact
   // same item type (and same guild-delivery earmark) actually exists on this same side
   const combineBtn = document.getElementById('dsCombineBtn');
@@ -11168,13 +11297,20 @@ let ownedWeaponTiers = [0];
 // updatePlayerWeapons, the ENGAGE button/Space-bar handlers) treats -1 as "can't
 // fire" rather than indexing WEAPON_TIER_STATS with it.
 let equippedWeaponTier = 0;
+// item 3 (v0.37.0): real Tier-4 entry (index 4) appended -- continuing each stat's own
+// established per-tier delta (damage +3/+4/+5 -> +6=25; fireInterval -.10/-.08/-.07 ->
+// -.06=.29; range +150 flat -> 1650). Every reader of this array (currentWeaponDamage/
+// currentFireInterval/currentWeaponRange, the FITTING panel's tier loop, itemDisplayDef,
+// etc.) is index-driven off WEAPON_TIER_STATS.length, so this single addition is enough
+// to make tier 4 fully live everywhere.
 const WEAPON_TIER_STATS = [
   { damage:7,  fireInterval:0.60, range:1050 },
   { damage:10, fireInterval:0.50, range:1200 },
   { damage:14, fireInterval:0.42, range:1350 },
-  { damage:19, fireInterval:0.35, range:1500 }
+  { damage:19, fireInterval:0.35, range:1500 },
+  { damage:25, fireInterval:0.29, range:1650 }
 ];
-const WEAPON_TIER_COST = [0, 500, 1200, 2500]; // cost to buy INTO that tier index
+const WEAPON_TIER_COST = [0, 500, 1200, 2500, 5200]; // cost to buy INTO that tier index (reference value only -- not market-buyable, see MARKET_EQUIP_STARTING_QTY's removal note)
 function currentWeaponDamage(){ return equippedWeaponTier === -1 ? 0 : WEAPON_TIER_STATS[equippedWeaponTier].damage; }
 function currentFireInterval(){ return equippedWeaponTier === -1 ? Infinity : WEAPON_TIER_STATS[equippedWeaponTier].fireInterval; }
 function currentWeaponRange(){ return equippedWeaponTier === -1 ? 0 : WEAPON_TIER_STATS[equippedWeaponTier].range; }
@@ -11233,13 +11369,16 @@ let ownedShieldTiers = [0];
 // case, so the existing regen/damage code needs no separate "is there a shield"
 // check anywhere else.
 let equippedShieldTier = 0;
+// item 3 (v0.37.0): real Tier-4 entry appended, same index-driven pattern as
+// WEAPON_TIER_STATS above (delta +25/+30/+40 -> +45=195; regen delta .4/.5/.6 -> .7=3.3).
 const SHIELD_TIER_STATS = [
   { maxShield:55,  regen:1.1 },
   { maxShield:80,  regen:1.5 },
   { maxShield:110, regen:2.0 },
-  { maxShield:150, regen:2.6 }
+  { maxShield:150, regen:2.6 },
+  { maxShield:195, regen:3.3 }
 ];
-const SHIELD_TIER_COST = [0, 500, 1200, 2500];
+const SHIELD_TIER_COST = [0, 500, 1200, 2500, 5200];
 function maxOwnedShieldTier(){ return ownedShieldTiers.length ? Math.max.apply(null, ownedShieldTiers) : -1; }
 function shieldUpgradeCost(){
   const next = maxOwnedShieldTier() + 1;
@@ -11313,14 +11452,15 @@ const MINING_LASER_TIER_BONUS = [
   { yield:0, intervalCut:0 },    // LV.0 -- starter, no bonus
   { yield:2, intervalCut:0.10 }, // LV.1
   { yield:4, intervalCut:0.20 }, // LV.2
-  { yield:6, intervalCut:0.30 }  // LV.3
+  { yield:6, intervalCut:0.30 }, // LV.3
+  { yield:8, intervalCut:0.38 }  // LV.4 -- item 3 (v0.37.0), continuing the +2 yield / diminishing intervalCut pattern
 ];
 // highest mining-laser tier actually OWNED (in cargo or this station's storage doesn't
 // matter -- only cargo counts as "mounted", same as weapon/shield), or -1 if none owned
 function maxOwnedMiningLaserTier(){
   let best = -1;
   if(totalOfType('miningLaser') > 0) best = 0;
-  for(let t=1; t<=3; t++){ if(totalOfType('miningLaserTier'+t) > 0) best = Math.max(best, t); }
+  for(let t=1; t<=4; t++){ if(totalOfType('miningLaserTier'+t) > 0) best = Math.max(best, t); }
   return best;
 }
 // the tier actually IN EFFECT right now: capped by both what's owned AND the trained
@@ -11333,7 +11473,7 @@ function effectiveMiningLaserTier(){
   return Math.min(owned, skillLevels.mining||0);
 }
 initMarketStock(); // deferred call -- see the NOTE by initMarketStock's definition above
-let oreCargo = { iron:0, copper:0, silver:0, gold:0 };
+let oreCargo = { iron:0, copper:0, silver:0, gold:0, diamond:0 };
 
 // ---------- mining skill -- legacy vars kept for old save-data compatibility
 // only (see the naming-stability comment by playerLevel/playerXP above); mining
@@ -11369,7 +11509,10 @@ function updateMiningXPUI(){ if(typeof refreshWalletPanel === 'function') refres
 // mining is worth more on its own AND so the manufacturing chain built on top of it
 // (see INGOT_VALUE_MULT_OVER_ORE_COST/itemDisplayDef's ingot entries below) has real
 // raw-material value to multiply against.
-const ORE_PRICES = { iron:6, copper:16, silver:40, gold:100 };
+// item 2 (v0.37.0): diamond continues the same ~2.5x-per-tier escalation already
+// established between iron->copper (2.67x), copper->silver (2.5x) and silver->gold
+// (2.5x) -- 100 * 2.5 = 250.
+const ORE_PRICES = { iron:6, copper:16, silver:40, gold:100, diamond:250 };
 const SCRAP_PRICE = 3; // separate from the black-box bounty payout -- scrap sells at a flat rate
 
 // ---------- shared cargo item definitions ----------
@@ -11382,6 +11525,7 @@ const CARGO_ITEM_DEFS = [
   { key:'copper', label:'Copper Ore', color:hexToCss(ORE_COLORS.copper), round:true,  sellPrice:ORE_PRICES.copper },
   { key:'silver', label:'Silver Ore', color:hexToCss(ORE_COLORS.silver), round:true,  sellPrice:ORE_PRICES.silver },
   { key:'gold',   label:'Gold Ore',   color:hexToCss(ORE_COLORS.gold),   round:true,  sellPrice:ORE_PRICES.gold },
+  { key:'diamond', label:'Diamond Ore', color:hexToCss(ORE_COLORS.diamond), round:true, sellPrice:ORE_PRICES.diamond },
   { key:'scrap',    label:'Scrap',      color:'#8a97a3', round:false, sellPrice:SCRAP_PRICE },
   { key:'blackBox', label:'Black Box',  color:'#ff4d4d', round:false, sellPrice:null }, // no direct sale -- turned in via Navy missions
   // item: rare pirate-captain drop -- also never directly sold, just a rarer/more
@@ -11419,7 +11563,8 @@ function itemDisplayDef(itemType){
   if(itemType === 'miningLaser') return { key:itemType, label:'Mining Laser LV.0', color:'#6dffc2', round:false, sellPrice:Math.round(MINING_LASER_COST*0.4) };
   if(itemType.indexOf('miningLaserTier') === 0){
     const t = parseInt(itemType.slice('miningLaserTier'.length), 10);
-    const sell = Math.round([MINING_LASER_COST, 1200, 2800, 6000][t] * 0.4);
+    // item 3 (v0.37.0): index 4 (LV.4) appended -- continuing the ~2x-per-tier reference-value escalation
+    const sell = Math.round([MINING_LASER_COST, 1200, 2800, 6000, 12000][t] * 0.4);
     return { key:itemType, label:'Mining Laser LV.'+t, color:'#6dffc2', round:false, sellPrice:sell };
   }
   // (v0.35.1) item 8 bugfix: was a flat AMMO_SELL_UNIT_PRICE (a leftover from the
@@ -11432,6 +11577,7 @@ function itemDisplayDef(itemType){
   if(itemType === AMMO_ITEM_TYPE_COPPER) return { key:itemType, label:'Copper Bullets', color:'#e08a3c', round:false, sellPrice:bulletUnitSellPrice('mfg_copper_bullets') };
   if(itemType === AMMO_ITEM_TYPE_SILVER) return { key:itemType, label:'Silver Bullets', color:'#d7dbe0', round:false, sellPrice:bulletUnitSellPrice('mfg_silver_bullets') };
   if(itemType === AMMO_ITEM_TYPE_GOLD) return { key:itemType, label:'Gold Bullets', color:'#d4af37', round:false, sellPrice:bulletUnitSellPrice('mfg_gold_bullets') };
+  if(itemType === AMMO_ITEM_TYPE_DIAMOND) return { key:itemType, label:'Diamond Bullets', color:hexToCss(ORE_COLORS.diamond), round:false, sellPrice:bulletUnitSellPrice('mfg_diamond_bullets') };
   if(itemType === BLUEPRINT_IRON_BULLETS) return { key:itemType, label:'Iron Bullet Blueprint', color:'#c98cff', round:false, sellPrice:Math.round(BLUEPRINT_IRON_BULLETS_PRICE*0.4) };
   // (v0.26.0) item 5: Manufacturing blueprint tiers -- scribed at the LIBRARY (see
   // startBlueprintScribe below), LEARN-consumed the same way BLUEPRINT_IRON_BULLETS is
@@ -11443,7 +11589,7 @@ function itemDisplayDef(itemType){
   // old tier blueprints) so a stack still reads as "a blueprint" at a glance.
   if(BLUEPRINT_RECIPE_DEFS[itemType]){
     const bd = BLUEPRINT_RECIPE_DEFS[itemType];
-    const tierColor = { 1:'#c98cff', 2:'#b06cff', 3:'#9040ff' }[bd.tier] || '#c98cff';
+    const tierColor = { 1:'#c98cff', 2:'#b06cff', 3:'#9040ff', 4:'#e0b0ff' }[bd.tier] || '#c98cff';
     return { key:itemType, label:bd.label, color:tierColor, round:false, sellPrice:null };
   }
   // item 4 (v0.28.0) economy rebalance: Refined Ingots -- smelted from raw ore at
@@ -11457,6 +11603,7 @@ function itemDisplayDef(itemType){
   if(itemType === INGOT_COPPER) return { key:itemType, label:'Copper Ingot', color:hexToCss(ORE_COLORS.copper), round:false, sellPrice:Math.round(ORE_PRICES.copper * ORE_PER_INGOT * INGOT_VALUE_MULT_OVER_ORE_COST) };
   if(itemType === INGOT_SILVER) return { key:itemType, label:'Silver Ingot', color:hexToCss(ORE_COLORS.silver), round:false, sellPrice:Math.round(ORE_PRICES.silver * ORE_PER_INGOT * INGOT_VALUE_MULT_OVER_ORE_COST) };
   if(itemType === INGOT_GOLD)   return { key:itemType, label:'Gold Ingot',   color:hexToCss(ORE_COLORS.gold),   round:false, sellPrice:Math.round(ORE_PRICES.gold   * ORE_PER_INGOT * INGOT_VALUE_MULT_OVER_ORE_COST) };
+  if(itemType === INGOT_DIAMOND) return { key:itemType, label:'Diamond Ingot', color:hexToCss(ORE_COLORS.diamond), round:false, sellPrice:Math.round(ORE_PRICES.diamond * ORE_PER_INGOT * INGOT_VALUE_MULT_OVER_ORE_COST) };
   // (Library update) Memory Cube / Skill Book -- crafted at the station LIBRARY panel
   // (see LIBRARY section below). Neither is directly sellable (sellPrice:null, same
   // convention as blackBox/blackBoxCaptain) -- their value is in consuming them, not
@@ -12369,6 +12516,7 @@ function syncFlatCargoMirrors(){
   oreCargo.copper = totalOfType('copper');
   oreCargo.silver = totalOfType('silver');
   oreCargo.gold = totalOfType('gold');
+  oreCargo.diamond = totalOfType('diamond');
   const wTiers = [...new Set(cargoStacks.filter(s=>s.itemType.indexOf('weaponTier')===0 && !s.guildQuestId)
     .map(s=>parseInt(s.itemType.slice('weaponTier'.length),10)))];
   // NOTE: no longer defaults to [0] when empty -- tier0 can now be fully sold/stored
@@ -13191,10 +13339,14 @@ function renderSkillRow(key){
   const need = maxed ? 0 : skillDurationForTarget(key);
   const now = maxed ? 0 : skillProgressNowMs(key);
   const pct = maxed ? 100 : Math.min(100, (now / need) * 100);
-  // (Library update) LV.2+ now needs a matching Skill Book owned (cargo or this
-  // station's storage) rather than being unconditionally blocked -- see
-  // consumeMatchingSkillBook()/startSkillTraining() above.
-  const hasBook = target < 2 ? true : (
+  // item 5 (v0.37.0): LV.2+ now gates on the knownSkillBooks flag (permanently set by
+  // the separate LEARN action on an owned book -- see learnSkillBook/skillBookLearned)
+  // rather than merely OWNING a matching book at click time -- see startSkillTraining
+  // above, which now just checks this same flag instead of consuming a book itself.
+  const hasBook = target < 2 ? true : skillBookLearned(key, target);
+  // distinguishes "own an unlearned copy, just need to LEARN it" from "don't even
+  // have one yet" so the status line can point the player at the right next step
+  const ownsUnlearnedBook = !hasBook && target >= 2 && (
     cargoStacks.some(s=> s.itemType==='skill_book' && s.bookSkill===key && s.bookLevel===target) ||
     stationStorage().some(s=> s.itemType==='skill_book' && s.bookSkill===key && s.bookLevel===target)
   );
@@ -13205,13 +13357,23 @@ function renderSkillRow(key){
     const req = SKILL_DEFS[def.requires];
     statusLine = 'NEEDS ' + req.name.toUpperCase() + ' LV.' + target + ' FIRST';
   } else if(target >= 2 && !hasBook){
-    statusLine = 'LV.' + target + ' NEEDS A LV.' + target + ' ' + def.name.toUpperCase() + ' BOOK — SCRIBE ONE AT A LIBRARY';
+    statusLine = ownsUnlearnedBook
+      ? 'LEARN THE LV.' + target + ' ' + def.name.toUpperCase() + ' BOOK FIRST (SEE CARGO/STORAGE)'
+      : 'LV.' + target + ' NEEDS A LV.' + target + ' ' + def.name.toUpperCase() + ' BOOK — SCRIBE ONE AT A LIBRARY';
   } else if(isTraining){
-    statusLine = 'TRAINING LV.' + target + ' — ' + fmtSkillDuration(Math.max(0, need - now)) + ' LEFT';
+    // item 6 (v0.37.0) bugfix: this used to also append '— Xh LEFT' inline, which
+    // duplicated the dedicated TIME REMAINING row added right below in the same
+    // v0.34.0 update (see timeRemainingRow) -- the two together made the training
+    // countdown visibly appear TWICE on the same row once training started. The
+    // explicit TIME REMAINING row now owns that readout exclusively; this line no
+    // longer repeats it.
+    statusLine = 'TRAINING LV.' + target;
   } else if(now > 0){
     statusLine = 'PAUSED — LV.' + target + ' — ' + fmtSkillDuration(Math.max(0, need - now)) + ' LEFT';
   } else {
-    statusLine = 'LV.' + target + ' TAKES ' + fmtSkillDuration(need) + (target>=2 ? ' (CONSUMES A LV.'+target+' BOOK)' : '');
+    // item 5 (v0.37.0): no longer says "(CONSUMES A BOOK)" here -- the book was
+    // already consumed earlier by the separate LEARN action, not by starting training
+    statusLine = 'LV.' + target + ' TAKES ' + fmtSkillDuration(need);
   }
   const canStart = !maxed && prereqOk && hasBook && !isTraining;
   const btnHtml = maxed ? ''
@@ -13483,11 +13645,13 @@ function refreshWalletPanel(){
     // totalTimePlayedSeconds() alone, which reset to 0 every relaunch
     document.getElementById('statTimePlayed').textContent = fmtDuration(persistedPlaySecondsAtLoad + totalTimePlayedSeconds());
     document.getElementById('statTimesWarped').textContent = timesWarpedTotal;
-    // item 11: Books Learned -- every skill level from 2 up requires a matching Skill
-    // Book to train past (see consumeMatchingSkillBook), so the count of book-gated
-    // levels a player has actually reached IS the count of books they've learned from
+    // item 11 / item 5 (v0.37.0): Books Learned -- now reads directly off
+    // knownSkillBooks.size (the real permanent LEARN-flag count) instead of inferring
+    // it from skillLevels reached, now that starting training no longer implicitly
+    // proves a book was learned at that exact moment (see learnSkillBook/
+    // skillBookLearned above -- learning and training-completion are fully decoupled).
     const booksEl = document.getElementById('statBooksLearned');
-    if(booksEl) booksEl.textContent = SKILL_ORDER.reduce((sum,k)=> sum + Math.max(0, (skillLevels[k]||0) - 1), 0);
+    if(booksEl) booksEl.textContent = knownSkillBooks.size;
     // item 6 / (v0.26.0): manufacturing plans known -- generic over BLUEPRINT_ITEM_TYPES
     // (was: over MANUFACTURING_RECIPES 1:1 with the blueprint, back when every recipe
     // WAS its own blueprint -- now a single tier blueprint unlocks several recipes, so
@@ -15133,6 +15297,11 @@ function getPlayerSaveData(){
     // undock and never needed to survive one)
     manufacturingQueues: JSON.parse(JSON.stringify(manufacturingQueues)),
     knownBlueprints: Array.from(knownBlueprints),
+    // item 5 (v0.37.0): permanently-learned skill-book unlocks ('skillKey:level'
+    // strings, see skillBookKey) -- additive save field, same Array.from(Set) shape
+    // as knownBlueprints just above, so it round-trips through the existing jsonb
+    // save blob with no Supabase schema change needed.
+    knownSkillBooks: Array.from(knownSkillBooks),
     activeQuests: activeQuests.map(q=> Object.assign({}, q)),
     stationReputation: JSON.parse(JSON.stringify(stationReputation)),
     // lifetime stats -- also drive the MEDALS/achievements tab, which recomputes
@@ -15286,6 +15455,12 @@ function applyPlayerSaveData(d){
   }
   if(typeof updateKnowledgeUI === 'function') updateKnowledgeUI();
   if(Array.isArray(d.knownBlueprints)) knownBlueprints = new Set(d.knownBlueprints);
+  // item 5 (v0.37.0): additive/non-destructive -- an old save with no knownSkillBooks
+  // field at all just leaves the default empty Set from its declaration above in
+  // place (nothing learned yet), never wipes/breaks anything. A player's existing
+  // unconsumed books in cargo/storage are untouched by this and remain LEARN-able
+  // whenever they choose (no auto-migration/auto-consume here on purpose).
+  if(Array.isArray(d.knownSkillBooks)) knownSkillBooks = new Set(d.knownSkillBooks);
   if(Array.isArray(d.activeQuests)) activeQuests = d.activeQuests.map(q=> Object.assign({}, q));
   if(d.stationReputation && typeof d.stationReputation === 'object'){
     // stationReputation is declared `const` (its CONTENTS are what's mutable,
@@ -19718,6 +19893,7 @@ const ITEM_FLAVOR = {
   copper: 'A reliable mid-tier ore; station fabricators use it for wiring and conduit.',
   silver: 'Uncommon and lustrous — some pilots swear it also makes decent ballast.',
   gold: 'Rare and valuable. Most belt runners dream of striking a rich gold vein someday.',
+  diamond: 'The rarest find in any asteroid field — even rarer than gold. Most pilots go entire runs without spotting a single cluster.',
   scrap: 'Twisted hull plate and wiring pulled from wreckage — worth little alone, but it adds up fast.',
   blackBox: 'A hardened flight recorder salvaged from a kill. The Galactic Navy office pays out bounty missions for these.',
   blackBoxCaptain: 'A reinforced command-grade flight recorder — only pirate captains carry these. The Navy pays out handsomely for one.',
@@ -19725,27 +19901,32 @@ const ITEM_FLAVOR = {
   weaponTier1: 'An upgraded emitter array with tighter beam focus and a noticeably harder punch.',
   weaponTier2: 'Military-surplus hardware, well above what most belt runners ever fly with.',
   weaponTier3: 'Top-tier armament — expensive, rare, and a serious deterrent to any pirate.',
+  weaponTier4: 'Diamond-forged weaponry — the absolute pinnacle of belt-runner firepower. Vanishingly few pilots ever mount one.',
   shieldTier0: 'Standard-issue deflector shielding. Keeps the lights on, barely.',
   shieldTier1: 'A denser shield emitter with noticeably faster regeneration between hits.',
   shieldTier2: 'High-capacity shielding favored by bounty hunters and long-haul freighters.',
   shieldTier3: 'The best deflector money can buy out here — absorbs a serious beating.',
+  shieldTier4: 'A diamond-lattice deflector array — the strongest shielding known to belt-runner engineering.',
   miningLaser: 'A focused thermal laser for cracking ore loose from an asteroid\'s crust.',
   miningLaserTier1: 'An upgraded mining laser with a tighter focus and hotter cut — needs Mining LV.1 to run at full strength.',
   miningLaserTier2: 'A higher-output thermal cutter favored by dedicated belt runners — needs Mining LV.2 to run at full strength.',
   miningLaserTier3: 'The strongest mining rig money (and ingots) can buy — needs Mining LV.3 to run at full strength.',
+  miningLaserTier4: 'A diamond-tipped cutting head — the ultimate mining rig, needs Mining LV.4 to run at full strength.',
   ammo_iron_bullets: 'Standard kinetic rounds for the ship\'s gun mount. Equip a stack from here or the EQUIPMENT popup to reload in the field — no docking required.',
   ammo_copper_bullets: 'Copper-cased kinetic rounds, manufactured from smelted Copper Ingots. Interchangeable with any other bullet color.',
   ammo_silver_bullets: 'Silver-cased kinetic rounds, manufactured from smelted Silver Ingots. Interchangeable with any other bullet color.',
   ammo_gold_bullets: 'Gold-cased kinetic rounds, manufactured from smelted Gold Ingots — the priciest ammo color in the belt. Interchangeable with any other bullet color.',
+  ammo_diamond_bullets: 'Diamond-tipped kinetic rounds, manufactured from smelted Diamond Ingots — the rarest and priciest ammo color in the belt. Interchangeable with any other bullet color.',
   memory_cube: 'A crystalline data store crafted at a LIBRARY. Consume it from the SKILLS panel to instantly advance whatever skill is currently training.',
-  skill_book: 'A scribed training manual crafted at a LIBRARY. Consumed automatically the moment you start training the level it covers.',
+  skill_book: 'A scribed training manual crafted at a LIBRARY. LEARN it from your cargo hold or a station STORAGE panel to permanently unlock starting that level of training on the SKILLS panel — the book is consumed the moment you LEARN it, not when training itself starts.',
   blueprint_mfg_lv1: 'A LIBRARY-scribed Manufacturing plan. LEARN it at your cargo hold or a station STORAGE panel to permanently unlock LV.1 smelting and crafting at MANUFACTURING.',
   blueprint_mfg_lv2: 'A LIBRARY-scribed Manufacturing plan. LEARN it to permanently unlock LV.2 crafting (Copper Ingot gear + Copper Bullets) at MANUFACTURING.',
   blueprint_mfg_lv3: 'A LIBRARY-scribed Manufacturing plan. LEARN it to permanently unlock LV.3 crafting (Silver Ingot gear, Silver Bullets, and Gold Bullets) at MANUFACTURING.',
   ingot_iron: 'Iron Ore smelted down into a refined ingot at MANUFACTURING — the base crafting material for LV.1 gear.',
   ingot_copper: 'Copper Ore smelted down into a refined ingot at MANUFACTURING — the crafting material for LV.2 gear and Copper Bullets.',
   ingot_silver: 'Silver Ore smelted down into a refined ingot at MANUFACTURING — the crafting material for LV.3 gear and Silver Bullets.',
-  ingot_gold: 'Gold Ore smelted down into a refined ingot at MANUFACTURING — the crafting material for Gold Bullets.'
+  ingot_gold: 'Gold Ore smelted down into a refined ingot at MANUFACTURING — the crafting material for Gold Bullets.',
+  ingot_diamond: 'Diamond Ore smelted down into a refined ingot at MANUFACTURING — the crafting material for LV.4 gear and Diamond Bullets.'
 };
 // rebuildMesh=true (selection just changed) swaps in a fresh preview mesh; called
 // with false every frame just to keep the live numeric readouts (range/hp/ore %)
