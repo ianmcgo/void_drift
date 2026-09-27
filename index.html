@@ -1057,12 +1057,11 @@
   }
   #authForgotLink:hover{ color:var(--phosphor); opacity:1; }
 
-  /* boot-screen "report bugs" mailto -- small secondary print sitting right under
-     the EMAIL field's row, same muted/small-print visual language as
-     #bootBuildStamp below LAUNCH (not a primary CTA). */
-  #bootReportBugRow{ text-align:center; margin:4px 0 2px; }
-  #bootReportBugRow a{ font-size:11px; letter-spacing:0.5px; color:var(--phosphor-dim); text-decoration:underline; opacity:0.8; }
-  #bootReportBugRow a:hover{ color:var(--phosphor); opacity:1; }
+  /* boot-screen "report bugs" mailto -- now lives inline in #bootBuildStamp at the
+     bottom of the boot screen, next to the ianmcgon@gmail.com credit line (not a
+     primary CTA); it inherits #bootBuildStamp's small/muted print styling. */
+  #authReportBugLink{ text-decoration:underline; }
+  #authReportBugLink:hover{ color:var(--phosphor); opacity:1; }
 
   /* SET NEW PASSWORD mini-panel -- reached via a Supabase PASSWORD_RECOVERY
      redirect landing (see onAuthStateChange below in the JS), same centered
@@ -1700,7 +1699,7 @@
   <div id="bootBuildStamp">
     <span id="bootVersionRead">v0.0.0</span><br>
     Game made by Ian McGonigal<br>
-    <a href="mailto:ianmcgon@gmail.com">ianmcgon@gmail.com</a>
+    <a href="mailto:ianmcgon@gmail.com">ianmcgon@gmail.com</a> — <a id="authReportBugLink" href="mailto:ianmcgon@gmail.com?subject=VOID%20DRIFT%20bug%20report">Report bugs or suggestions here</a>
   </div>
 </div>
 
@@ -1710,8 +1709,6 @@
     <label for="authEmail">EMAIL</label>
     <input type="email" id="authEmail" autocomplete="email" spellcheck="false">
   </div>
-  <!-- small secondary-print helper link, not a primary CTA -- see #bootReportBugRow -->
-  <div id="bootReportBugRow"><a id="authReportBugLink" href="mailto:ianmcgon@gmail.com?subject=VOID%20DRIFT%20bug%20report">Report bugs or suggestions here</a></div>
   <div class="settingsRow">
     <label for="authPassword">PASSWORD</label>
     <input type="password" id="authPassword" autocomplete="current-password">
@@ -2855,7 +2852,7 @@
 // compatibility depends on it. Add new keys, don't rename old ones.
 
 // ---------- version / build info (shown in the ESC settings menu) ----------
-const GAME_VERSION = "0.40.0";
+const GAME_VERSION = "0.40.2";
 const GAME_LAST_EDITED = "2026-09-26";
 const GAME_BUILD_TIME = "15:14 PT"; // wall-clock time this build was published, not just the date
 
@@ -4399,9 +4396,9 @@ const NEW_GALAXY_ZONE_DEFS = [
   // ---- GALAXY B: VULCAN COMBINE (industrial / corporate) ----
   { key:'b_station', galaxy:'B', tier:'station', name:'KORSAKOV FOUNDRY SPINE', radius: 18000 },
   { key:'b_green',   galaxy:'B', tier:'green',   name:'THE TITHE YARDS', radius: 9000,
-    ast:{ count:16, min:300, max:1800, height:500 } },
+    ast:{ count:32, min:300, max:1800, height:500 } }, // v0.40.1: doubled 16->32
   { key:'b_yellow',  galaxy:'B', tier:'yellow',  name:'SLAGFALL BELT', radius: 40000,
-    ast:{ count:60, min:1500, max:16000, height:3000 },
+    ast:{ count:120, min:1500, max:16000, height:3000 }, // v0.40.1: doubled 60->120
     pirates:{ cap:3, minSpawnDist:9000, spawnSpread:9000, minStart:0 } },
   { key:'b_red',     galaxy:'B', tier:'red',     name:'THE CRUCIBLE SCAR', radius: 26000,
     pirates:{ cap:6, minSpawnDist:4000, spawnSpread:8000, minStart:2 },
@@ -4409,9 +4406,9 @@ const NEW_GALAXY_ZONE_DEFS = [
   // ---- GALAXY C: THE OSSUARY VEIL (ancient / alien ruins) ----
   { key:'c_station', galaxy:'C', tier:'station', name:'SEPULCHRE OF AEONS', radius: 18000 },
   { key:'c_green',   galaxy:'C', tier:'green',   name:'LUMEN GARDENS', radius: 36000,
-    ast:{ count:52, min:1000, max:14000, height:2600 } },
+    ast:{ count:104, min:1000, max:14000, height:2600 } }, // v0.40.1: doubled 52->104
   { key:'c_yellow',  galaxy:'C', tier:'yellow',  name:'CHOIR OF SHARDS', radius: 16000,
-    ast:{ count:32, min:600, max:4200, height:1000 },
+    ast:{ count:64, min:600, max:4200, height:1000 }, // v0.40.1: doubled 32->64
     pirates:{ cap:2, minSpawnDist:5000, spawnSpread:3000, minStart:0 } },
   { key:'c_red',     galaxy:'C', tier:'red',     name:'THE HOLLOW THRONE', radius: 7000,
     pirates:{ cap:4, minSpawnDist:900, spawnSpread:1600, minStart:2 },
@@ -4419,9 +4416,9 @@ const NEW_GALAXY_ZONE_DEFS = [
   // ---- GALAXY D: TATTERLINE FRONTIER (frontier / derelict) ----
   { key:'d_station', galaxy:'D', tier:'station', name:'RUSTWATER HOLD', radius: 18000 },
   { key:'d_green',   galaxy:'D', tier:'green',   name:'LANTERN HOLLOW', radius: 14000,
-    ast:{ count:24, min:500, max:4000, height:900 } },
+    ast:{ count:48, min:500, max:4000, height:900 } }, // v0.40.1: doubled 24->48
   { key:'d_yellow',  galaxy:'D', tier:'yellow',  name:'SCRAPJAW BELT', radius: 6000,
-    ast:{ count:18, min:250, max:1400, height:400 },
+    ast:{ count:36, min:250, max:1400, height:400 }, // v0.40.1: doubled 18->36
     pirates:{ cap:1, minSpawnDist:1800, spawnSpread:1200, minStart:0 } },
   { key:'d_red',     galaxy:'D', tier:'red',     name:'GALLOWS DRIFT', radius: 48000,
     pirates:{ cap:7, minSpawnDist:5000, spawnSpread:17000, minStart:2 },
@@ -4856,10 +4853,15 @@ function buildAsteroids(){
   // `ast.count` below is likewise doubled at its own definition) -- more ore per zone,
   // with minimum-spacing enforced in buildAsteroidField/seededAsteroidPositionAt so the
   // extra rocks don't cluster on top of each other.
-  buildAsteroidField(BELT_ZONE_CENTER, 28, ORE_WEIGHTS_YELLOW, 'ast', null, 'belt');
+  // v0.40.1: doubled AGAIN (28->56 / 20->40) per tuning request -- minAsteroidSpacingFor
+  // left unchanged; each field's 3D scatter volume (annulus x height band) is large
+  // enough relative to the sphere each min-spacing radius carves out that the existing
+  // 40-attempt placement loop still finds a clear spot for every rock (verified live,
+  // see PROSPECTOR/asteroid-count Playwright checks).
+  buildAsteroidField(BELT_ZONE_CENTER, 56, ORE_WEIGHTS_YELLOW, 'ast', null, 'belt');
   // GREEN (Haven Reach): a smaller, safer field with less rare ore -- no pirates ever
   // spawn here (see ZONE_PIRATE_CONFIGS), so a slightly thinner field is intentional
-  buildAsteroidField(GREEN_ZONE_CENTER, 20, ORE_WEIGHTS_GREEN, 'gast', null, 'green');
+  buildAsteroidField(GREEN_ZONE_CENTER, 40, ORE_WEIGHTS_GREEN, 'gast', null, 'green');
   // RED (The Maelstrom): deliberately no asteroid field at all -- dangerous, wreck-
   // salvage-only zone (see redzone wreck placement + ZONE_PIRATE_CONFIGS below)
   // Galaxies B/C/D: every new green/yellow zone with an `ast` block gets its own field,
@@ -13691,7 +13693,7 @@ function currentZoneDef(){
 // nobody's online. Cadence itself (4-9 minutes per zone, cap 1 concurrent per zone) is
 // deliberately shorter/more common than the pirate intrusion's 5-10 minutes, since a
 // peaceful miner is meant to read as routine background traffic, not a rare event.
-const PROSPECTOR_CARGO_CAP = 150; // NPC ore hold -- well under the player Prospector-
+const PROSPECTOR_CARGO_CAP = 700; // NPC ore hold -- v0.40.1: raised from 150 to 700 per tuning request; still well under the player Prospector-
 // class hull's own 900 cargoCapacity (SHIP_CLASSES.mining) so an NPC's whole
 // mine-fill-warp cycle completes in a couple of minutes rather than camping a zone
 // indefinitely; chosen as "a sensible fraction of the player ship it borrows its hull
@@ -13700,7 +13702,7 @@ const PROSPECTOR_MINING_INTERVAL = 2.4; // slower than the player's 1.5s MINING_
 const PROSPECTOR_MINING_YIELD = 7;
 const PROSPECTOR_MOVE_SPEED = 34, PROSPECTOR_ACCEL = 40;
 const PROSPECTOR_MAX_HP = CARGO_TRANSPORT_MAX_HP; // 40 -- same "a couple of hits" squishiness as a cargo transport (see PIRATE_CARGO_DAMAGE=22)
-const PROSPECTOR_SPAWN_MIN = 240, PROSPECTOR_SPAWN_MAX = 540; // 4-9 minutes per zone
+const PROSPECTOR_SPAWN_MIN = 300, PROSPECTOR_SPAWN_MAX = 600; // v0.40.1: 5-10 minutes per zone (was 4-9)
 const PROSPECTOR_CAP_PER_ZONE = 1;
 const PROSPECTOR_FLEE_SPEED_MULT = 2.0;
 const PROSPECTOR_FLEE_ESCAPE_DIST = 2600; // clear of the attacker by this much = successfully got away (despawns, no loot -- only an actual kill drops loot)
