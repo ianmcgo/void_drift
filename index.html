@@ -2780,7 +2780,7 @@
 // compatibility depends on it. Add new keys, don't rename old ones.
 
 // ---------- version / build info (shown in the ESC settings menu) ----------
-const GAME_VERSION = "0.37.0";
+const GAME_VERSION = "0.38.0";
 const GAME_LAST_EDITED = "2026-09-26";
 const GAME_BUILD_TIME = "15:14 PT"; // wall-clock time this build was published, not just the date
 
@@ -3582,10 +3582,61 @@ const SKILL_DEFS = {
   academics: { name:'Academics', tier:'basic', requires:null, desc:'Faster Memory Cube crafting and Skill Book scribing at the LIBRARY.' },
   mining:          { name:'Mining',          tier:'advanced', requires:'targeting',       desc:'Faster, higher-yield mining.' },
   shield_upgrades: { name:'Shield Upgrades', tier:'advanced', requires:'systems',          desc:'Lets you equip higher-level shields.' },
-  weapon_upgrades: { name:'Weapon Upgrades', tier:'advanced', requires:'gunnery',          desc:'Lets you equip higher-level weapons.' }
+  weapon_upgrades: { name:'Weapon Upgrades', tier:'advanced', requires:'gunnery',          desc:'Lets you equip higher-level weapons.' },
+  // ---- batch item 2 (v0.38.0): Manufacturing skill tree. All new advanced skills
+  // below use the flat `requiresLevel` field (see skillPrereqMet) instead of the
+  // older lockstep "prereq must match MY target level" convention that
+  // mining/shield_upgrades/weapon_upgrades use -- lockstep would break the moment a
+  // skill's maxLevel differs from its prerequisite's (e.g. manufacturing_bullets
+  // goes to LV.5 but 'manufacturing' itself caps at LV.4), so every new skill here
+  // just needs its prerequisite at LV.1+, once, same as how the task spec phrased
+  // it ("requires Academics/Manufacturing at some level").
+  //
+  // INTERPRETATION CALL (documented per the task's own ambiguity note): the user's
+  // spec text for this skill literally says "each level slightly increases
+  // manufacturing time," which read literally is a PENALTY (slower crafting) --
+  // that can't be the intent, since every other skill in this game is a player
+  // benefit, and the user's own LAST line in the same message ("each level
+  // increases the speed to manufacture a ship") uses clearly-intentional "increases
+  // SPEED" phrasing for the analogous Ships skill. Implemented here as the mirror
+  // benefit: each level REDUCES effective craftSeconds by 5% (compounding), i.e.
+  // manufacturing gets FASTER per level, not slower. See
+  // manufacturingSkillTimeMultiplier() below for the actual multiplier (LV.4 ≈ 18.5%
+  // faster than unskilled -- "slight," per the user's own word, with diminishing
+  // returns baked in via compounding).
+  manufacturing: { name:'Manufacturing', tier:'advanced', requires:'academics', requiresLevel:1,
+    desc:'Each level makes ALL manufacturing crafts (ingots, bullets, gear, ships) slightly FASTER to build (interpreted from "increases manufacturing time" as a speed bonus -- see comment above).' },
+  // Level 1 unlocks scribing+building Iron Bullets, LV.2 Copper, LV.3 Silver, LV.4
+  // Gold, LV.5 Diamond -- maxLevel:5 is this skill's own override (see skillMaxLevel()).
+  manufacturing_bullets: { name:'Manufacturing - Bullets', tier:'advanced', requires:'manufacturing', requiresLevel:1, maxLevel:5,
+    desc:'Unlocks manufacturing/scribing bullet tiers: LV.1 Iron, LV.2 Copper, LV.3 Silver, LV.4 Gold, LV.5 Diamond.' },
+  manufacturing_shields: { name:'Manufacturing - Shields', tier:'advanced', requires:'manufacturing', requiresLevel:1,
+    desc:'Unlocks manufacturing/scribing Shield tiers: LV.1-4.' },
+  manufacturing_weapons: { name:'Manufacturing - Weapons', tier:'advanced', requires:'manufacturing', requiresLevel:1,
+    desc:'Unlocks manufacturing/scribing Weapon tiers: LV.1-4.' },
+  manufacturing_mining_lasers: { name:'Manufacturing - Mining Lasers', tier:'advanced', requires:'manufacturing', requiresLevel:1,
+    desc:'Unlocks manufacturing/scribing Mining Laser tiers: LV.1-4.' },
+  // ships: general speed bonus stacking with the line-specific skills below
+  manufacturing_ships: { name:'Manufacturing - Ships', tier:'advanced', requires:'manufacturing', requiresLevel:1,
+    desc:'Each level increases the speed to manufacture a ship (any class -- stacks with Manufacturing - Prospector/Wayfarer).' },
+  manufacturing_prospector: { name:'Manufacturing - Prospector', tier:'advanced', requires:'manufacturing_ships', requiresLevel:1,
+    desc:'LV.1 unlocks manufacturing/scribing the Prospector-class ship. LV.2-4 further increase mining-class ship build speed.' },
+  manufacturing_wayfarer: { name:'Manufacturing - Wayfarer', tier:'advanced', requires:'manufacturing_ships', requiresLevel:1,
+    desc:'LV.1 unlocks manufacturing/scribing the Wayfarer-class ship. LV.2-4 further increase combat-class ship build speed.' }
 };
-const SKILL_ORDER = ['piloting','gunnery','systems','targeting','academics','mining','shield_upgrades','weapon_upgrades'];
-const SKILL_MAX_LEVEL = 4; // higher levels are a future update (per book-making note above)
+const SKILL_ORDER = ['piloting','gunnery','systems','targeting','academics','mining','shield_upgrades','weapon_upgrades',
+  'manufacturing','manufacturing_bullets','manufacturing_shields','manufacturing_weapons','manufacturing_mining_lasers',
+  'manufacturing_ships','manufacturing_prospector','manufacturing_wayfarer'];
+const SKILL_MAX_LEVEL = 4; // default cap; a skill def can override via its own `maxLevel` field (see skillMaxLevel())
+// per-skill max level (task A, batch item 2): resolves a skill's OWN maxLevel field,
+// falling back to the global SKILL_MAX_LEVEL when absent -- every pre-existing skill
+// has no maxLevel field, so this returns exactly SKILL_MAX_LEVEL (4) for all of them,
+// unchanged from before. Every call site below that used to reference SKILL_MAX_LEVEL
+// directly for a SPECIFIC skill's cap was updated to call this instead.
+function skillMaxLevel(key){
+  const def = SKILL_DEFS[key];
+  return (def && typeof def.maxLevel === 'number') ? def.maxLevel : SKILL_MAX_LEVEL;
+}
 // real-world MS to train each level, independent of IN_GAME_SECONDS_PER_HOUR's
 // declaration order (that const lives further down the file) but numerically
 // identical to it: 1 in-game hour = 600 real sec, so 1 in-game day = 14400 real
@@ -3597,15 +3648,29 @@ const SKILL_LEVEL_DURATION_MS = {
   1: SKILL_REAL_SECONDS_PER_INGAME_HOUR * 3 * 1000,
   2: SKILL_REAL_SECONDS_PER_INGAME_DAY * 1 * 1000,
   3: SKILL_REAL_SECONDS_PER_INGAME_DAY * 7 * 1000,
-  4: SKILL_REAL_SECONDS_PER_INGAME_DAY * 30 * 1000
+  4: SKILL_REAL_SECONDS_PER_INGAME_DAY * 30 * 1000,
+  // (batch item 2, v0.38.0) LV.5 -- only 'manufacturing_bullets' ever reaches this
+  // level (maxLevel:5). No formula was ever specified beyond LV.4, so this continues
+  // the existing escalation at a reasonable (3x LV.4) step: 90 in-game days.
+  5: SKILL_REAL_SECONDS_PER_INGAME_DAY * 90 * 1000
 };
-let skillLevels = { piloting:0, gunnery:0, systems:0, targeting:0, academics:0, mining:0, shield_upgrades:0, weapon_upgrades:0 };
-let skillProgressMs = { piloting:0, gunnery:0, systems:0, targeting:0, academics:0, mining:0, shield_upgrades:0, weapon_upgrades:0 }; // banked progress toward the NEXT level
+let skillLevels = { piloting:0, gunnery:0, systems:0, targeting:0, academics:0, mining:0, shield_upgrades:0, weapon_upgrades:0,
+  manufacturing:0, manufacturing_bullets:0, manufacturing_shields:0, manufacturing_weapons:0, manufacturing_mining_lasers:0,
+  manufacturing_ships:0, manufacturing_prospector:0, manufacturing_wayfarer:0 };
+let skillProgressMs = { piloting:0, gunnery:0, systems:0, targeting:0, academics:0, mining:0, shield_upgrades:0, weapon_upgrades:0,
+  manufacturing:0, manufacturing_bullets:0, manufacturing_shields:0, manufacturing_weapons:0, manufacturing_mining_lasers:0,
+  manufacturing_ships:0, manufacturing_prospector:0, manufacturing_wayfarer:0 }; // banked progress toward the NEXT level
 let activeTraining = null; // { key, startedAtMs } or null -- only one skill actively training at a time
 function skillTargetLevel(key){ return (skillLevels[key]||0) + 1; }
+// (task A, batch item 2) supports the new flat `requiresLevel` field (a fixed
+// threshold, e.g. "Academics LV.1+") IN ADDITION to the original lockstep behavior
+// (prereq must be at least MY target level) that pre-existing skills still use when
+// requiresLevel is absent -- see the Manufacturing-tree SKILL_DEFS comment above for
+// why the new skills all need the flat form instead.
 function skillPrereqMet(key){
   const def = SKILL_DEFS[key];
   if(!def.requires) return true;
+  if(typeof def.requiresLevel === 'number') return (skillLevels[def.requires]||0) >= def.requiresLevel;
   return (skillLevels[def.requires]||0) >= skillTargetLevel(key);
 }
 // total banked+live progress (ms) toward this skill's next level
@@ -3614,7 +3679,7 @@ function skillProgressNowMs(key){
   if(activeTraining && activeTraining.key === key) ms += (Date.now() - activeTraining.startedAtMs);
   return ms;
 }
-function skillDurationForTarget(key){ return SKILL_LEVEL_DURATION_MS[Math.min(SKILL_MAX_LEVEL, skillTargetLevel(key))] || SKILL_LEVEL_DURATION_MS[SKILL_MAX_LEVEL]; }
+function skillDurationForTarget(key){ const mx = skillMaxLevel(key); return SKILL_LEVEL_DURATION_MS[Math.min(mx, skillTargetLevel(key))] || SKILL_LEVEL_DURATION_MS[mx]; }
 // banks whatever's currently accruing (if anything) into skillProgressMs and clears activeTraining
 function pauseActiveTraining(){
   if(!activeTraining) return;
@@ -3635,10 +3700,11 @@ function startSkillTraining(key){
   const def = SKILL_DEFS[key];
   if(!def) return;
   const target = skillTargetLevel(key);
-  if(target > SKILL_MAX_LEVEL){ flashMessage('MAX LEVEL FOR NOW', 'warn'); return; }
+  if(target > skillMaxLevel(key)){ flashMessage('MAX LEVEL FOR NOW', 'warn'); return; }
   if(!skillPrereqMet(key)){
     const req = SKILL_DEFS[def.requires];
-    flashMessage('NEEDS ' + req.name.toUpperCase() + ' LV.' + target + ' FIRST', 'warn');
+    const reqLevel = typeof def.requiresLevel === 'number' ? def.requiresLevel : target;
+    flashMessage('NEEDS ' + req.name.toUpperCase() + ' LV.' + reqLevel + ' FIRST', 'warn');
     return;
   }
   if(target >= 2 && !skillBookLearned(key, target)){
@@ -7559,9 +7625,10 @@ function rollShipDebrisLoot(){
       // consumed to reach LV.1 (see startSkillTraining's `target >= 2` gate/
       // libraryScribableBookLevels, which only ever offers LV.2+ to SCRIBE in the
       // first place), so a LV.1 drop could never actually be used for anything -- dead
-      // cargo forever. Rolls LV.2..SKILL_MAX_LEVEL instead, matching the real range of
-      // usable/scribable book levels.
-      rareBookLevel = 2 + Math.floor(Math.random()*(SKILL_MAX_LEVEL-1));
+      // cargo forever. Rolls LV.2..that skill's OWN max level instead (task A, batch
+      // item 2: per-skill maxLevel), matching the real range of usable/scribable book
+      // levels for whichever skill got picked.
+      rareBookLevel = 2 + Math.floor(Math.random()*(skillMaxLevel(rareBookSkill)-1));
     }
   }
   return { scrap, oreType, oreQty, rareType, rareBlueprint, rareBookSkill, rareBookLevel };
@@ -7787,6 +7854,12 @@ const BLUEPRINT_DIAMOND_BULLETS = 'blueprint_diamond_bullets';
 const BLUEPRINT_MINING_LASER_4 = 'blueprint_mining_laser_4';
 const BLUEPRINT_WEAPON_4 = 'blueprint_weapon_4';
 const BLUEPRINT_SHIELD_4 = 'blueprint_shield_4';
+// (batch item 2, v0.38.0) task D: brand-new "manufacture a ship" system -- these two
+// blueprints unlock the mfg_ship_prospector/mfg_ship_wayfarer recipes below, same
+// LEARN-and-scribe convention as every other per-recipe blueprint. NAMING STABILITY:
+// new keys, permanent once introduced.
+const BLUEPRINT_SHIP_PROSPECTOR = 'blueprint_ship_prospector';
+const BLUEPRINT_SHIP_WAYFARER = 'blueprint_ship_wayfarer';
 // metadata for every new per-recipe blueprint: which Academics tier gates scribing it
 // (same tier system the old LV.1/2/3 blueprints used) and its clear, specific label.
 // Order here is display order in the LIBRARY's blueprint form (see renderLibraryPanel).
@@ -7802,29 +7875,39 @@ const BLUEPRINT_SHIELD_4 = 'blueprint_shield_4';
 // Added here as tier 1 (same gate as the other tier-1 recipes) so it's now ALSO
 // scribable at the Library, in addition to remaining purchasable at the Market --
 // scribing it never runs out and isn't blocked by already knowing it.
+// mfgSkill (batch item 2, v0.38.0, task C/D): an OPTIONAL extra per-tier gate on top
+// of the tier/Academics gate above -- e.g. scribing the Copper Bullets blueprint now
+// ALSO needs 'manufacturing_bullets' LV.2, not just Academics LV.2. See
+// manufacturingBlueprintGateReason() below, which checks this AND the blanket
+// "must know Manufacturing at all" gate (task G) together.
 const BLUEPRINT_RECIPE_DEFS = {
-  [BLUEPRINT_IRON_BULLETS]:   { tier:1, label:'Iron Bullet Blueprint',       recipeKey:'blueprint_iron_bullets' },
+  [BLUEPRINT_IRON_BULLETS]:   { tier:1, label:'Iron Bullet Blueprint',       recipeKey:'blueprint_iron_bullets', mfgSkill:{ key:'manufacturing_bullets', level:1 } },
   [BLUEPRINT_SMELT_IRON]:     { tier:1, label:'Iron Ingot Blueprint',        recipeKey:'mfg_smelt_iron' },
   [BLUEPRINT_SMELT_COPPER]:   { tier:1, label:'Copper Ingot Blueprint',      recipeKey:'mfg_smelt_copper' },
   [BLUEPRINT_SMELT_SILVER]:   { tier:1, label:'Silver Ingot Blueprint',      recipeKey:'mfg_smelt_silver' },
   [BLUEPRINT_SMELT_GOLD]:     { tier:1, label:'Gold Ingot Blueprint',        recipeKey:'mfg_smelt_gold' },
-  [BLUEPRINT_MINING_LASER_1]: { tier:1, label:'Mining Laser LV.1 Blueprint', recipeKey:'mfg_mining_laser_1' },
-  [BLUEPRINT_WEAPON_1]:       { tier:1, label:'Weapon LV.1 Blueprint',       recipeKey:'mfg_weapon_1' },
-  [BLUEPRINT_SHIELD_1]:       { tier:1, label:'Shield LV.1 Blueprint',       recipeKey:'mfg_shield_1' },
-  [BLUEPRINT_MINING_LASER_2]: { tier:2, label:'Mining Laser LV.2 Blueprint', recipeKey:'mfg_mining_laser_2' },
-  [BLUEPRINT_WEAPON_2]:       { tier:2, label:'Weapon LV.2 Blueprint',       recipeKey:'mfg_weapon_2' },
-  [BLUEPRINT_SHIELD_2]:       { tier:2, label:'Shield LV.2 Blueprint',       recipeKey:'mfg_shield_2' },
-  [BLUEPRINT_COPPER_BULLETS]: { tier:2, label:'Copper Bullets Blueprint',    recipeKey:'mfg_copper_bullets' },
-  [BLUEPRINT_MINING_LASER_3]: { tier:3, label:'Mining Laser LV.3 Blueprint', recipeKey:'mfg_mining_laser_3' },
-  [BLUEPRINT_WEAPON_3]:       { tier:3, label:'Weapon LV.3 Blueprint',       recipeKey:'mfg_weapon_3' },
-  [BLUEPRINT_SHIELD_3]:       { tier:3, label:'Shield LV.3 Blueprint',       recipeKey:'mfg_shield_3' },
-  [BLUEPRINT_SILVER_BULLETS]: { tier:3, label:'Silver Bullets Blueprint',    recipeKey:'mfg_silver_bullets' },
-  [BLUEPRINT_GOLD_BULLETS]:   { tier:3, label:'Gold Bullets Blueprint',      recipeKey:'mfg_gold_bullets' },
+  [BLUEPRINT_MINING_LASER_1]: { tier:1, label:'Mining Laser LV.1 Blueprint', recipeKey:'mfg_mining_laser_1', mfgSkill:{ key:'manufacturing_mining_lasers', level:1 } },
+  [BLUEPRINT_WEAPON_1]:       { tier:1, label:'Weapon LV.1 Blueprint',       recipeKey:'mfg_weapon_1', mfgSkill:{ key:'manufacturing_weapons', level:1 } },
+  [BLUEPRINT_SHIELD_1]:       { tier:1, label:'Shield LV.1 Blueprint',       recipeKey:'mfg_shield_1', mfgSkill:{ key:'manufacturing_shields', level:1 } },
+  [BLUEPRINT_MINING_LASER_2]: { tier:2, label:'Mining Laser LV.2 Blueprint', recipeKey:'mfg_mining_laser_2', mfgSkill:{ key:'manufacturing_mining_lasers', level:2 } },
+  [BLUEPRINT_WEAPON_2]:       { tier:2, label:'Weapon LV.2 Blueprint',       recipeKey:'mfg_weapon_2', mfgSkill:{ key:'manufacturing_weapons', level:2 } },
+  [BLUEPRINT_SHIELD_2]:       { tier:2, label:'Shield LV.2 Blueprint',       recipeKey:'mfg_shield_2', mfgSkill:{ key:'manufacturing_shields', level:2 } },
+  [BLUEPRINT_COPPER_BULLETS]: { tier:2, label:'Copper Bullets Blueprint',    recipeKey:'mfg_copper_bullets', mfgSkill:{ key:'manufacturing_bullets', level:2 } },
+  [BLUEPRINT_MINING_LASER_3]: { tier:3, label:'Mining Laser LV.3 Blueprint', recipeKey:'mfg_mining_laser_3', mfgSkill:{ key:'manufacturing_mining_lasers', level:3 } },
+  [BLUEPRINT_WEAPON_3]:       { tier:3, label:'Weapon LV.3 Blueprint',       recipeKey:'mfg_weapon_3', mfgSkill:{ key:'manufacturing_weapons', level:3 } },
+  [BLUEPRINT_SHIELD_3]:       { tier:3, label:'Shield LV.3 Blueprint',       recipeKey:'mfg_shield_3', mfgSkill:{ key:'manufacturing_shields', level:3 } },
+  [BLUEPRINT_SILVER_BULLETS]: { tier:3, label:'Silver Bullets Blueprint',    recipeKey:'mfg_silver_bullets', mfgSkill:{ key:'manufacturing_bullets', level:3 } },
+  [BLUEPRINT_GOLD_BULLETS]:   { tier:3, label:'Gold Bullets Blueprint',      recipeKey:'mfg_gold_bullets', mfgSkill:{ key:'manufacturing_bullets', level:4 } },
   [BLUEPRINT_SMELT_DIAMOND]:  { tier:1, label:'Diamond Ingot Blueprint',     recipeKey:'mfg_smelt_diamond' },
-  [BLUEPRINT_MINING_LASER_4]: { tier:4, label:'Mining Laser LV.4 Blueprint', recipeKey:'mfg_mining_laser_4' },
-  [BLUEPRINT_WEAPON_4]:       { tier:4, label:'Weapon LV.4 Blueprint',       recipeKey:'mfg_weapon_4' },
-  [BLUEPRINT_SHIELD_4]:       { tier:4, label:'Shield LV.4 Blueprint',       recipeKey:'mfg_shield_4' },
-  [BLUEPRINT_DIAMOND_BULLETS]:{ tier:4, label:'Diamond Bullets Blueprint',   recipeKey:'mfg_diamond_bullets' }
+  [BLUEPRINT_MINING_LASER_4]: { tier:4, label:'Mining Laser LV.4 Blueprint', recipeKey:'mfg_mining_laser_4', mfgSkill:{ key:'manufacturing_mining_lasers', level:4 } },
+  [BLUEPRINT_WEAPON_4]:       { tier:4, label:'Weapon LV.4 Blueprint',       recipeKey:'mfg_weapon_4', mfgSkill:{ key:'manufacturing_weapons', level:4 } },
+  [BLUEPRINT_SHIELD_4]:       { tier:4, label:'Shield LV.4 Blueprint',       recipeKey:'mfg_shield_4', mfgSkill:{ key:'manufacturing_shields', level:4 } },
+  [BLUEPRINT_DIAMOND_BULLETS]:{ tier:4, label:'Diamond Bullets Blueprint',   recipeKey:'mfg_diamond_bullets', mfgSkill:{ key:'manufacturing_bullets', level:5 } },
+  // task D: ship blueprints -- tier:4 (same Academics LV.4 legacy gate as the other
+  // top-tier blueprints; ships are meant to be a late-game, expensive unlock) PLUS
+  // their own line-specific mfgSkill LV.1 gate.
+  [BLUEPRINT_SHIP_PROSPECTOR]:{ tier:4, label:'Prospector Ship Blueprint',   recipeKey:'mfg_ship_prospector', mfgSkill:{ key:'manufacturing_prospector', level:1 } },
+  [BLUEPRINT_SHIP_WAYFARER]:  { tier:4, label:'Wayfarer Ship Blueprint',     recipeKey:'mfg_ship_wayfarer', mfgSkill:{ key:'manufacturing_wayfarer', level:1 } }
 };
 const BLUEPRINT_RECIPE_TYPES = Object.keys(BLUEPRINT_RECIPE_DEFS);
 // every LEARN-able blueprint item type in the game -- generic list so dpLearn/
@@ -7917,7 +8000,8 @@ const MANUFACTURING_RECIPES = {
   [BLUEPRINT_IRON_BULLETS]: {
     requiresBlueprint: BLUEPRINT_IRON_BULLETS,
     outputType: AMMO_ITEM_TYPE, outputQtyPerUnit: 5, label: 'Iron Bullet Manufacturing',
-    inputs: [{ type:INGOT_IRON, qty:1 }], creditsPerUnit: 4, craftSeconds: 3
+    inputs: [{ type:INGOT_IRON, qty:1 }], creditsPerUnit: 4, craftSeconds: 3,
+    minSkill: { key:'manufacturing_bullets', level:1 }
   },
   // ---- SMELTING -- one recipe (and one dedicated Ingot Blueprint, item 1) per ore
   // type, ORE_PER_INGOT ore -> 1 ingot + a small per-ingot smelting fee. See also
@@ -7935,25 +8019,25 @@ const MANUFACTURING_RECIPES = {
   // BUILD -- same as the EQUIP gate). Weapon/Shield LV.1 build cost: 3*75+80=305cr vs
   // 500cr to buy the same tier at the MARKET (39% cheaper). Mining Laser LV.1 (build-
   // only, no market listing): 5*75+120=495cr vs its ~1200cr reference value (59% off).
-  mfg_mining_laser_1: { requiresBlueprint: BLUEPRINT_MINING_LASER_1, legacyBlueprint: BLUEPRINT_MFG_LV1, outputType: 'miningLaserTier1', outputQtyPerUnit: 1, label: 'Mining Laser LV.1', inputs: [{ type:INGOT_IRON, qty:5 }], creditsPerUnit: 120, craftSeconds: 30, minSkill: { key:'mining', level:1 } },
-  mfg_weapon_1:       { requiresBlueprint: BLUEPRINT_WEAPON_1,       legacyBlueprint: BLUEPRINT_MFG_LV1, outputType: 'weaponTier1',      outputQtyPerUnit: 1, label: 'Weapon LV.1 (Crafted)', inputs: [{ type:INGOT_IRON, qty:3 }], creditsPerUnit: 80, craftSeconds: 30, minSkill: { key:'weapon_upgrades', level:1 } },
-  mfg_shield_1:       { requiresBlueprint: BLUEPRINT_SHIELD_1,       legacyBlueprint: BLUEPRINT_MFG_LV1, outputType: 'shieldTier1',      outputQtyPerUnit: 1, label: 'Shield LV.1 (Crafted)', inputs: [{ type:INGOT_IRON, qty:3 }], creditsPerUnit: 80, craftSeconds: 30, minSkill: { key:'shield_upgrades', level:1 } },
+  mfg_mining_laser_1: { requiresBlueprint: BLUEPRINT_MINING_LASER_1, legacyBlueprint: BLUEPRINT_MFG_LV1, outputType: 'miningLaserTier1', outputQtyPerUnit: 1, label: 'Mining Laser LV.1', inputs: [{ type:INGOT_IRON, qty:5 }], creditsPerUnit: 120, craftSeconds: 30, minSkill: { key:'manufacturing_mining_lasers', level:1 } },
+  mfg_weapon_1:       { requiresBlueprint: BLUEPRINT_WEAPON_1,       legacyBlueprint: BLUEPRINT_MFG_LV1, outputType: 'weaponTier1',      outputQtyPerUnit: 1, label: 'Weapon LV.1 (Crafted)', inputs: [{ type:INGOT_IRON, qty:3 }], creditsPerUnit: 80, craftSeconds: 30, minSkill: { key:'manufacturing_weapons', level:1 } },
+  mfg_shield_1:       { requiresBlueprint: BLUEPRINT_SHIELD_1,       legacyBlueprint: BLUEPRINT_MFG_LV1, outputType: 'shieldTier1',      outputQtyPerUnit: 1, label: 'Shield LV.1 (Crafted)', inputs: [{ type:INGOT_IRON, qty:3 }], creditsPerUnit: 80, craftSeconds: 30, minSkill: { key:'manufacturing_shields', level:1 } },
   // ---- LV.2 gear (Copper Ingots @200cr/ea) + Copper Bullets. Weapon/Shield LV.2:
   // 3*200+200=800cr vs 1200cr to buy (33% cheaper). Mining Laser LV.2: 6*200+300=1500cr
   // vs its ~2800cr reference value (46% off).
-  mfg_mining_laser_2: { requiresBlueprint: BLUEPRINT_MINING_LASER_2, legacyBlueprint: BLUEPRINT_MFG_LV2, outputType: 'miningLaserTier2', outputQtyPerUnit: 1, label: 'Mining Laser LV.2', inputs: [{ type:INGOT_COPPER, qty:6 }], creditsPerUnit: 300, craftSeconds: 60, minSkill: { key:'mining', level:2 } },
-  mfg_weapon_2:       { requiresBlueprint: BLUEPRINT_WEAPON_2,       legacyBlueprint: BLUEPRINT_MFG_LV2, outputType: 'weaponTier2',      outputQtyPerUnit: 1, label: 'Weapon LV.2 (Crafted)', inputs: [{ type:INGOT_COPPER, qty:3 }], creditsPerUnit: 200, craftSeconds: 60, minSkill: { key:'weapon_upgrades', level:2 } },
-  mfg_shield_2:       { requiresBlueprint: BLUEPRINT_SHIELD_2,       legacyBlueprint: BLUEPRINT_MFG_LV2, outputType: 'shieldTier2',      outputQtyPerUnit: 1, label: 'Shield LV.2 (Crafted)', inputs: [{ type:INGOT_COPPER, qty:3 }], creditsPerUnit: 200, craftSeconds: 60, minSkill: { key:'shield_upgrades', level:2 } },
-  mfg_copper_bullets: { requiresBlueprint: BLUEPRINT_COPPER_BULLETS, legacyBlueprint: BLUEPRINT_MFG_LV2, outputType: AMMO_ITEM_TYPE_COPPER, outputQtyPerUnit: 5, label: 'Copper Bullet Manufacturing', inputs: [{ type:INGOT_COPPER, qty:1 }], creditsPerUnit: 8, craftSeconds: 4 },
+  mfg_mining_laser_2: { requiresBlueprint: BLUEPRINT_MINING_LASER_2, legacyBlueprint: BLUEPRINT_MFG_LV2, outputType: 'miningLaserTier2', outputQtyPerUnit: 1, label: 'Mining Laser LV.2', inputs: [{ type:INGOT_COPPER, qty:6 }], creditsPerUnit: 300, craftSeconds: 60, minSkill: { key:'manufacturing_mining_lasers', level:2 } },
+  mfg_weapon_2:       { requiresBlueprint: BLUEPRINT_WEAPON_2,       legacyBlueprint: BLUEPRINT_MFG_LV2, outputType: 'weaponTier2',      outputQtyPerUnit: 1, label: 'Weapon LV.2 (Crafted)', inputs: [{ type:INGOT_COPPER, qty:3 }], creditsPerUnit: 200, craftSeconds: 60, minSkill: { key:'manufacturing_weapons', level:2 } },
+  mfg_shield_2:       { requiresBlueprint: BLUEPRINT_SHIELD_2,       legacyBlueprint: BLUEPRINT_MFG_LV2, outputType: 'shieldTier2',      outputQtyPerUnit: 1, label: 'Shield LV.2 (Crafted)', inputs: [{ type:INGOT_COPPER, qty:3 }], creditsPerUnit: 200, craftSeconds: 60, minSkill: { key:'manufacturing_shields', level:2 } },
+  mfg_copper_bullets: { requiresBlueprint: BLUEPRINT_COPPER_BULLETS, legacyBlueprint: BLUEPRINT_MFG_LV2, outputType: AMMO_ITEM_TYPE_COPPER, outputQtyPerUnit: 5, label: 'Copper Bullet Manufacturing', inputs: [{ type:INGOT_COPPER, qty:1 }], creditsPerUnit: 8, craftSeconds: 4, minSkill: { key:'manufacturing_bullets', level:2 } },
   // ---- LV.3 gear (Silver Ingots @500cr/ea) + Silver Bullets + Gold Bullets (Gold
   // Ingots @1250cr/ea -- see the DESIGN DECISION comment above for why Gold Bullets
   // live at this tier). Weapon/Shield LV.3: 3*500+300=1800cr vs 2500cr to buy (28%
   // cheaper). Mining Laser LV.3: 6*500+800=3800cr vs its ~6000cr reference value (37% off).
-  mfg_mining_laser_3: { requiresBlueprint: BLUEPRINT_MINING_LASER_3, legacyBlueprint: BLUEPRINT_MFG_LV3, outputType: 'miningLaserTier3', outputQtyPerUnit: 1, label: 'Mining Laser LV.3', inputs: [{ type:INGOT_SILVER, qty:6 }], creditsPerUnit: 800, craftSeconds: 90, minSkill: { key:'mining', level:3 } },
-  mfg_weapon_3:       { requiresBlueprint: BLUEPRINT_WEAPON_3,       legacyBlueprint: BLUEPRINT_MFG_LV3, outputType: 'weaponTier3',      outputQtyPerUnit: 1, label: 'Weapon LV.3 (Crafted)', inputs: [{ type:INGOT_SILVER, qty:3 }], creditsPerUnit: 300, craftSeconds: 90, minSkill: { key:'weapon_upgrades', level:3 } },
-  mfg_shield_3:       { requiresBlueprint: BLUEPRINT_SHIELD_3,       legacyBlueprint: BLUEPRINT_MFG_LV3, outputType: 'shieldTier3',      outputQtyPerUnit: 1, label: 'Shield LV.3 (Crafted)', inputs: [{ type:INGOT_SILVER, qty:3 }], creditsPerUnit: 300, craftSeconds: 90, minSkill: { key:'shield_upgrades', level:3 } },
-  mfg_silver_bullets: { requiresBlueprint: BLUEPRINT_SILVER_BULLETS, legacyBlueprint: BLUEPRINT_MFG_LV3, outputType: AMMO_ITEM_TYPE_SILVER, outputQtyPerUnit: 5, label: 'Silver Bullet Manufacturing', inputs: [{ type:INGOT_SILVER, qty:1 }], creditsPerUnit: 20, craftSeconds: 5 },
-  mfg_gold_bullets:   { requiresBlueprint: BLUEPRINT_GOLD_BULLETS,   legacyBlueprint: BLUEPRINT_MFG_LV3, outputType: AMMO_ITEM_TYPE_GOLD,   outputQtyPerUnit: 5, label: 'Gold Bullet Manufacturing',   inputs: [{ type:INGOT_GOLD,   qty:1 }], creditsPerUnit: 45, craftSeconds: 6 },
+  mfg_mining_laser_3: { requiresBlueprint: BLUEPRINT_MINING_LASER_3, legacyBlueprint: BLUEPRINT_MFG_LV3, outputType: 'miningLaserTier3', outputQtyPerUnit: 1, label: 'Mining Laser LV.3', inputs: [{ type:INGOT_SILVER, qty:6 }], creditsPerUnit: 800, craftSeconds: 90, minSkill: { key:'manufacturing_mining_lasers', level:3 } },
+  mfg_weapon_3:       { requiresBlueprint: BLUEPRINT_WEAPON_3,       legacyBlueprint: BLUEPRINT_MFG_LV3, outputType: 'weaponTier3',      outputQtyPerUnit: 1, label: 'Weapon LV.3 (Crafted)', inputs: [{ type:INGOT_SILVER, qty:3 }], creditsPerUnit: 300, craftSeconds: 90, minSkill: { key:'manufacturing_weapons', level:3 } },
+  mfg_shield_3:       { requiresBlueprint: BLUEPRINT_SHIELD_3,       legacyBlueprint: BLUEPRINT_MFG_LV3, outputType: 'shieldTier3',      outputQtyPerUnit: 1, label: 'Shield LV.3 (Crafted)', inputs: [{ type:INGOT_SILVER, qty:3 }], creditsPerUnit: 300, craftSeconds: 90, minSkill: { key:'manufacturing_shields', level:3 } },
+  mfg_silver_bullets: { requiresBlueprint: BLUEPRINT_SILVER_BULLETS, legacyBlueprint: BLUEPRINT_MFG_LV3, outputType: AMMO_ITEM_TYPE_SILVER, outputQtyPerUnit: 5, label: 'Silver Bullet Manufacturing', inputs: [{ type:INGOT_SILVER, qty:1 }], creditsPerUnit: 20, craftSeconds: 5, minSkill: { key:'manufacturing_bullets', level:3 } },
+  mfg_gold_bullets:   { requiresBlueprint: BLUEPRINT_GOLD_BULLETS,   legacyBlueprint: BLUEPRINT_MFG_LV3, outputType: AMMO_ITEM_TYPE_GOLD,   outputQtyPerUnit: 5, label: 'Gold Bullet Manufacturing',   inputs: [{ type:INGOT_GOLD,   qty:1 }], creditsPerUnit: 45, craftSeconds: 6, minSkill: { key:'manufacturing_bullets', level:4 } },
   // ---- LV.4 gear (Diamond Ingots) + Diamond Bullets -- item 3/4 (v0.37.0): real
   // Tier-4 gear, superseding the earlier "no LV.4 gear tier, level 4 = Gold Bullets"
   // design decision (see the DESIGN DECISION comment above) per direct user request.
@@ -7963,12 +8047,14 @@ const MANUFACTURING_RECIPES = {
   // tree): these `minSkill` gates are meant to be REPLACED by the new "Manufacturing -
   // Weapons/Shields/Mining Lasers" skills once those exist, same as every other tier's
   // minSkill here likely will be too -- this is just the minimal/consistent interim gate.
-  mfg_mining_laser_4: { requiresBlueprint: BLUEPRINT_MINING_LASER_4, outputType: 'miningLaserTier4', outputQtyPerUnit: 1, label: 'Mining Laser LV.4', inputs: [{ type:INGOT_DIAMOND, qty:6 }], creditsPerUnit: 2000, craftSeconds: 150, minSkill: { key:'mining', level:4 } },
-  mfg_weapon_4:       { requiresBlueprint: BLUEPRINT_WEAPON_4,       outputType: 'weaponTier4',       outputQtyPerUnit: 1, label: 'Weapon LV.4 (Crafted)', inputs: [{ type:INGOT_DIAMOND, qty:3 }], creditsPerUnit: 900, craftSeconds: 150, minSkill: { key:'weapon_upgrades', level:4 } },
-  mfg_shield_4:       { requiresBlueprint: BLUEPRINT_SHIELD_4,       outputType: 'shieldTier4',       outputQtyPerUnit: 1, label: 'Shield LV.4 (Crafted)', inputs: [{ type:INGOT_DIAMOND, qty:3 }], creditsPerUnit: 900, craftSeconds: 150, minSkill: { key:'shield_upgrades', level:4 } },
+  mfg_mining_laser_4: { requiresBlueprint: BLUEPRINT_MINING_LASER_4, outputType: 'miningLaserTier4', outputQtyPerUnit: 1, label: 'Mining Laser LV.4', inputs: [{ type:INGOT_DIAMOND, qty:6 }], creditsPerUnit: 2000, craftSeconds: 150, minSkill: { key:'manufacturing_mining_lasers', level:4 } },
+  mfg_weapon_4:       { requiresBlueprint: BLUEPRINT_WEAPON_4,       outputType: 'weaponTier4',       outputQtyPerUnit: 1, label: 'Weapon LV.4 (Crafted)', inputs: [{ type:INGOT_DIAMOND, qty:3 }], creditsPerUnit: 900, craftSeconds: 150, minSkill: { key:'manufacturing_weapons', level:4 } },
+  mfg_shield_4:       { requiresBlueprint: BLUEPRINT_SHIELD_4,       outputType: 'shieldTier4',       outputQtyPerUnit: 1, label: 'Shield LV.4 (Crafted)', inputs: [{ type:INGOT_DIAMOND, qty:3 }], creditsPerUnit: 900, craftSeconds: 150, minSkill: { key:'manufacturing_shields', level:4 } },
   // Diamond Bullets: no minSkill, same as every other bullet-tier recipe (iron/copper/
   // silver/gold bullets are gated purely by knowing the blueprint, never a skill level).
-  mfg_diamond_bullets:{ requiresBlueprint: BLUEPRINT_DIAMOND_BULLETS, outputType: AMMO_ITEM_TYPE_DIAMOND, outputQtyPerUnit: 5, label: 'Diamond Bullet Manufacturing', inputs: [{ type:INGOT_DIAMOND, qty:1 }], creditsPerUnit: 100, craftSeconds: 7 }
+  mfg_diamond_bullets:{ requiresBlueprint: BLUEPRINT_DIAMOND_BULLETS, outputType: AMMO_ITEM_TYPE_DIAMOND, outputQtyPerUnit: 5, label: 'Diamond Bullet Manufacturing', inputs: [{ type:INGOT_DIAMOND, qty:1 }], creditsPerUnit: 100, craftSeconds: 7, minSkill: { key:'manufacturing_bullets', level:5 } },
+  mfg_ship_prospector: { requiresBlueprint: BLUEPRINT_SHIP_PROSPECTOR, outputType: 'ship_prospector', outputQtyPerUnit: 1, label: 'Prospector-Class Ship', inputs: [{ type:INGOT_IRON, qty:15 }, { type:INGOT_COPPER, qty:12 }, { type:INGOT_SILVER, qty:8 }], creditsPerUnit: 3500, craftSeconds: 14400, minSkill: { key:'manufacturing_prospector', level:1 } },
+  mfg_ship_wayfarer:   { requiresBlueprint: BLUEPRINT_SHIP_WAYFARER,   outputType: 'ship_wayfarer',   outputQtyPerUnit: 1, label: 'Wayfarer-Class Ship',   inputs: [{ type:INGOT_IRON, qty:15 }, { type:INGOT_COPPER, qty:10 }, { type:INGOT_SILVER, qty:5 }], creditsPerUnit: 3000, craftSeconds: 10800, minSkill: { key:'manufacturing_wayfarer', level:1 } }
 };
 // item 1 (v0.28.0): a recipe is buildable if the player knows its own new specific
 // blueprint OR (backward compatibility) still has the old tier blueprint that used to
@@ -9837,6 +9923,35 @@ function getManufacturingQueue(bpType, stationId){
 // iron-ore input to recipe.inputs (a [{type,qty}] list), plus an optional recipe.minSkill
 // gate (mining/weapon_upgrades/shield_upgrades tiered gear can't be BUILT below the
 // matching skill level, same as it can't be EQUIPPED below it).
+// (batch item 2, v0.38.0) task B/D: craft-time speed bonuses. 'Manufacturing' (task
+// B) is a GENERAL multiplier applying to every manufacturing recipe (5%/level,
+// compounding -- LV.4 ≈ 18.5% faster, "slight" per the user's own word, see the
+// INTERPRETATION CALL comment on SKILL_DEFS.manufacturing above). 'Manufacturing -
+// Ships' (task D) is a second GENERAL multiplier that only applies to ship recipes
+// (8%/level), stacking MULTIPLICATIVELY (design call, documented in the report) with
+// the matching ship-line skill's own LV.2-4 speed bonus (also 8%/level; LV.1 of the
+// line skill is pure unlock, no speed bonus of its own, per the task's "Level 1
+// unlocks... Levels 2-4 further increase speed" spec).
+function manufacturingSkillTimeMultiplier(){
+  return Math.pow(0.95, skillLevels.manufacturing||0);
+}
+function shipManufactureTimeMultiplier(classKey){
+  const shipsMult = Math.pow(0.92, skillLevels.manufacturing_ships||0);
+  const lineKey = classKey === 'mining' ? 'manufacturing_prospector' : 'manufacturing_wayfarer';
+  const lineLevel = skillLevels[lineKey]||0;
+  const lineBonusLevels = Math.max(0, lineLevel - 1); // LV.1 = unlock only
+  const lineMult = Math.pow(0.92, lineBonusLevels);
+  return shipsMult * lineMult;
+}
+// effective per-unit craft time for a given recipe, after every stacking speed
+// bonus above -- this is what startManufacturing actually schedules q.unitMs from,
+// rather than the recipe's raw, unmodified craftSeconds.
+function effectiveCraftSeconds(bpType, recipe){
+  let secs = recipe.craftSeconds * manufacturingSkillTimeMultiplier();
+  if(bpType === 'mfg_ship_prospector') secs *= shipManufactureTimeMultiplier('mining');
+  else if(bpType === 'mfg_ship_wayfarer') secs *= shipManufactureTimeMultiplier('starter');
+  return Math.max(1, secs);
+}
 function startManufacturing(bpType, qty){
   const recipe = MANUFACTURING_RECIPES[bpType];
   if(!recipe || !recipeBlueprintKnown(recipe)) return;
@@ -9871,7 +9986,7 @@ function startManufacturing(bpType, qty){
   q.total = qty;
   q.completed = 0;
   q.startedAtMs = Date.now();
-  q.unitMs = recipe.craftSeconds * 1000;
+  q.unitMs = effectiveCraftSeconds(bpType, recipe) * 1000;
   flashMessage('BUILDING ' + qty + ' — ' + recipe.label.toUpperCase(), 'good');
   // item 12: no event log entry for queuing a manufacturing job -- flashMessage above covers it
   updateCargoUI();
@@ -9900,7 +10015,14 @@ function checkManufacturingCompletion(){
       if(newlyDone <= 0) return;
       anyChange = true;
       q.completed += newlyDone;
-      addToStationStorage(recipe.outputType, recipe.outputQtyPerUnit * newlyDone, stationId);
+      // (batch item 2, v0.38.0) task D: a manufactured SHIP output needs the same
+      // fresh-instId/serial-name treatment every other new ship gets (see
+      // depositItemsToStationStorage's own comment) instead of the plain qty-merge
+      // addToStationStorage uses for everything else -- it already special-cases
+      // ship item types, so routing every completion through it here is a safe,
+      // fully backward-compatible superset of the old behavior for every existing
+      // (non-ship) recipe.
+      depositItemsToStationStorage(recipe.outputType, recipe.outputQtyPerUnit * newlyDone, stationId);
       // item 12: no event log entry for a manufacturing job completing
       if(q.completed >= q.total){ q.total = 0; q.completed = 0; q.startedAtMs = 0; q.unitMs = 0; }
     });
@@ -10119,7 +10241,7 @@ function libraryCraftUnitRemainingMs(stationId){
 function libraryScribableBookLevels(key){
   const cur = skillLevels[key] || 0;
   if(cur < 1) return [];
-  const maxLevel = Math.min(SKILL_MAX_LEVEL, cur + 1);
+  const maxLevel = Math.min(skillMaxLevel(key), cur + 1);
   const out = [];
   for(let l=2; l<=maxLevel; l++) out.push(l);
   return out;
@@ -10365,12 +10487,32 @@ function libraryScribableRecipeBlueprintTiers(){
   for(let l=1; l<=4; l++){ if((skillLevels.academics||0) >= l) out.push(l); }
   return out;
 }
+// task G (batch item 2, v0.38.0): blanket "can't scribe ANY manufacturing blueprint
+// without knowing Manufacturing at all" gate, PLUS (task C/D) each blueprint's own
+// more-specific per-tier mfgSkill gate on top -- both must pass. INTERPRETATION CALL:
+// the user's instruction says "manufacturing blueprints" broadly; the smelting
+// blueprints (BLUEPRINT_SMELT_IRON etc) were historically freely scribable with NO
+// skill gate at all, but they ARE manufacturing recipes (same MANUFACTURING_RECIPES
+// table, same BLUEPRINT_RECIPE_DEFS list) so this blanket gate applies to them too --
+// a new restriction on previously-ungated content, called out explicitly in the
+// report. Returns null when scribable, else a short uppercase reason string for the
+// UI (same "show all, grey out with a reason" pattern skill books already use).
+function manufacturingBlueprintGateReason(bpType){
+  if((skillLevels.manufacturing||0) < 1) return 'REQUIRES MANUFACTURING SKILL';
+  const bd = BLUEPRINT_RECIPE_DEFS[bpType];
+  if(bd && bd.mfgSkill && (skillLevels[bd.mfgSkill.key]||0) < bd.mfgSkill.level){
+    return 'REQUIRES ' + SKILL_DEFS[bd.mfgSkill.key].name.toUpperCase() + ' LV.' + bd.mfgSkill.level;
+  }
+  return null;
+}
 function startRecipeBlueprintScribe(bpType){
   if(!docked || !dockedStation) return;
   const bd = BLUEPRINT_RECIPE_DEFS[bpType];
   if(!bd) return;
   if(libraryCraftState(dockedStation.id)){ flashMessage('ALREADY CRAFTING SOMETHING HERE', 'warn'); return; }
   if(libraryScribableRecipeBlueprintTiers().indexOf(bd.tier) < 0){ flashMessage('REQUIRES ACADEMICS LV.' + bd.tier + ' TO SCRIBE', 'warn'); return; }
+  const mfgGateReason = manufacturingBlueprintGateReason(bpType);
+  if(mfgGateReason){ flashMessage(mfgGateReason, 'warn'); return; }
   const knowledgeCost = libraryRecipeBlueprintKnowledgeCost(bd.tier);
   const creditsCost = libraryRecipeBlueprintCreditsCost(bd.tier);
   if(knowledge < knowledgeCost){ flashMessage('NOT ENOUGH KNOWLEDGE', 'warn'); return; }
@@ -10625,7 +10767,7 @@ function renderLibraryPanel(){
             const cur = skillLevels[k]||0;
             const allowed = libraryScribableBookLevels(k);
             const allLevels = [];
-            for(let l=2; l<=SKILL_MAX_LEVEL; l++) allLevels.push(l);
+            for(let l=2; l<=skillMaxLevel(k); l++) allLevels.push(l);
             const sel = preservedLevels[k];
             const selectedLevel = sel ? parseInt(sel,10) : (allowed[0]||allLevels[0]);
             const selectedLocked = allowed.indexOf(selectedLevel) < 0;
@@ -10655,13 +10797,20 @@ function renderLibraryPanel(){
         BLUEPRINT_MINING_LASER_2, BLUEPRINT_WEAPON_2, BLUEPRINT_SHIELD_2,
         BLUEPRINT_MINING_LASER_3, BLUEPRINT_WEAPON_3, BLUEPRINT_SHIELD_3,
         BLUEPRINT_MINING_LASER_4, BLUEPRINT_WEAPON_4, BLUEPRINT_SHIELD_4];
+      // task D: ship blueprints get their own section
+      const shipTypes = [BLUEPRINT_SHIP_PROSPECTOR, BLUEPRINT_SHIP_WAYFARER];
       const rowFor = (bpType)=>{
         const bd = BLUEPRINT_RECIPE_DEFS[bpType];
         const label = itemDisplayDef(bpType).label;
-        const scribable = scribableTiers.indexOf(bd.tier) >= 0;
+        const academicsOk = scribableTiers.indexOf(bd.tier) >= 0;
+        // task G/C: blanket "know Manufacturing" gate + this blueprint's own specific
+        // per-tier skill gate, BOTH required on top of the legacy Academics-tier gate
+        const mfgReason = manufacturingBlueprintGateReason(bpType);
+        const scribable = academicsOk && !mfgReason;
         const already = knownBlueprints.has(bpType);
+        const lockReason = !academicsOk ? ('NEEDS ACADEMICS LV.' + bd.tier) : (mfgReason || '');
         return '<div class="dockSubRow">'
-          + '<span class="dsName">' + label + (already ? ' — KNOWN' : (scribable ? '' : ' — NEEDS ACADEMICS LV.' + bd.tier)) + '</span>'
+          + '<span class="dsName">' + label + (already ? ' — KNOWN' : (scribable ? '' : ' — ' + lockReason)) + '</span>'
           + (scribable
             ? '<span style="font-size:10px; color:var(--phosphor-dim); margin-right:6px;">' + libraryRecipeBlueprintKnowledgeCost(bd.tier) + ' KN + ' + libraryRecipeBlueprintCreditsCost(bd.tier) + ' CR</span>'
               + '<button class="cmdbtn" data-recipe-blueprint-scribe="' + bpType + '">SCRIBE</button>'
@@ -10674,7 +10823,8 @@ function renderLibraryPanel(){
         : '')
         + section('INGOT BLUEPRINTS (ORE → INGOT)', ingotTypes)
         + section('AMMO BLUEPRINTS (INGOT → BULLETS)', bulletTypes)
-        + section('UPGRADE BLUEPRINTS (INGOT → GEAR)', upgradeTypes);
+        + section('UPGRADE BLUEPRINTS (INGOT → GEAR)', upgradeTypes)
+        + section('SHIP BLUEPRINTS (MATERIALS + CREDITS → SHIP)', shipTypes);
     }
   }
 }
@@ -13334,7 +13484,7 @@ function renderSkillRow(key){
   const level = skillLevels[key] || 0;
   const target = skillTargetLevel(key);
   const isTraining = activeTraining && activeTraining.key === key;
-  const maxed = target > SKILL_MAX_LEVEL;
+  const maxed = target > skillMaxLevel(key);
   const prereqOk = skillPrereqMet(key);
   const need = maxed ? 0 : skillDurationForTarget(key);
   const now = maxed ? 0 : skillProgressNowMs(key);
@@ -13355,7 +13505,8 @@ function renderSkillRow(key){
     statusLine = 'MAX LEVEL (FOR NOW)';
   } else if(!prereqOk){
     const req = SKILL_DEFS[def.requires];
-    statusLine = 'NEEDS ' + req.name.toUpperCase() + ' LV.' + target + ' FIRST';
+    const reqLevel = typeof def.requiresLevel === 'number' ? def.requiresLevel : target;
+    statusLine = 'NEEDS ' + req.name.toUpperCase() + ' LV.' + reqLevel + ' FIRST';
   } else if(target >= 2 && !hasBook){
     statusLine = ownsUnlearnedBook
       ? 'LEARN THE LV.' + target + ' ' + def.name.toUpperCase() + ' BOOK FIRST (SEE CARGO/STORAGE)'
