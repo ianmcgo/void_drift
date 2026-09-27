@@ -831,6 +831,18 @@
   }
   .cargoTile:hover{background:rgba(109,255,194,0.14);}
   .cargoTile.empty{opacity:0.35; cursor:default;}
+  /* (v0.35.2) item: selection highlight -- the specific tile whose click opened an
+     action prompt (jettison/split, move/store/withdraw/combine, fit-equip confirm,
+     buy-confirm, sell-confirm) that is STILL OPEN. Same terminal-green phosphor
+     language used everywhere else for "currently active" (.cmdbtn.active,
+     #overview .item.active), just brighter/glowing so it reads at a glance against
+     a grid of similar tiles. Tracked by stack/row identity (data-*-id), never DOM
+     position, so it survives re-renders (see applyTileSelection below).*/
+  .cargoTile.tileSelected{
+    border-color:var(--phosphor); background:rgba(109,255,194,0.26);
+    box-shadow:0 0 8px rgba(109,255,194,0.55), inset 0 0 6px rgba(109,255,194,0.3);
+  }
+  .cargoTile.tileSelected:hover{background:rgba(109,255,194,0.3);}
   .cargoTile .swatch{
     width:26px; height:26px; margin:0 auto 4px; border:1px solid rgba(0,0,0,0.4);
   }
@@ -2768,7 +2780,7 @@
 // compatibility depends on it. Add new keys, don't rename old ones.
 
 // ---------- version / build info (shown in the ESC settings menu) ----------
-const GAME_VERSION = "0.35.1";
+const GAME_VERSION = "0.36.0";
 const GAME_LAST_EDITED = "2026-09-26";
 const GAME_BUILD_TIME = "15:14 PT"; // wall-clock time this build was published, not just the date
 
@@ -7980,6 +7992,22 @@ function isStackEquipped(stack){
   if(isAmmoItemType(stack.itemType)) return stack.stackId === equippedAmmoStackId;
   return false;
 }
+// (v0.35.2) item: selection highlight for item tiles across space CARGO, station
+// STORAGE (both sides) and station MARKET (both sides) -- toggles .tileSelected on
+// whichever .cargoTile currently has data-<datasetKey>-id === selectedId (identity
+// by stack/row id, never DOM position, so it stays correct across re-renders that
+// remove/reorder tiles -- e.g. a market row going out of stock). selectedId==null
+// clears the whole grid. Called both right after a render (to reapply whatever
+// selection is still active) and right when a tile is clicked/prompt closed (so
+// the highlight updates immediately without waiting for a full re-render).
+function applyTileSelection(gridId, datasetKey, selectedId){
+  const grid = document.getElementById(gridId);
+  if(!grid) return;
+  const want = selectedId == null ? null : String(selectedId);
+  grid.querySelectorAll('.cargoTile').forEach(t=>{
+    t.classList.toggle('tileSelected', want !== null && t.dataset[datasetKey] === want);
+  });
+}
 function updateInventoryPanel(){
   const el = id => document.getElementById(id);
   if(!el('cargoGrid')) return;
@@ -8005,6 +8033,10 @@ function updateInventoryPanel(){
           + (stack.guildQuestId ? '<div class="eqTag guildTag">GUILD DELIVERY</div>' : '')
           + '</div>';
       }).join('');
+  // (v0.35.2) reapply the selection highlight -- this panel re-renders (e.g. new ore
+  // mined mid-flight) while the JETTISON/SPLIT prompt for an already-clicked stack is
+  // still open, so the highlight must survive the rebuilt tiles, not just a fresh click.
+  applyTileSelection('cargoGrid', 'stackId', cargoActionStackId);
   const weight = currentCargoWeight();
   const cap = effectiveCargoCapacity();
   el('invWeight').textContent = Math.round(weight) + ' / ' + cap + ' kg';
@@ -8026,6 +8058,7 @@ function openCargoActionPrompt(stackId){
   const stack = cargoStacks.find(s=>s.stackId===stackId);
   if(!stack) return;
   cargoActionStackId = stackId;
+  applyTileSelection('cargoGrid', 'stackId', stackId);
   const def = itemDisplayDef(stack.itemType);
   const prompt = document.getElementById('cargoDropPrompt');
   // item 8: show the selected stack's total weight in whole-number kilograms
@@ -8080,6 +8113,7 @@ function openCargoActionPrompt(stackId){
 }
 function closeCargoActionPrompt(){
   cargoActionStackId = null;
+  applyTileSelection('cargoGrid', 'stackId', null);
   if(lastInspectorSource === 'cargo'){
     lastInspectorSource = null;
     if(typeof refreshItemInspector === 'function') refreshItemInspector(true);
@@ -8440,6 +8474,11 @@ function closeDockSubPanel(name){
     const prompt = document.getElementById('marketStorageSellPrompt');
     if(prompt) prompt.style.display = 'none';
     marketStorageSellStackId = null;
+    applyTileSelection('marketStorageSellGrid', 'mstnStackId', null);
+    const buyPrompt = document.getElementById('marketBuyPrompt');
+    if(buyPrompt) buyPrompt.style.display = 'none';
+    marketActionId = null;
+    applyTileSelection('marketGrid', 'marketId', null);
   }
   if(name === 'dockStoragePanel'){
     if(typeof closeStorageMovePrompt === 'function') closeStorageMovePrompt();
@@ -8840,6 +8879,7 @@ function renderMarketPanel(){
       }).join('');
   document.getElementById('marketBuyPrompt').style.display = 'none';
   marketActionId = null;
+  applyTileSelection('marketGrid', 'marketId', null);
   renderDockMarketStorageColumn();
 }
 // item 12: the MARKET panel's "YOUR STORAGE — CLICK TO SELL" column -- lists every
@@ -8876,6 +8916,7 @@ function renderDockMarketStorageColumn(){
       }).join('');
   document.getElementById('marketStorageSellPrompt').style.display = 'none';
   marketStorageSellStackId = null;
+  applyTileSelection('marketStorageSellGrid', 'mstnStackId', null);
 }
 document.getElementById('marketStorageSellGrid').addEventListener('click', (e)=>{
   const tile = e.target.closest('.cargoTile');
@@ -8892,6 +8933,7 @@ document.getElementById('marketStorageSellGrid').addEventListener('click', (e)=>
   const def = itemDisplayDef(stack.itemType);
   if(def.sellPrice == null){ flashMessage('NOT SELLABLE', 'warn'); return; }
   marketStorageSellStackId = stack.stackId;
+  applyTileSelection('marketStorageSellGrid', 'mstnStackId', stack.stackId);
   document.getElementById('marketStorageSellLabel').textContent = stack.guildQuestId
     ? def.label + ' ×' + stack.qty + ' — GUILD DELIVERY CARGO: selling forfeits it and fails the contract'
     : def.label + ' ×' + stack.qty + ' — ' + def.sellPrice + ' cr each';
@@ -8904,6 +8946,7 @@ document.getElementById('marketStorageSellGrid').addEventListener('click', (e)=>
 });
 document.getElementById('marketStorageSellCancel').addEventListener('click', ()=>{
   marketStorageSellStackId = null;
+  applyTileSelection('marketStorageSellGrid', 'mstnStackId', null);
   document.getElementById('marketStorageSellPrompt').style.display = 'none';
 });
 document.getElementById('marketStorageSellConfirm').addEventListener('click', ()=>{
@@ -8953,6 +8996,7 @@ document.getElementById('marketGrid').addEventListener('click', (e)=>{
   // copy of a unique-equip item is allowed (same as any other market item), it just
   // sits in cargo/storage unequipped until the player chooses to equip it
   marketActionId = m.id;
+  applyTileSelection('marketGrid', 'marketId', m.id);
   const def = itemDisplayDef(m.itemType);
   document.getElementById('marketBuyLabel').textContent = def.label + ' — ' + m.unitPrice + ' cr each + 5% station tax';
   const qtyInput = document.getElementById('marketBuyQty');
@@ -8978,6 +9022,7 @@ document.getElementById('marketGrid').addEventListener('click', (e)=>{
 document.getElementById('marketBuyCancel').addEventListener('click', ()=>{
   document.getElementById('marketBuyPrompt').style.display = 'none';
   marketActionId = null;
+  applyTileSelection('marketGrid', 'marketId', null);
 });
 document.getElementById('marketBuyConfirm').addEventListener('click', ()=>{
   if(marketActionId == null) return;
@@ -9591,7 +9636,12 @@ function openFitEquipConfirm(kind, target, label, stack){
   if(kind === 'weapon' && target === equippedWeaponTier) return;
   if(kind === 'shield' && target === equippedShieldTier) return;
   if(kind === 'mining' && !hasMiningLaser) return;
+  // (v0.35.2) mirrors the guard added to openStorageMovePrompt: close the generic
+  // move/withdraw/combine prompt first if it's the one currently open, so only one
+  // tile in the ship-side grid is ever highlighted/staged at a time.
+  if(storageMoveCtx) closeStorageMovePrompt();
   pendingFitAction = { kind, target, stack };
+  if(typeof refreshStorageTileSelection === 'function') refreshStorageTileSelection();
   const prompt = document.getElementById('fitEquipConfirmPrompt');
   const labelEl = document.getElementById('fitEquipConfirmLabel');
   if(labelEl) labelEl.textContent = label + '?';
@@ -9614,6 +9664,7 @@ function closeFitEquipConfirm(){
   pendingFitAction = null;
   const prompt = document.getElementById('fitEquipConfirmPrompt');
   if(prompt) prompt.classList.remove('show');
+  if(typeof refreshStorageTileSelection === 'function') refreshStorageTileSelection();
 }
 // (v0.31.0) item 2: fitWeaponList/fitShieldList/fitMiningList and btnDockFittingPanel
 // no longer exist -- their click listeners are replaced by openStorageUpgradeEquipPrompt,
@@ -10568,6 +10619,23 @@ function removeStationStorageStackRef(stack, stationId){
   if(idx >= 0) arr.splice(idx, 1);
 }
 let storageMoveCtx = null; // { from:'ship'|'station', stackId }
+// (v0.35.2) item: selection highlight for the STORAGE popup's two grids. The ship-side
+// grid (dockStorageShipGrid) can have an open prompt from EITHER storageMoveCtx (generic
+// move/withdraw/combine, from==='ship') OR pendingFitAction (the separate weapon/shield/
+// mining-laser fit-equip confirm -- see openStorageUpgradeEquipPrompt/openFitEquipConfirm
+// below); the station-side grid (dockStorageStationGrid) only ever has storageMoveCtx
+// (from==='station'). Recomputes both grids' highlight from whichever of those bits of
+// state is actually live right now, so it stays correct regardless of which prompt (or
+// neither) is open. pendingFitAction is declared further down the file, but this only
+// ever runs after the whole script has executed once (on a click/render), so it's always
+// defined by the time this is called.
+function refreshStorageTileSelection(){
+  const shipSel = (storageMoveCtx && storageMoveCtx.from === 'ship') ? storageMoveCtx.stackId
+    : ((typeof pendingFitAction !== 'undefined' && pendingFitAction && pendingFitAction.stack) ? pendingFitAction.stack.stackId : null);
+  const stnSel = (storageMoveCtx && storageMoveCtx.from === 'station') ? storageMoveCtx.stackId : null;
+  applyTileSelection('dockStorageShipGrid', 'shipStackId', shipSel);
+  applyTileSelection('dockStorageStationGrid', 'stnStackId', stnSel);
+}
 function renderDockStorageRows(){
   const shipGrid = document.getElementById('dockStorageShipGrid');
   const stnGrid = document.getElementById('dockStorageStationGrid');
@@ -10619,6 +10687,7 @@ function renderDockStorageRows(){
           + '<div class="qty">' + qtyText + '</div>'
           + '</div>';
       }).join('');
+  refreshStorageTileSelection();
 }
 document.getElementById('btnDockStoragePanel').addEventListener('click', ()=> toggleDockSubPanel('dockStoragePanel'));
 // (v0.31.1) item 5: some item types carry extra per-instance identity fields
@@ -10667,10 +10736,15 @@ function openStorageMovePrompt(from, stackId){
   const list = from === 'ship' ? cargoStacks : stationStorage();
   const stack = list.find(s=>s.stackId===stackId);
   if(!stack) return;
+  // (v0.35.2) the fit-equip confirm (weapon/shield/mining-laser) and this generic move/
+  // withdraw/combine prompt share the ship-side grid but are otherwise independent state
+  // -- close the other one out first so at most one tile is ever highlighted/staged at once.
+  if(typeof pendingFitAction !== 'undefined' && pendingFitAction) closeFitEquipConfirm();
   // equipped gear (including the starting tier-0 weapon/shield) can be stored away too
   // -- jettisonFromStack's equip-fallback logic below auto-unequips it if that empties
   // the slot out, same as selling the last unit does
   storageMoveCtx = { from, stackId };
+  refreshStorageTileSelection();
   const def = itemDisplayDef(stack.itemType);
   document.getElementById('dsMoveLabel').textContent =
     (from==='ship' ? 'Store ' : 'Withdraw ') + def.label + ' ×' + stack.qty
@@ -10702,6 +10776,7 @@ function openStorageMovePrompt(from, stackId){
 function closeStorageMovePrompt(){
   storageMoveCtx = null;
   document.getElementById('dockStorageMovePrompt').classList.remove('show');
+  refreshStorageTileSelection();
 }
 // (v0.31.0) item 2: weapon/shield/mining-laser tiers -- any of the item types
 // isStackEquipped() recognizes as mountable gear (minus ammo, which keeps its own
@@ -15024,6 +15099,17 @@ function getPlayerSaveData(){
     shipSerialCounters: Object.assign({}, shipSerialCounters),
     equippedWeaponTier: equippedWeaponTier,
     equippedShieldTier: equippedShieldTier,
+    // (v0.36.0) item 1 FIX: miningLaserEquipped was never saved at all (unlike
+    // equippedWeaponTier/equippedShieldTier just above, which always were) -- every
+    // reload/relogin silently reset it to its module-init default of false even
+    // though hasMiningLaser (a derived mirror recomputed from cargoStacks, see
+    // syncFlatCargoMirrors) correctly stayed true. A Prospector who financed+equipped
+    // their starter mining laser at onboarding, then simply logged out and back in
+    // (or was auto-relaunched by anything that reloads, e.g. HARDCORE's wipe-and-
+    // reload), came back with the laser still owned but silently STOWED -- MINE
+    // reporting "NO MINING LASER" and the STORAGE tile no longer tagged EQUIPPED,
+    // with nothing in the log to explain why.
+    miningLaserEquipped: miningLaserEquipped,
     equippedAmmoStackId: equippedAmmoStackId,
     cargoStacks: cargoStacks.map(s=> Object.assign({}, s)),
     nextStackId: nextStackId,
@@ -15145,8 +15231,28 @@ function applyPlayerSaveData(d){
 
   if(typeof d.equippedWeaponTier === 'number') equippedWeaponTier = d.equippedWeaponTier;
   if(typeof d.equippedShieldTier === 'number') equippedShieldTier = d.equippedShieldTier;
+  // (v0.36.0) item 1 FIX: restore miningLaserEquipped -- see its own comment on the
+  // getPlayerSaveData side for why this was missing. hasMiningLaser itself stays a
+  // pure derived mirror (recomputed from cargoStacks by syncFlatCargoMirrors right
+  // below), so it doesn't need -- and never gets -- a save field of its own.
+  if(typeof d.miningLaserEquipped === 'boolean') miningLaserEquipped = d.miningLaserEquipped;
   if(typeof d.equippedAmmoStackId === 'number') equippedAmmoStackId = d.equippedAmmoStackId;
   if(Array.isArray(d.cargoStacks)) cargoStacks = d.cargoStacks.map(s=> Object.assign({}, s));
+  // (v0.36.0) item 1 FIX (root cause): hasMiningLaser/ownedWeaponTiers/ownedShieldTiers
+  // are all DERIVED mirrors of cargoStacks (see syncFlatCargoMirrors's own comment),
+  // recomputed after every mutation made THROUGH the normal add/remove helpers -- but
+  // this direct `cargoStacks = d.cargoStacks...` assignment just above is not one of
+  // those, so on every load the mirrors sat stale at their module-init defaults
+  // (hasMiningLaser false) until the next unrelated cargo mutation happened to refresh
+  // them. For a Prospector this was silent but severe: openFitEquipConfirm's
+  // `kind === 'mining' && !hasMiningLaser` guard made clicking the (still actually
+  // owned and still cargoStacks-resident) mining laser tile in STORAGE do *nothing at
+  // all* -- no equip, no STORE prompt, no flash message -- on every login after the
+  // one that originally financed it, and mining itself reported "NO MINING LASER"
+  // despite the item plainly sitting in cargo. Recomputing the mirrors right here,
+  // immediately after cargoStacks is restored, fixes it at the source rather than
+  // patching every downstream reader.
+  syncFlatCargoMirrors();
   if(typeof d.nextStackId === 'number') nextStackId = d.nextStackId;
   // MIGRATION (per-station storage): old saves stored stationStorageStacks as a
   // single flat ARRAY shared by every station (a bug -- see the block comment near
@@ -15464,6 +15570,10 @@ async function fetchCloudSaveIntoPending(){
 // regardless of whether this succeeds, so a network hiccup never loses progress,
 // it just doesn't make it to the cloud until the next successful save.
 async function pushCloudSave(){
+  // (v0.36.0) item 2 FIX: once a HARDCORE permadeath wipe has started, never write
+  // this account's save row again this session -- see hardcoreWipeInProgress's own
+  // comment for exactly which autosave paths this was silently undoing the wipe.
+  if(hardcoreWipeInProgress) return false;
   if(!supabaseClient || !currentUser) return false;
   try{
     const { error } = await supabaseClient
@@ -15482,6 +15592,17 @@ async function pushCloudSave(){
 // handler) so a broken cloud-save setup is visible instead of silently behaving like
 // a data reset. NAMING STABILITY: new identifier, safe to add.
 let cloudSyncError = null;
+// (v0.36.0) item 2 FIX: set the instant a HARDCORE permadeath wipe starts (see
+// triggerHardcoreWipe below) and never cleared again this session -- pushCloudSave()
+// checks this and refuses to write once it's true. Without this, the visibilitychange
+// ('hidden') handler and/or the beforeunload handler fired by triggerHardcoreWipe's own
+// window.location.reload() would fire a completely ordinary autosave (pushCloudSave is
+// also called from a 45s interval, from SAVE & EXIT, from setCreditsAndSave, etc) that
+// silently RECREATED the very save row triggerHardcoreWipe had just deleted -- upsert-ing
+// the player's full pre-death state (ship, cargo, credits) right back in before the
+// reload actually tore the page down, completely undoing the permadeath wipe and leaving
+// the player right back where they died with everything intact on their next login.
+let hardcoreWipeInProgress = false;
 // A complete, idempotent setup script for the player_saves table this game's cloud
 // save/account features depend on -- safe to paste into the Supabase SQL editor
 // whether the table already exists, already has the server column, or doesn't exist
@@ -17054,6 +17175,12 @@ function updateMultiplayer(dt){
 // rows (keyed by user_id + server) and is untouched. Deliberately final: no
 // escape pod, no continuing the run.
 async function triggerHardcoreWipe(){
+  // (v0.36.0) item 2 FIX: set FIRST, before the delete even goes out -- see
+  // hardcoreWipeInProgress's own comment. This blocks every pushCloudSave() call
+  // (the 45s interval, visibilitychange-hidden, beforeunload, SAVE & EXIT, etc) from
+  // this point on, so nothing can race the delete below and resurrect the save row
+  // before window.location.reload() actually tears the page down.
+  hardcoreWipeInProgress = true;
   flashMessage('HARDCORE — SAVE WIPED', 'warn');
   logEvent('=== HARDCORE RUN OVER — SAVE DATA PERMANENTLY ERASED ===', 'warn');
   if(currentUser && supabaseClient){
