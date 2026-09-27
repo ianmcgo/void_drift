@@ -1047,6 +1047,39 @@
   .authRememberLabel input[type=checkbox]{ accent-color:var(--phosphor); width:15px; height:15px; cursor:pointer; }
   #authError{ color:var(--danger); font-size:12px; margin-top:10px; min-height:1em; letter-spacing:0.5px; }
   #authStatus{ color:var(--phosphor-dim); font-size:12px; margin-top:6px; min-height:1em; letter-spacing:0.5px; }
+  /* small secondary-style FORGOT PASSWORD link, same visual weight as the
+     REPORT BUGS mailto below on the boot screen -- a helper link, not a CTA */
+  #authForgotRow{ text-align:right; margin-top:2px; }
+  #authForgotLink{
+    background:none; border:none; padding:0; cursor:pointer;
+    font-family:inherit; font-size:11px; letter-spacing:0.5px;
+    color:var(--phosphor-dim); text-decoration:underline; opacity:0.85;
+  }
+  #authForgotLink:hover{ color:var(--phosphor); opacity:1; }
+
+  /* boot-screen "report bugs" mailto -- small secondary print sitting right under
+     the EMAIL field's row, same muted/small-print visual language as
+     #bootBuildStamp below LAUNCH (not a primary CTA). */
+  #bootReportBugRow{ text-align:center; margin:4px 0 2px; }
+  #bootReportBugRow a{ font-size:11px; letter-spacing:0.5px; color:var(--phosphor-dim); text-decoration:underline; opacity:0.8; }
+  #bootReportBugRow a:hover{ color:var(--phosphor); opacity:1; }
+
+  /* SET NEW PASSWORD mini-panel -- reached via a Supabase PASSWORD_RECOVERY
+     redirect landing (see onAuthStateChange below in the JS), same centered
+     modal language as #authPanel. */
+  #resetPasswordPanel{
+    display:none;
+    top:50%; left:50%; transform:translate(-50%,-50%);
+    width:min(92vw,360px);
+    background:var(--panel-bg-solid); border:1px solid var(--panel-border);
+    padding:20px 24px 22px; text-align:center; pointer-events:auto; z-index:120;
+  }
+  #resetPasswordPanel.show{display:block;}
+  #resetPasswordPanel h2{ font-family:'VT323',monospace; font-size:24px; letter-spacing:3px; color:var(--amber); margin:0 0 14px; text-shadow:0 0 8px rgba(255,176,32,0.5); }
+  #resetPasswordPanel p{ font-size:12px; color:var(--phosphor-dim); line-height:1.5; margin:0 0 10px; text-align:left; }
+  #resetPasswordError{ color:var(--danger); font-size:12px; margin-top:10px; min-height:1em; letter-spacing:0.5px; }
+  #resetPasswordStatus{ color:var(--phosphor-dim); font-size:12px; margin-top:6px; min-height:1em; letter-spacing:0.5px; }
+  #resetPasswordPanel .dbtns{display:flex; flex-direction:column; gap:10px; margin-top:14px;}
 
   /* HARDCORE server confirmation modal -- same centered modal language as
      #authPanel, stacked at the same layer so it can sit above the boot screen.
@@ -1142,6 +1175,18 @@
      language as the docking bay/wallet .psection headers elsewhere */
   #helpMenu .psection{font-size:12px; letter-spacing:1px; color:var(--amber); margin-top:12px; text-align:left;}
   #helpMenu .keys > div{margin-bottom:4px;}
+  /* BETA disclaimer callout -- placed prominently at the top of Help, same
+     red-bordered "serious warning" visual language as #hardcoreConfirmPanel
+     (minus the flame animation, which is HARDCORE-specific) rather than the
+     plain inline b.warn text used elsewhere in this panel. */
+  #helpBetaWarning{
+    border:1px solid var(--danger); background:rgba(255,77,77,0.08);
+    border-radius:2px; padding:10px 12px; margin:0 0 14px;
+    box-shadow:0 0 10px rgba(255,60,60,0.15);
+  }
+  #helpBetaWarning .psection{ margin-top:0; color:var(--danger); }
+  #helpBetaWarning p{ color:var(--phosphor-dim); margin:0 0 4px; }
+  #helpBetaWarning a{ color:var(--danger); }
 
   /* item: forced starter-ship-choice modal -- shown exactly once, immediately after
      a brand-new character picks their starting station and is auto-docked there (see
@@ -1665,10 +1710,13 @@
     <label for="authEmail">EMAIL</label>
     <input type="email" id="authEmail" autocomplete="email" spellcheck="false">
   </div>
+  <!-- small secondary-print helper link, not a primary CTA -- see #bootReportBugRow -->
+  <div id="bootReportBugRow"><a id="authReportBugLink" href="mailto:ianmcgon@gmail.com?subject=VOID%20DRIFT%20bug%20report">Report bugs or suggestions here</a></div>
   <div class="settingsRow">
     <label for="authPassword">PASSWORD</label>
     <input type="password" id="authPassword" autocomplete="current-password">
   </div>
+  <div id="authForgotRow"><button id="authForgotLink">FORGOT PASSWORD?</button></div>
   <div class="settingsRow authRememberRow">
     <label class="authRememberLabel"><input type="checkbox" id="authRemember"> REMEMBER PASSWORD</label>
   </div>
@@ -1678,6 +1726,28 @@
     <button class="cmdbtn" id="btnAuthLogin">LOG IN</button>
     <button class="cmdbtn" id="btnAuthRegister">REGISTER</button>
     <button class="cmdbtn danger" id="btnAuthCancel">CANCEL</button>
+  </div>
+</div>
+
+<!-- FORGOT PASSWORD flow: request panel is just a prompt() call (see JS), but the
+     "actually set a new password" half needs its own mini-form -- reached only via
+     a Supabase PASSWORD_RECOVERY redirect landing (onAuthStateChange in the JS). -->
+<div class="hud" id="resetPasswordPanel">
+  <h2>SET NEW PASSWORD</h2>
+  <p>You followed a password reset link. Choose a new password for your account below.</p>
+  <div class="settingsRow">
+    <label for="resetNewPassword">NEW PASSWORD</label>
+    <input type="password" id="resetNewPassword" autocomplete="new-password">
+  </div>
+  <div class="settingsRow">
+    <label for="resetConfirmPassword">CONFIRM</label>
+    <input type="password" id="resetConfirmPassword" autocomplete="new-password">
+  </div>
+  <div id="resetPasswordError"></div>
+  <div id="resetPasswordStatus"></div>
+  <div class="dbtns">
+    <button class="cmdbtn" id="btnResetPasswordSubmit">SET PASSWORD</button>
+    <button class="cmdbtn danger" id="btnResetPasswordCancel">CANCEL</button>
   </div>
 </div>
 
@@ -2139,6 +2209,11 @@
 
 <div class="hud" id="helpMenu">
   <h2>HOW TO PLAY</h2>
+  <div id="helpBetaWarning">
+    <div class="psection">⚠ BETA RELEASE</div>
+    <p>This is a <b>BETA</b> release. Items, progress, and account data may be lost or corrupted by future updates.</p>
+    <p>If you're stuck or something's gone wrong, contact the developer at <a href="mailto:ianmcgon@gmail.com">ianmcgon@gmail.com</a> — but please note: the developer does <b>NOT</b> have access to your login credentials, accounts/profiles <b>cannot</b> be retrieved or edited on your behalf, and lost items <b>cannot</b> be restored.</p>
+  </div>
   <p>Belt Runner-class shuttle, docked at Meridian Station. A warp gate nearby leads out
   to Haven Reach — a safe asteroid field patrolled by the Galactic Navy. Longer-range STAR MAP
   jumps and AUTOPILOT reach every other zone in the galaxy; physical inter-galaxy gates lead
@@ -2780,7 +2855,7 @@
 // compatibility depends on it. Add new keys, don't rename old ones.
 
 // ---------- version / build info (shown in the ESC settings menu) ----------
-const GAME_VERSION = "0.38.0";
+const GAME_VERSION = "0.40.0";
 const GAME_LAST_EDITED = "2026-09-26";
 const GAME_BUILD_TIME = "15:14 PT"; // wall-clock time this build was published, not just the date
 
@@ -6873,9 +6948,143 @@ function updateGreenRouteCargoShips(dt){
   }
 }
 
+// ---------- batch item 3: generalized gate<->gate / gate<->station cargo routes ----------
+// "Add the moving cargo transports to go between every warp gate -> warp gate. and
+// every warp gate -> station." The two fleets above (cargoShips: Meridian Station <->
+// its local belt-side gate; greenRouteCargoShips: Haven Reach's two green gates) are
+// each a single hand-picked route and are left fully intact (still working, not
+// replaced). This adds a THIRD fleet covering the full route set the request asks
+// for, scoped sensibly to "within the same zone" (a hauler can only physically fly a
+// bezier path between two points that share a zone -- crossing zones means WARPing,
+// a completely different mechanic) using the game's own zone/gate bookkeeping
+// (ALL_GATES/STATIONS/gatesInZone, already built above by the time this runs):
+//   - every station <-> that station's own local gate, one pair per station zone
+//     (station/b_station/c_station/d_station) -- Galaxy A's pair duplicates what
+//     cargoShips already flies (harmless, just a bit more traffic there); B/C/D
+//     stations get this route for the first time.
+//   - every gate <-> every OTHER gate that shares a zone, for every zone that has 2+
+//     gates (green has 3: local + 2 intergalaxy; b_green/c_green/d_green have 3 each)
+//     -- green's gateToStation<->gateConstruction pair duplicates greenRouteCargoShips
+//     (same reasoning), the rest are new.
+// Route picking mirrors the existing mechanism exactly: spawnGateRouteCargoShip()
+// picks uniformly at random from the full route list, then flips a coin for
+// direction -- the same two-step "random pick, random direction" pattern
+// spawnCargoShip/spawnGreenRouteCargoShip already use, just generalized from a single
+// hardcoded pair to the whole list.
+const CARGO_ROUTE_LIST = [];
+STATIONS.forEach(st=>{
+  if(st.localGate) CARGO_ROUTE_LIST.push({ zoneKey: st.zoneKey, aPos: st.mesh.position, aRadius: st.radius, bPos: st.localGate.mesh.position, bRadius: st.localGate.radius });
+});
+Array.from(new Set(ALL_GATES.map(g=>g.zoneKey))).forEach(zk=>{
+  const gates = gatesInZone(zk);
+  for(let i=0;i<gates.length;i++){
+    for(let j=i+1;j<gates.length;j++){
+      CARGO_ROUTE_LIST.push({ zoneKey: zk, aPos: gates[i].mesh.position, aRadius: gates[i].radius, bPos: gates[j].mesh.position, bRadius: gates[j].radius });
+    }
+  }
+});
+const GATE_ROUTE_MAX_CONCURRENT = 8; // spread across every zone combined -- more zones than either single-route fleet above, so a slightly higher cap
+const GATE_ROUTE_SPAWN_MIN = 20, GATE_ROUTE_SPAWN_MAX = 55;
+const GATE_ROUTE_SPEED_MIN = 8, GATE_ROUTE_SPEED_MAX = 16; // same "slowly move" pace as greenRouteCargoShips
+const gateRouteCargoShips = [];
+let gateRouteNextSpawnAt = GATE_ROUTE_SPAWN_MIN + Math.random()*(GATE_ROUTE_SPAWN_MAX-GATE_ROUTE_SPAWN_MIN);
+function spawnGateRouteCargoShip(){
+  if(!CARGO_ROUTE_LIST.length) return;
+  if(gateRouteCargoShips.length >= GATE_ROUTE_MAX_CONCURRENT) return;
+  const route = CARGO_ROUTE_LIST[Math.floor(Math.random()*CARGO_ROUTE_LIST.length)];
+  const forward = Math.random() < 0.5;
+  const startPos = (forward ? route.aPos : route.bPos).clone();
+  const endPos = (forward ? route.bPos : route.aPos).clone();
+  const startClear = (forward ? route.aRadius : route.bRadius) || 60;
+  const endClear = (forward ? route.bRadius : route.aRadius) || 60;
+  const straight = endPos.clone().sub(startPos);
+  const len = straight.length();
+  const fwd = len > 0.001 ? straight.clone().normalize() : new THREE.Vector3(0,0,-1);
+  startPos.addScaledVector(fwd, Math.min(startClear + 150, len*0.3));
+  let side = new THREE.Vector3(0,1,0).cross(fwd);
+  if(side.lengthSq() < 0.0001) side = new THREE.Vector3(1,0,0);
+  side.normalize();
+  const bulgeSide = Math.random() < 0.5 ? 1 : -1;
+  const bulgeMag = (600 + Math.random()*1400) * bulgeSide;
+  const vertMag = (Math.random()-0.5)*700;
+  const mid = startPos.clone().add(endPos).multiplyScalar(0.5).addScaledVector(side, bulgeMag).addScaledVector(new THREE.Vector3(0,1,0), vertMag);
+  const mesh = buildCargoTransportMesh();
+  mesh.position.copy(startPos);
+  mesh.userData.galaxy = galaxyOfZone(route.zoneKey);
+  scene.add(mesh);
+  const entry = {
+    mesh, start: startPos, mid, end: endPos, t: 0,
+    speed: GATE_ROUTE_SPEED_MIN + Math.random()*(GATE_ROUTE_SPEED_MAX-GATE_ROUTE_SPEED_MIN),
+    pathLen: Math.max(1, startPos.distanceTo(endPos)),
+    id: 'gateroute_' + (cargoShipNextNum++), name: rollCargoShipName(), radius: CARGO_SHIP_RADIUS,
+    type: 'cargo', hostile: false, alive: true, vel: new THREE.Vector3(0,0,0),
+    zoneKey: route.zoneKey, galaxy: galaxyOfZone(route.zoneKey),
+    dialogueArmed: true,
+    hp: CARGO_TRANSPORT_MAX_HP, maxHp: CARGO_TRANSPORT_MAX_HP, underAttack: false, underAttackTimer: 0, fleetArray: gateRouteCargoShips,
+    endClear: Math.max(80, endClear*0.5)
+  };
+  gateRouteCargoShips.push(entry);
+  allTargets.push(entry);
+  addOverviewRow(entry);
+}
+function updateGateRouteCargoShips(dt){
+  gateRouteNextSpawnAt -= dt;
+  if(gateRouteNextSpawnAt <= 0){
+    gateRouteNextSpawnAt = GATE_ROUTE_SPAWN_MIN + Math.random()*(GATE_ROUTE_SPAWN_MAX-GATE_ROUTE_SPAWN_MIN);
+    spawnGateRouteCargoShip();
+  }
+  for(let i=gateRouteCargoShips.length-1;i>=0;i--){
+    const c = gateRouteCargoShips[i];
+    if(c.underAttack){
+      c.underAttackTimer -= dt;
+      if(c.underAttackTimer <= 0) c.underAttack = false;
+    }
+    const effSpeed = c.underAttack ? c.speed * CARGO_FLEE_SPEED_MULT : c.speed;
+    c.t = Math.min(1, c.t + (effSpeed*dt)/c.pathLen);
+    const omt = 1 - c.t;
+    const newPos = new THREE.Vector3()
+      .addScaledVector(c.start, omt*omt)
+      .addScaledVector(c.mid, 2*omt*c.t)
+      .addScaledVector(c.end, c.t*c.t);
+    const moveDelta = newPos.clone().sub(c.mesh.position);
+    if(moveDelta.lengthSq() > 0.0001){
+      c.vel.copy(moveDelta).divideScalar(dt);
+      const dir = moveDelta.clone().normalize();
+      const q = new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0,0,-1), dir);
+      c.mesh.quaternion.slerp(q, Math.min(1, dt*2));
+    }
+    c.mesh.position.copy(newPos);
+    const cDist = shipState.pos.distanceTo(c.mesh.position);
+    if(cDist < 500){
+      if(c.dialogueArmed){
+        c.dialogueArmed = false;
+        logEvent(CARGO_DIALOGUE_LINES[Math.floor(Math.random()*CARGO_DIALOGUE_LINES.length)], 'warn');
+      }
+    } else {
+      c.dialogueArmed = true;
+    }
+    if(c.t >= 1 || c.mesh.position.distanceTo(c.end) < c.endClear){
+      scene.remove(c.mesh);
+      gateRouteCargoShips.splice(i,1);
+      const ai = allTargets.indexOf(c); if(ai>=0) allTargets.splice(ai,1);
+      if(command.target === c) setCommand('idle');
+      if(selected === c) selectTarget(null);
+      if(lockedId === c.id) lockedId = null;
+      removeOverviewRow(c);
+    }
+  }
+}
+
 // ---------- wreckage / salvage ----------
 const wreckData = [];
-const WRECK_LIFETIME = 240; // seconds before an unlooted wreck drifts away for good
+// batch item 2: "ship debris from destroyed ships" -- this spawnWreck()/'wreck' system
+// is confirmed to be a SEPARATE, older code path from the ambient Ship Debris system
+// above (shipdebris_N/spawnShipDebris), not the same object type with two triggers --
+// combat kills (pirate/Navy/player) drop 'wreck' entries via spawnWreck(), never
+// 'shipdebris' ones. WRECK_LIFETIME used to be a naive 240s (4 min) per-frame `life -=
+// dt` countdown; per batch item 2 this now despawns after the same 2-in-game-day
+// DEBRIS_DESPAWN_MS wall-clock window as Ship Debris (see spawnedAtMs below and
+// updateWrecks), up from 4 minutes.
 const LOOT_RANGE = 110;
 function buildWreckMesh(){
   const g = new THREE.Group();
@@ -6911,7 +7120,7 @@ function spawnWreck(pos, sourceName, ammoDrop, captainBox){
     // Galactic Navy's harder bounty missions (see MANUFACTURING-style item table)
     captainBox: !!captainBox,
     ammoDrop: Math.max(0, Math.round(ammoDrop||0)), // item 4: leftover iron bullets, lootable via SALVAGE
-    life: WRECK_LIFETIME
+    spawnedAtMs: Date.now()
   };
   if(captainBox) entry.blackBox = false;
   wreckData.push(entry);
@@ -6935,7 +7144,7 @@ function spawnPlayerWreck(pos, survivorStacks){
     type:'wreck', hostile:false, alive:true,
     scrap: 0, blackBox: false,
     playerLoot: survivorStacks, // [{itemType, qty}, ...]
-    life: WRECK_LIFETIME
+    spawnedAtMs: Date.now()
   };
   wreckData.push(entry);
   allTargets.push(entry);
@@ -6958,8 +7167,7 @@ function updateWrecks(dt){
     w.mesh.rotation.y += w.mesh.userData.spin.y*dt;
     w.mesh.rotation.z += w.mesh.userData.spin.z*dt;
     if(w.mesh.userData.glow) w.mesh.userData.glow.material.opacity = 0.4 + Math.sin(clock.elapsedTime*3 + i)*0.25;
-    w.life -= dt;
-    if(w.life <= 0) removeWreck(w);
+    if(Date.now() - w.spawnedAtMs >= DEBRIS_DESPAWN_MS) removeWreck(w);
   }
 }
 
@@ -7555,7 +7763,16 @@ const SHIP_DEBRIS_CAP_PER_ZONE = 3;
 // above, 14400 real sec = 4 real hours = 1 in-game day) per zone, +/-15% jitter so
 // every zone doesn't line up on the exact same tick.
 const SHIP_DEBRIS_INTERVAL_MS = SKILL_REAL_SECONDS_PER_INGAME_DAY * 1000;
-const SHIP_DEBRIS_LIFETIME = 2400; // 40 min unlooted -- opens the zone's cap slot back up for the next roll
+// batch item 2: "random spawn space debris" (this ambient Ship Debris system) and
+// "ship debris from destroyed ships" (combat-kill wreckage, see spawnWreck/WRECK_
+// LIFETIME below) both despawn after 2 in-game days unlooted. This used to be a
+// naive per-frame countdown (SHIP_DEBRIS_LIFETIME=2400 real sec / 40 min, `life -= dt`
+// each frame) -- replaced with the same wall-clock-anchored epoch pattern already
+// established for asteroid respawns (respawnAtEpoch, see updateAsteroidRespawns'
+// big comment above): each piece stores spawnedAtMs = Date.now() once, and
+// despawns once Date.now() - spawnedAtMs >= DEBRIS_DESPAWN_MS, so elapsed real time
+// counts correctly even across tab-inactive/background periods, not just per-frame dt.
+const DEBRIS_DESPAWN_MS = SKILL_REAL_SECONDS_PER_INGAME_DAY * 2 * 1000; // 2 in-game days = 8 real hours
 const shipDebrisData = [];
 let shipDebrisCounter = 0;
 const shipDebrisNextSpawnAt = {}; // zoneKey -> Date.now()-style ms timestamp
@@ -7640,24 +7857,38 @@ function shipDebrisLootWeight(entry){
   else if(entry.rareType === 'book') w += itemWeight('skill_book');
   return w;
 }
-function spawnShipDebris(cfg){
-  const inZoneCount = shipDebrisData.filter(d=>d.alive && d.zoneKey===cfg.zoneKey).length;
+// batch item 4 (NPC Prospectors): factored the actual mesh/entry-creation guts out of
+// spawnShipDebris (below) into this shared low-level helper so a combat kill can drop
+// a piece of ship debris AT THE KILL POSITION with SPECIFIC loot (see
+// spawnKillShipDebris), reusing the exact same object/type/despawn-timer machinery as
+// the ambient population-gated spawner rather than a parallel system. Still respects
+// SHIP_DEBRIS_CAP_PER_ZONE -- same reasoning as the ambient spawner (a zone that's
+// already full of drifting salvage doesn't get an unbounded pile-up just because a
+// kill happened to occur there too) -- so an on-kill drop can occasionally not appear
+// if that zone's 3 slots are all already occupied.
+function spawnShipDebrisEntryAt(pos, zoneKey, loot, labelForLog){
+  const inZoneCount = shipDebrisData.filter(d=>d.alive && d.zoneKey===zoneKey).length;
   if(inZoneCount >= SHIP_DEBRIS_CAP_PER_ZONE) return null;
   const mesh = buildShipDebrisMesh();
-  mesh.position.copy(randomShipDebrisPosition(cfg));
+  mesh.position.copy(pos);
   mesh.rotation.set(Math.random()*Math.PI, Math.random()*Math.PI, Math.random()*Math.PI);
   scene.add(mesh);
   shipDebrisCounter++;
-  const loot = rollShipDebrisLoot();
   const entry = Object.assign({
     mesh, id:'shipdebris_'+shipDebrisCounter, name:'Ship Debris', radius: 13,
-    type:'shipdebris', hostile:false, alive:true, zoneKey: cfg.zoneKey,
-    life: SHIP_DEBRIS_LIFETIME
+    type:'shipdebris', hostile:false, alive:true, zoneKey: zoneKey,
+    spawnedAtMs: Date.now()
   }, loot);
   shipDebrisData.push(entry);
   allTargets.push(entry);
   addOverviewRow(entry);
-  logEvent('SHIP DEBRIS DETECTED IN ' + cfg.zoneLabel, 'good');
+  if(labelForLog) logEvent(labelForLog, 'good');
+  return entry;
+}
+function spawnShipDebris(cfg){
+  const mesh0 = randomShipDebrisPosition(cfg);
+  const loot = rollShipDebrisLoot();
+  const entry = spawnShipDebrisEntryAt(mesh0, cfg.zoneKey, loot, 'SHIP DEBRIS DETECTED IN ' + cfg.zoneLabel);
   return entry;
 }
 function removeShipDebris(entry){
@@ -7688,8 +7919,7 @@ function updateShipDebris(dt){
     const spin = d.mesh.userData.spin;
     if(spin){ d.mesh.rotation.x += spin.x*dt; d.mesh.rotation.y += spin.y*dt; d.mesh.rotation.z += spin.z*dt; }
     if(d.mesh.userData.beacon) d.mesh.userData.beacon.material.opacity = 0.6 + Math.sin(clock.elapsedTime*3 + i)*0.3;
-    d.life -= dt;
-    if(d.life <= 0) removeShipDebris(d);
+    if(Date.now() - d.spawnedAtMs >= DEBRIS_DESPAWN_MS) removeShipDebris(d);
   }
 }
 
@@ -13159,6 +13389,7 @@ const STATION_ARRIVAL_CLEARANCE = 260; // must clear this distance from any carg
 function findClearStationArrivalPos(basePos, exitDir){
   const traffic = (typeof cargoShips !== 'undefined' ? cargoShips : [])
     .concat(typeof greenRouteCargoShips !== 'undefined' ? greenRouteCargoShips : [])
+    .concat(typeof gateRouteCargoShips !== 'undefined' ? gateRouteCargoShips : [])
     .filter(c => c && c.alive !== false && c.mesh);
   if(traffic.length === 0) return basePos;
   // build two axes perpendicular to the approach direction so candidate offsets stay
@@ -13433,6 +13664,253 @@ function currentZoneDef(){
   const key = currentZoneKey();
   return STAR_MAP_ZONES.find(z=>z.key===key) || STAR_MAP_ZONES[0];
 }
+
+// ---------- batch item 4: NPC Prospectors ----------
+// Brand-new peaceful-miner NPC, built on the same spawn/AI/dialogue infrastructure as
+// pirates/Navy/cargo transports rather than a parallel system: reuses buildMiningShip
+// (the player's own Prospector-class hull), zoneMiningNodes/applyAsteroidScale/
+// depleteAsteroid/spawnMiningDebris (the exact same mining mechanics a player uses),
+// and spawnShipDebrisEntryAt (the same Ship Debris object/despawn-timer machinery,
+// see batch item 2) for its on-kill loot drop.
+//
+// INTERPRETATION CALL (flagged per the batch instructions -- genuinely ambiguous
+// wording): "go after the lowest rarity ore in an area first" is read as "go after
+// the LEAST RARE (most common/abundant) ore type first" -- i.e. iron before silver
+// before diamond -- the natural behavior for an efficiency-minded NPC miner grabbing
+// the easiest available ore, not "the rarest ore" (the opposite reading). See
+// zoneMostCommonOreType below, which picks the zone's oreWeights entry with the
+// HIGHEST weight (= most common = "lowest" on the rarity scale).
+//
+// Spawn cadence: modeled on the existing pirate-intrusion pattern (ZONE_PIRATE_
+// CONFIGS' greenintrusion entry -- a single-slot cap per zone, respawnAt measured in
+// clock.elapsedTime, paused while no player is present in that zone so it can never
+// spawn behind an absent player's back) rather than the ambient Ship Debris system's
+// wall-clock/population-gated pattern -- prospectors are a per-zone LOCAL presence
+// event tied to a player actually being there to see them, same as a pirate
+// intrusion, not a background world-simulation tick that needs to keep ticking while
+// nobody's online. Cadence itself (4-9 minutes per zone, cap 1 concurrent per zone) is
+// deliberately shorter/more common than the pirate intrusion's 5-10 minutes, since a
+// peaceful miner is meant to read as routine background traffic, not a rare event.
+const PROSPECTOR_CARGO_CAP = 150; // NPC ore hold -- well under the player Prospector-
+// class hull's own 900 cargoCapacity (SHIP_CLASSES.mining) so an NPC's whole
+// mine-fill-warp cycle completes in a couple of minutes rather than camping a zone
+// indefinitely; chosen as "a sensible fraction of the player ship it borrows its hull
+// from", not the same number, since this one has no player piloting it to defend it.
+const PROSPECTOR_MINING_INTERVAL = 2.4; // slower than the player's 1.5s MINING_INTERVAL -- background flavor, not meant to out-mine the player
+const PROSPECTOR_MINING_YIELD = 7;
+const PROSPECTOR_MOVE_SPEED = 34, PROSPECTOR_ACCEL = 40;
+const PROSPECTOR_MAX_HP = CARGO_TRANSPORT_MAX_HP; // 40 -- same "a couple of hits" squishiness as a cargo transport (see PIRATE_CARGO_DAMAGE=22)
+const PROSPECTOR_SPAWN_MIN = 240, PROSPECTOR_SPAWN_MAX = 540; // 4-9 minutes per zone
+const PROSPECTOR_CAP_PER_ZONE = 1;
+const PROSPECTOR_FLEE_SPEED_MULT = 2.0;
+const PROSPECTOR_FLEE_ESCAPE_DIST = 2600; // clear of the attacker by this much = successfully got away (despawns, no loot -- only an actual kill drops loot)
+const prospectorData = [];
+let prospectorCounter = 0;
+const prospectorNextSpawnAt = {};
+// zones with a live asteroid/ore field -- automatically stays correct if new zones
+// with their own `ast` block are added later, no hand-maintained list
+const PROSPECTOR_ZONE_KEYS = Array.from(new Set(asteroidData.map(a=>a.zoneKey)));
+function zoneMostCommonOreType(zoneKey){
+  const nodes = zoneMiningNodes(zoneKey);
+  const weights = nodes.length ? nodes[0].oreWeights : null;
+  if(!weights) return null;
+  let best = null, bestW = -1;
+  Object.keys(weights).forEach(k=>{ if(weights[k] > bestW){ bestW = weights[k]; best = k; } });
+  return best;
+}
+function pickProspectorTargetAsteroid(p){
+  const nodes = zoneMiningNodes(p.zoneKey).filter(a=>a.alive);
+  if(!nodes.length) return null;
+  const matching = nodes.filter(a=>a.oreType === p.oreType);
+  const pool = matching.length ? matching : nodes; // falls back to whatever's alive if its preferred ore is temporarily all mined out
+  let best = null, bestD = Infinity;
+  pool.forEach(a=>{ const d = p.mesh.position.distanceTo(a.mesh.position); if(d < bestD){ bestD = d; best = a; } });
+  return best;
+}
+// 5 new dialogue lines, same broadcast-range (500m)/logEvent delivery as CARGO_
+// DIALOGUE_LINES/NAVY_DIALOGUE_LINES -- peaceful belt-miner flavor
+const PROSPECTOR_DIALOGUE_LINES = [
+  "PROSPECTOR: Sweet vein here, sweet vein. Hold still, you beauty.",
+  'PROSPECTOR: Just an independent operator, pilot. No trouble from me.',
+  "PROSPECTOR: Hopper's filling up nice. Another good run.",
+  'PROSPECTOR: Keep your distance from the rock face, I need the clean approach.',
+  "PROSPECTOR: Pirates out this way, I hear. Best keep one eye on the scope."
+];
+// threat/flee line, same one-shot-per-attack-window pattern as CARGO_FLEE_LINES
+const PROSPECTOR_THREAT_LINES = [
+  "PROSPECTOR: Taking fire?! I'm unarmed, I'm unarmed! Punching out!",
+  'PROSPECTOR: Mayday! Dumping the mining laser lock, full burn away!'
+];
+function spawnProspector(zoneKey){
+  if(prospectorData.filter(p=>p.alive && p.zoneKey===zoneKey).length >= PROSPECTOR_CAP_PER_ZONE) return null;
+  const zdef = STAR_MAP_ZONES.find(z=>z.key===zoneKey);
+  if(!zdef) return null;
+  const oreType = zoneMostCommonOreType(zoneKey);
+  if(!oreType) return null;
+  const ang = Math.random()*Math.PI*2;
+  const rad = 1200 + Math.random()*2000;
+  const pos = new THREE.Vector3(zdef.center.x + Math.cos(ang)*rad, zdef.center.y + (Math.random()-0.5)*600, zdef.center.z + Math.sin(ang)*rad);
+  const mesh = buildMiningShip();
+  mesh.position.copy(pos);
+  if(mesh.userData.glows) mesh.userData.glows.forEach(m=>{ m.material.opacity = 0.6; });
+  if(mesh.userData.exhausts) mesh.userData.exhausts.forEach(m=>{ m.material.opacity = 0.5; });
+  mesh.userData.galaxy = galaxyOfZone(zoneKey);
+  scene.add(mesh);
+  prospectorCounter++;
+  const entry = {
+    mesh, id:'prospector_'+prospectorCounter, name:'NPC Prospector ' + toRoman(1 + Math.floor(Math.random()*40)),
+    radius: 18, type:'prospector', hostile:false, alive:true,
+    zoneKey, zoneLabel: zdef.label, zoneCenter: zdef.center, zoneRadius: zdef.radius, galaxy: galaxyOfZone(zoneKey),
+    oreType, cargo: 0, targetAsteroid: null,
+    vel: new THREE.Vector3(), hp: PROSPECTOR_MAX_HP, maxHp: PROSPECTOR_MAX_HP,
+    underAttack: false, underAttackTimer: 0, fleeing: false, fleeFromPos: null,
+    dialogueArmed: true, fleeDialogueArmed: true, mineCooldown: 0
+  };
+  prospectorData.push(entry);
+  allTargets.push(entry);
+  addOverviewRow(entry);
+  audio.warp();
+  spawnHitFlash(pos, 0x5cc9ff);
+  logEvent('NPC PROSPECTOR WARPED INTO ' + zdef.label + ' — TARGETING ' + ORE_DISPLAY_NAMES[oreType].toUpperCase(), 'good');
+  return entry;
+}
+function despawnProspector(p){
+  p.alive = false;
+  audio.warp();
+  spawnHitFlash(p.mesh.position.clone(), 0x5cc9ff);
+  logEvent(p.name.toUpperCase() + ' WARPED OUT OF ' + p.zoneLabel, 'good');
+  scene.remove(p.mesh);
+  const pi = prospectorData.indexOf(p); if(pi>=0) prospectorData.splice(pi,1);
+  const ai = allTargets.indexOf(p); if(ai>=0) allTargets.splice(ai,1);
+  removeOverviewRow(p);
+  if(command.target === p) setCommand('idle');
+  if(selected === p) selectTarget(null);
+  if(lockedId === p.id) lockedId = null;
+  prospectorNextSpawnAt[p.zoneKey] = clock.elapsedTime + PROSPECTOR_SPAWN_MIN + Math.random()*(PROSPECTOR_SPAWN_MAX-PROSPECTOR_SPAWN_MIN);
+}
+function killProspector(p){
+  p.alive = false;
+  audio.explosion();
+  spawnHitFlash(p.mesh.position.clone(), 0xff6a3d);
+  flashMessage(p.name.toUpperCase() + ' DESTROYED', 'warn');
+  logEvent(p.name.toUpperCase() + ' DESTROYED BY PIRATES', 'warn');
+  // item 4: "5% of their ore is on their debris if pirates kill them" -- same Ship
+  // Debris object/despawn-timer machinery as everywhere else (batch item 2), spawned
+  // AT the kill position with a specific loot payload rather than the ambient
+  // spawner's random roll
+  const lootQty = Math.round(p.cargo * 0.05);
+  if(lootQty > 0 && p.oreType){
+    spawnShipDebrisEntryAt(p.mesh.position.clone(), p.zoneKey,
+      { scrap: 0, oreType: p.oreType, oreQty: lootQty, rareType: null, rareBlueprint: null, rareBookSkill: null, rareBookLevel: null },
+      'SHIP DEBRIS DETECTED — SALVAGED PROSPECTOR WRECKAGE');
+  }
+  scene.remove(p.mesh);
+  const pi = prospectorData.indexOf(p); if(pi>=0) prospectorData.splice(pi,1);
+  const ai = allTargets.indexOf(p); if(ai>=0) allTargets.splice(ai,1);
+  removeOverviewRow(p);
+  if(command.target === p) setCommand('idle');
+  if(selected === p) selectTarget(null);
+  if(lockedId === p.id) lockedId = null;
+  prospectorNextSpawnAt[p.zoneKey] = clock.elapsedTime + PROSPECTOR_SPAWN_MIN + Math.random()*(PROSPECTOR_SPAWN_MAX-PROSPECTOR_SPAWN_MIN);
+}
+// item 4: "pirates do attack them if able" -- called from updatePirates alongside
+// (not instead of) the existing cargo-transport targeting, see nearestAliveHaulerInRange
+function damageProspector(entry, dmg, attackerPos){
+  if(!entry.alive || entry.hp === undefined) return;
+  entry.hp -= dmg;
+  entry.underAttack = true;
+  entry.underAttackTimer = 8;
+  entry.fleeing = true; // item 4: "confirm whether NPC Prospectors should also flee" -- yes, same as cargo transports
+  entry.fleeFromPos = attackerPos.clone();
+  if(entry.fleeDialogueArmed !== false){
+    entry.fleeDialogueArmed = false;
+    logEvent(PROSPECTOR_THREAT_LINES[Math.floor(Math.random()*PROSPECTOR_THREAT_LINES.length)], 'warn');
+  }
+  if(entry.hp <= 0) killProspector(entry);
+}
+function updateProspectors(dt){
+  PROSPECTOR_ZONE_KEYS.forEach(zk=>{
+    const zdef = STAR_MAP_ZONES.find(z=>z.key===zk);
+    if(!zdef) return;
+    if(prospectorNextSpawnAt[zk] === undefined) prospectorNextSpawnAt[zk] = clock.elapsedTime + PROSPECTOR_SPAWN_MIN + Math.random()*(PROSPECTOR_SPAWN_MAX-PROSPECTOR_SPAWN_MIN);
+    if(prospectorData.some(p=>p.alive && p.zoneKey===zk)) return;
+    if(!playerInZone(zdef.center, zdef.radius)){
+      prospectorNextSpawnAt[zk] += dt; // paused while nobody's there to see it -- same pattern as pirate respawnAt
+      return;
+    }
+    if(clock.elapsedTime >= prospectorNextSpawnAt[zk]) spawnProspector(zk);
+  });
+  for(let i=prospectorData.length-1;i>=0;i--){
+    const p = prospectorData[i];
+    if(!p.alive) continue;
+    if(p.fleeing){
+      if(p.underAttack){ p.underAttackTimer -= dt; if(p.underAttackTimer <= 0) p.underAttack = false; }
+      const away = p.mesh.position.clone().sub(p.fleeFromPos || p.zoneCenter);
+      const dir = away.lengthSq() > 0.0001 ? away.normalize() : new THREE.Vector3(0,0,-1);
+      const desired = dir.multiplyScalar(PROSPECTOR_MOVE_SPEED*PROSPECTOR_FLEE_SPEED_MULT);
+      const diff = desired.sub(p.vel);
+      const maxDelta = PROSPECTOR_ACCEL*dt;
+      if(diff.length() > maxDelta) diff.setLength(maxDelta);
+      p.vel.add(diff);
+      p.mesh.position.addScaledVector(p.vel, dt);
+      if(p.vel.lengthSq() > 1){
+        const q = new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0,0,-1), p.vel.clone().normalize());
+        p.mesh.quaternion.slerp(q, Math.min(1, dt*3));
+      }
+      const escapeDist = p.fleeFromPos ? p.mesh.position.distanceTo(p.fleeFromPos) : 0;
+      if(escapeDist > PROSPECTOR_FLEE_ESCAPE_DIST){ despawnProspector(p); continue; }
+      continue;
+    }
+    if(!p.targetAsteroid || !p.targetAsteroid.alive){
+      p.targetAsteroid = pickProspectorTargetAsteroid(p);
+    }
+    if(p.targetAsteroid){
+      const distSurf = p.mesh.position.distanceTo(p.targetAsteroid.mesh.position) - p.targetAsteroid.radius;
+      if(distSurf > MINING_RANGE*0.8){
+        const dir = p.targetAsteroid.mesh.position.clone().sub(p.mesh.position).normalize();
+        const desired = dir.multiplyScalar(PROSPECTOR_MOVE_SPEED);
+        const diff = desired.sub(p.vel);
+        const maxDelta = PROSPECTOR_ACCEL*dt;
+        if(diff.length() > maxDelta) diff.setLength(maxDelta);
+        p.vel.add(diff);
+        p.mesh.position.addScaledVector(p.vel, dt);
+        if(p.vel.lengthSq() > 1){
+          const q = new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0,0,-1), p.vel.clone().normalize());
+          p.mesh.quaternion.slerp(q, Math.min(1, dt*3));
+        }
+      } else {
+        p.vel.multiplyScalar(Math.max(0, 1 - dt*2));
+        p.mesh.position.addScaledVector(p.vel, dt);
+        p.mineCooldown -= dt;
+        if(p.mineCooldown <= 0){
+          p.mineCooldown = PROSPECTOR_MINING_INTERVAL;
+          const capacityLeft = PROSPECTOR_CARGO_CAP - p.cargo;
+          const amt = Math.min(PROSPECTOR_MINING_YIELD, p.targetAsteroid.oreAmount, capacityLeft);
+          if(amt > 0){
+            p.targetAsteroid.oreAmount -= amt;
+            p.cargo += amt;
+            applyAsteroidScale(p.targetAsteroid);
+            spawnMiningDebris(p.targetAsteroid.mesh.position.clone());
+            if(p.targetAsteroid.oreAmount <= 0){
+              const zk = p.targetAsteroid.zoneKey;
+              depleteAsteroid(p.targetAsteroid);
+              pushZoneMiningNodesToCloud(zk);
+              p.targetAsteroid = null;
+            }
+          }
+          if(p.cargo >= PROSPECTOR_CARGO_CAP){ despawnProspector(p); continue; }
+        }
+      }
+    }
+    const pDist = shipState.pos.distanceTo(p.mesh.position);
+    if(pDist < 500){
+      if(p.dialogueArmed){ p.dialogueArmed = false; logEvent(PROSPECTOR_DIALOGUE_LINES[Math.floor(Math.random()*PROSPECTOR_DIALOGUE_LINES.length)], 'warn'); }
+    } else {
+      p.dialogueArmed = true;
+    }
+  }
+}
+
 let starMapCharge = null; // { timer, zone } while a long-range warp is charging
 function toggleStarMapPanel(show){
   const panel = document.getElementById('starMapPanel');
@@ -16810,6 +17288,77 @@ if(supabaseClient){
       }
     }
   }).catch(()=>{});
+
+  // ---------- FORGOT PASSWORD ----------
+  // Reuses the EMAIL field already sitting right above it in the same #authPanel
+  // form instead of a separate window.prompt() -- a real browser prompt()/confirm()
+  // dialog is suppressed entirely inside the Artifact viewer's sandboxed iframe
+  // (see #hardcoreConfirmPanel's own comment on confirm() above), so this sticks to
+  // in-page UI the same way the rest of this file already does.
+  document.getElementById('authForgotLink').addEventListener('click', async ()=>{
+    if(cloudSyncInFlight) return;
+    const email = document.getElementById('authEmail').value.trim();
+    if(!email){ setAuthError('ENTER YOUR EMAIL ABOVE FIRST'); return; }
+    cloudSyncInFlight = true;
+    setAuthError(''); setAuthBusy(true, 'SENDING RESET LINK…');
+    try{
+      // Supabase's own API deliberately returns a generic success response here
+      // whether or not the email matches a real account (never leaks which emails
+      // have accounts), so the UI copy below can't claim to know either way.
+      const { error } = await supabaseClient.auth.resetPasswordForEmail(email, { redirectTo: window.location.href });
+      if(error) setAuthError(error.message.toUpperCase());
+      else setAuthBusy(false, 'CHECK YOUR EMAIL FOR A PASSWORD RESET LINK');
+    }catch(e){ setAuthError('NETWORK ERROR -- TRY AGAIN'); }
+    cloudSyncInFlight = false;
+    if(document.getElementById('authStatus').textContent !== 'CHECK YOUR EMAIL FOR A PASSWORD RESET LINK') setAuthBusy(false, '');
+  });
+
+  // ---------- SET NEW PASSWORD (password-recovery landing) ----------
+  // Supabase fires a PASSWORD_RECOVERY auth event when the player lands back on
+  // this same page (redirectTo above) via a valid reset-link click -- that's the
+  // signal to show the SET NEW PASSWORD mini-form rather than leave them at a dead
+  // end. The recovery session it establishes is short-lived and scoped only to
+  // calling updateUser({password}) below.
+  function setResetPasswordError(msg){ const el = document.getElementById('resetPasswordError'); if(el) el.textContent = msg || ''; }
+  function setResetPasswordBusy(busy, statusText){
+    const btn = document.getElementById('btnResetPasswordSubmit');
+    if(btn) btn.disabled = busy;
+    const statusEl = document.getElementById('resetPasswordStatus');
+    if(statusEl) statusEl.textContent = statusText || '';
+  }
+  supabaseClient.auth.onAuthStateChange((event, session)=>{
+    if(event === 'PASSWORD_RECOVERY'){
+      document.getElementById('authPanel').classList.remove('show');
+      setResetPasswordError(''); setResetPasswordBusy(false, '');
+      document.getElementById('resetNewPassword').value = '';
+      document.getElementById('resetConfirmPassword').value = '';
+      document.getElementById('resetPasswordPanel').classList.add('show');
+    }
+  });
+  document.getElementById('btnResetPasswordCancel').addEventListener('click', ()=>{
+    document.getElementById('resetPasswordPanel').classList.remove('show');
+  });
+  document.getElementById('btnResetPasswordSubmit').addEventListener('click', async ()=>{
+    if(cloudSyncInFlight) return;
+    const pw = document.getElementById('resetNewPassword').value;
+    const confirmPw = document.getElementById('resetConfirmPassword').value;
+    if(!pw || pw.length < 6){ setResetPasswordError('PASSWORD MUST BE AT LEAST 6 CHARACTERS'); return; }
+    if(pw !== confirmPw){ setResetPasswordError('PASSWORDS DO NOT MATCH'); return; }
+    cloudSyncInFlight = true;
+    setResetPasswordError(''); setResetPasswordBusy(true, 'UPDATING PASSWORD…');
+    try{
+      const { data, error } = await supabaseClient.auth.updateUser({ password: pw });
+      if(error){ setResetPasswordError(error.message.toUpperCase()); setResetPasswordBusy(false, ''); }
+      else{
+        if(data && data.user) currentUser = data.user;
+        setResetPasswordBusy(false, 'PASSWORD UPDATED');
+        updateAccountUI();
+        flashMessage('PASSWORD UPDATED', 'good');
+        setTimeout(()=>{ document.getElementById('resetPasswordPanel').classList.remove('show'); }, 1400);
+      }
+    }catch(e){ setResetPasswordError('NETWORK ERROR -- TRY AGAIN'); setResetPasswordBusy(false, ''); }
+    cloudSyncInFlight = false;
+  });
 }
 updateAccountUI();
 
@@ -17765,6 +18314,7 @@ function overviewLabel(entry){
   if(entry.type === 'gate') return '◎ ' + nm;
   if(entry.type === 'navy') return '◆ ' + nm;
   if(entry.type === 'cargo') return '▤ ' + nm;
+  if(entry.type === 'prospector') return '⛏ ' + nm;
   if(entry.type === 'celestial') return (entry.name.indexOf('Sun')>=0 ? '☉ ' : '● ') + nm;
   return nm;
 }
@@ -18405,6 +18955,7 @@ function updateProjectiles(dt){
       if(p.mesh.position.distanceTo(p.npcTarget.mesh.position) < p.npcTarget.radius + 40){
         hit = true;
         if(p.npcTarget.type === 'cargo') damageCargoShip(p.npcTarget, p.damage, p.mesh.position);
+        else if(p.npcTarget.type === 'prospector') damageProspector(p.npcTarget, p.damage, p.mesh.position); // batch item 4
         else damagePirate(p.npcTarget, p.damage, false); // false: Navy-sourced kill, no player credit (see damagePirate)
         spawnHitFlash(p.mesh.position, 0xff6a3d);
       }
@@ -18678,7 +19229,13 @@ const PIRATE_CARGO_DAMAGE = 22; // 2 hits kills a CARGO_TRANSPORT_MAX_HP=40 tran
 const PIRATE_CARGO_FIRE_INTERVAL = 1.6;
 function nearestAliveCargoShipInRange(pos, range){
   let best = null, bestDist = range;
-  cargoShips.concat(greenRouteCargoShips).forEach(c=>{
+  // batch item 4: NPC Prospectors folded into the exact same nearest-target pool as
+  // cargo transports -- "pirates do attack them if able", ranked as a preferred
+  // target over the player exactly like a cargo hauler (same reasoning: juicy, weak,
+  // fleeing target). updatePirateVsCargo below is fully generic (mesh/position/alive
+  // only) so no separate movement/fire code is needed for prospectors -- only the
+  // hit-resolution switch (see p.npcTarget.type === 'prospector' below) differs.
+  cargoShips.concat(greenRouteCargoShips).concat(gateRouteCargoShips).concat(prospectorData).forEach(c=>{
     if(!c.alive) return;
     const d = pos.distanceTo(c.mesh.position);
     if(d < bestDist){ bestDist = d; best = c; }
@@ -20820,6 +21377,7 @@ function animate(){
   // only the PLAYER's own ship movement/input/commands/weapons are gated behind
   // `inspecting` below (see updateShip/updatePlayerWeapons). Inspecting is otherwise
   // just a different camera, not a pause.
+  updateProspectors(dt);
   updatePirates(dt);
   updateWrecks(dt);
   updateRedZoneDecorWrecks(dt);
@@ -20833,6 +21391,7 @@ function animate(){
   updateNavyShips(dt);
   updateCargoShips(dt);
   updateGreenRouteCargoShips(dt);
+  updateGateRouteCargoShips(dt);
 
   // docking-approach and warp-jump are short timed cinematics that briefly take over
   // ship movement and lock out normal player input (see inputLocked()); their
