@@ -2768,7 +2768,7 @@
 // compatibility depends on it. Add new keys, don't rename old ones.
 
 // ---------- version / build info (shown in the ESC settings menu) ----------
-const GAME_VERSION = "0.34.0";
+const GAME_VERSION = "0.35.1";
 const GAME_LAST_EDITED = "2026-09-26";
 const GAME_BUILD_TIME = "15:14 PT"; // wall-clock time this build was published, not just the date
 
@@ -7822,9 +7822,9 @@ const ITEM_WEIGHTS = {
 // each entry, checked generically against knownBlueprints -- see startManufacturing/
 // renderManufacturingPanel below, which loop over MANUFACTURING_RECIPES and filter by
 // requiresBlueprint rather than hardcoding). `inputs` is a generic [{type,qty}] list
-// (replaces the old single-material ironPerUnit field -- BLUEPRINT_IRON_BULLETS below
-// keeps its original 2-iron-ore-per-bullet cost, just reshaped into the new generic
-// field) so a recipe can require any mix of ore/ingots. `minSkill` (optional) additionally
+// (replaces the old single-material ironPerUnit field. BLUEPRINT_IRON_BULLETS below
+// was later fixed in v0.35.1 to use INGOT_IRON like every other bullet tier -- see
+// that recipe's own comment) so a recipe can require any mix of ore/ingots. `minSkill` (optional) additionally
 // gates BUILDING (not just knowing the blueprint) on a skill level, same convention as
 // weapon/shield tier EQUIP gating.
 //
@@ -7848,10 +7848,18 @@ const ITEM_WEIGHTS = {
 //    weapon/shield, which ARE buyable) or its equivalent value table (for the mining
 //    laser tiers 1-3, which are build-only) -- see the per-recipe comments.
 const MANUFACTURING_RECIPES = {
+  // (v0.35.1) item 8 bugfix: this recipe was a leftover from before the ingot-based
+  // material-tier rework (v0.26.0/v0.28.0) -- it still consumed raw 'iron' ORE
+  // (qty:2) and only produced 1 bullet/unit, unlike the copper/silver/gold tiers
+  // below which all consume 1 INGOT and produce a 5-bullet batch. Fixed to match
+  // that shape. Costed BELOW copper (8cr/4s) per the established iron<copper<
+  // silver<gold ordering across cost/time/material value (see SMELT_FEE_PER_INGOT):
+  // batch cost = 1*INGOT_IRON(75cr) + 4cr fee = 79cr, sold via bulletUnitSellPrice
+  // (BULLET_SELL_VALUE_MULT_OVER_COST=1.7x) same as every other tier -- ~70% margin.
   [BLUEPRINT_IRON_BULLETS]: {
     requiresBlueprint: BLUEPRINT_IRON_BULLETS,
-    outputType: AMMO_ITEM_TYPE, outputQtyPerUnit: 1, label: 'Iron Bullet Manufacturing',
-    inputs: [{ type:'iron', qty:2 }], creditsPerUnit: 1, craftSeconds: 3
+    outputType: AMMO_ITEM_TYPE, outputQtyPerUnit: 5, label: 'Iron Bullet Manufacturing',
+    inputs: [{ type:INGOT_IRON, qty:1 }], creditsPerUnit: 4, craftSeconds: 3
   },
   // ---- SMELTING -- one recipe (and one dedicated Ingot Blueprint, item 1) per ore
   // type, ORE_PER_INGOT ore -> 1 ingot + a small per-ingot smelting fee. See also
@@ -11339,7 +11347,10 @@ function itemDisplayDef(itemType){
     const sell = Math.round([MINING_LASER_COST, 1200, 2800, 6000][t] * 0.4);
     return { key:itemType, label:'Mining Laser LV.'+t, color:'#6dffc2', round:false, sellPrice:sell };
   }
-  if(itemType === AMMO_ITEM_TYPE) return { key:itemType, label:'Iron Bullets', color:'#c9a227', round:false, sellPrice:AMMO_SELL_UNIT_PRICE };
+  // (v0.35.1) item 8 bugfix: was a flat AMMO_SELL_UNIT_PRICE (a leftover from the
+  // old raw-ore recipe) which massively undersold a bullet now costing an ingot to
+  // make -- switched to the same bulletUnitSellPrice mechanism the other 3 tiers use
+  if(itemType === AMMO_ITEM_TYPE) return { key:itemType, label:'Iron Bullets', color:'#c9a227', round:false, sellPrice:bulletUnitSellPrice(BLUEPRINT_IRON_BULLETS) };
   // item 4 (v0.28.0): sell price derived from the actual ingot+fee cost to
   // manufacture a batch (see bulletUnitSellPrice/BULLET_SELL_VALUE_MULT_OVER_COST
   // above) rather than a flat hand-picked number, so it's always ~70% profit over cost
@@ -16330,6 +16341,26 @@ if(supabaseClient){
       currentUser = data.session.user;
       updateAccountUI();
       fetchCloudSaveIntoPending().then(updateSaveFoundNote);
+      // (v0.35.0) item 3: a RESTORED session (page reload/relogin picking up an
+      // already-persisted Supabase auth token, rather than a fresh manual LOG IN)
+      // used to still force the player back through clicking their SERVER choice
+      // again before LAUNCH would even appear -- see serverChosenThisBoot's own
+      // comment above, "a remembered previous choice alone doesn't count" -- which
+      // is exactly right for a genuinely NEW boot, but felt indistinguishable from
+      // actually being logged out when it happened on every single reload too. If
+      // this account already explicitly chose a server on some earlier boot
+      // (voidDriftServerChoice in localStorage -- the same value currentServer's
+      // own declaration below already seeds itself from) skip that re-click for a
+      // restored session and go straight to LAUNCH being available. HARDCORE is
+      // deliberately excluded -- permadeath stakes are high enough that re-
+      // confirming which server you're about to fly on is worth keeping even here.
+      let storedServerChoice = null;
+      try{ storedServerChoice = localStorage.getItem('voidDriftServerChoice'); }catch(e){}
+      if(storedServerChoice && storedServerChoice !== 'HARDCORE'){
+        serverChosenThisBoot = true;
+        updateServerSelectUI();
+        updateBootFlowVisibility();
+      }
     }
   }).catch(()=>{});
 }
@@ -17511,6 +17542,65 @@ setInterval(()=>{ if(typeof checkAchievements === 'function') checkAchievements(
 // player is out flying (not docked anywhere) still gets settled into their
 // account within half a minute, rather than waiting for their next dock.
 setInterval(()=>{ if(typeof claimAuctionPayouts === 'function') claimAuctionPayouts(); }, 30000);
+
+// ---------- periodic autosave + background-tab handling (v0.35.0, item 2/3/4) ----------
+// Before this, pushCloudSave() was ONLY ever called from SAVE & EXIT, AFK
+// auto-logout, and auction-payout settlement -- so any progress since the last
+// of those (an entire play session, easily) was gone outright on a crash, a
+// closed tab, or a plain page reload/Ctrl+R that never reaches SAVE & EXIT.
+// 45s keeps a lost session's cost down to well under a minute of the things that
+// AREN'T already wall-clock-anchored (credits, cargo, ledger, position, XP...);
+// Manufacturing/Library/skill training/warps/loans are all wall-clock-anchored
+// already and resolve correctly from Date.now() math regardless of how often
+// this runs (see checkManufacturingCompletion/checkLibraryCraftCompletion), so
+// this interval is really about everything else. Once per 45s per signed-in
+// player is well within reasonable write-rate territory for a single upserted
+// row (see pushCloudSave's onConflict:'user_id,server').
+setInterval(()=>{ if(gameLaunched && currentUser) pushCloudSave(); }, 45000);
+document.addEventListener('visibilitychange', ()=>{
+  if(document.hidden){
+    // Tab going hidden (switching tabs, minimizing, phone screen lock, or the
+    // first step of closing/reloading the tab in every major browser) is a much
+    // better save trigger than beforeunload: the page is very likely NOT about
+    // to be destroyed (most of the time it's just backgrounded), so an ordinary
+    // fire-and-forget pushCloudSave() here has every reason to actually complete
+    // -- unlike a beforeunload-triggered save (see below), which can't rely on
+    // the page staying alive long enough to finish.
+    if(gameLaunched && currentUser) pushCloudSave();
+  } else {
+    // (item 4) Regaining focus after being backgrounded. Rendering AND the
+    // player's own ship physics/combat/mining are driven by requestAnimationFrame
+    // (see animate()'s requestAnimationFrame(animate) call) -- browsers throttle
+    // or fully suspend rAF in hidden tabs to save battery, which is real,
+    // unavoidable browser behavior this game cannot override, so those genuinely
+    // pause while the tab is hidden and simply pick back up from where they were.
+    // Everything wall-clock-anchored (skill training, Library crafting,
+    // Manufacturing, medals, auction payouts) keeps advancing correctly the whole
+    // time regardless, via Date.now() math rather than a per-frame tick -- re-
+    // running their completion checks right here resolves anything that finished
+    // while backgrounded THE INSTANT focus returns, instead of waiting for that
+    // system's own periodic safety-net interval (which itself may also be
+    // throttled in the background, e.g. clamped to no more than once/second).
+    if(typeof checkSkillTrainingCompletion === 'function') checkSkillTrainingCompletion();
+    if(typeof checkLibraryCraftCompletion === 'function') checkLibraryCraftCompletion();
+    if(typeof checkManufacturingCompletion === 'function') checkManufacturingCompletion();
+    if(typeof checkAchievements === 'function') checkAchievements();
+    if(typeof claimAuctionPayouts === 'function') claimAuctionPayouts();
+  }
+});
+// Best-effort LAST-RESORT save on an actual page unload (closing the tab,
+// navigating away, hitting reload). Deliberately NOT relied upon as the real
+// fix -- an ordinary awaited supabase-js call has no guarantee of finishing
+// before the page is torn down, and navigator.sendBeacon (the usual reliable
+// workaround) can't carry the Authorization header Supabase's REST API needs to
+// identify which account to save, so there's no way to make this fully reliable
+// with this architecture. The actual fix for "don't lose progress on reload" is
+// the 45s interval + the visibilitychange-hidden save above (hidden fires before
+// unload in every major browser, giving that save a real head start); this is
+// just one more attempt on top, worth having but not worth overclaiming.
+window.addEventListener('beforeunload', ()=>{
+  if(gameLaunched && currentUser) pushCloudSave();
+});
 
 // ---------- loan interest (item 7, reworked under item 4c) ----------
 // NOTE: this is a SEPARATE, independent "in-game hour" pacing concept from the
