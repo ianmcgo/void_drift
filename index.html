@@ -2852,7 +2852,7 @@
 // compatibility depends on it. Add new keys, don't rename old ones.
 
 // ---------- version / build info (shown in the ESC settings menu) ----------
-const GAME_VERSION = "0.40.2";
+const GAME_VERSION = "0.41.0";
 const GAME_LAST_EDITED = "2026-09-26";
 const GAME_BUILD_TIME = "15:14 PT"; // wall-clock time this build was published, not just the date
 
@@ -7108,7 +7108,16 @@ function buildWreckMesh(){
   return g;
 }
 let wreckCounter = 0;
-function spawnWreck(pos, sourceName, ammoDrop, captainBox){
+// v0.41.0 item 2: 5th arg awardPlayer (default true, matching every pre-existing
+// caller -- bounty hunter kills and the old unconditional pirate-kill call are always
+// player kills) -- when false (an NPC-vs-NPC kill: Navy destroying a pirate, or a
+// pirate destroying a cargo transport) the wreck still spawns and is still lootable
+// for its scrap/ammo, but never carries a black box or captain black box, since those
+// are only meant to be earned by a kill the PLAYER actually made. See damagePirate's
+// own awardPlayer param, which this reuses as the single source of truth for "did the
+// player make this kill" rather than re-deriving it here.
+function spawnWreck(pos, sourceName, ammoDrop, captainBox, awardPlayer){
+  if(awardPlayer === undefined) awardPlayer = true;
   const mesh = buildWreckMesh();
   mesh.position.copy(pos);
   scene.add(mesh);
@@ -7116,15 +7125,17 @@ function spawnWreck(pos, sourceName, ammoDrop, captainBox){
   const entry = {
     mesh, id:'wreck_'+wreckCounter, name: sourceName + ' Wreckage', radius: 12,
     type:'wreck', hostile:false, alive:true,
-    scrap: 8 + Math.floor(Math.random()*18), blackBox: true,
+    scrap: 8 + Math.floor(Math.random()*18), blackBox: awardPlayer,
     // item: pirate captain rare spawns drop a Captain Black Box instead of (not in
     // addition to) a normal one -- a separate, rarer item type consumed by the
-    // Galactic Navy's harder bounty missions (see MANUFACTURING-style item table)
-    captainBox: !!captainBox,
+    // Galactic Navy's harder bounty missions (see MANUFACTURING-style item table).
+    // v0.41.0 item 2: gated off awardPlayer too -- an NPC-vs-NPC kill never leaves
+    // either black box type behind, captain or otherwise.
+    captainBox: awardPlayer && !!captainBox,
     ammoDrop: Math.max(0, Math.round(ammoDrop||0)), // item 4: leftover iron bullets, lootable via SALVAGE
     spawnedAtMs: Date.now()
   };
-  if(captainBox) entry.blackBox = false;
+  if(entry.captainBox) entry.blackBox = false;
   wreckData.push(entry);
   allTargets.push(entry);
   addOverviewRow(entry);
@@ -19012,8 +19023,12 @@ function damagePirate(entry, dmg, awardPlayer){
       recordPirateKillForQuests();
       if(typeof awardKnowledge === 'function') awardKnowledge(npcKillKnowledgeValue(entry), 'kill');
     }
-    if(entry.isCaptain) captainsKilled++; // medals tracking
-    spawnWreck(deathPos, deathName, entry.ammo||0, entry.isCaptain);
+    // v0.41.0 item 1: captainsKilled feeds the Captain Slayer/Captain's Nemesis
+    // achievements -- it must be gated by awardPlayer exactly like piratesKilled above,
+    // otherwise the Navy (or another pirate) destroying a captain would silently credit
+    // the player toward those achievements even though they never fired a shot.
+    if(awardPlayer && entry.isCaptain) captainsKilled++; // medals tracking
+    spawnWreck(deathPos, deathName, entry.ammo||0, entry.isCaptain, awardPlayer);
     entry.isCaptain = false; // cleared so the slot's next ordinary respawn isn't still tagged
     if(typeof checkAchievements === 'function') checkAchievements();
     const wasActiveTarget = (lockedId === entry.id) || (selected && selected.id === entry.id) || (command.target === entry);
@@ -19052,7 +19067,11 @@ function damageCargoShip(entry, dmg, attackerPos){
     spawnHitFlash(entry.mesh.position, 0xff6a3d);
     flashMessage(entry.name.toUpperCase() + ' DESTROYED', 'warn');
     logEvent(entry.name.toUpperCase() + ' DESTROYED BY PIRATES', 'warn');
-    spawnWreck(entry.mesh.position.clone(), entry.name, 0, false);
+    // v0.41.0 item 2: damageCargoShip is only ever reached via the NPC-vs-NPC fire
+    // path (a pirate's shot at a cargo transport, see updateProjectiles) -- the player
+    // has no way to fire on a cargo transport at all, so this is always an NPC kill.
+    // awardPlayer:false accordingly -- no black box in the resulting wreck.
+    spawnWreck(entry.mesh.position.clone(), entry.name, 0, false, false);
     scene.remove(entry.mesh);
     const arr = entry.fleetArray;
     if(arr){ const idx = arr.indexOf(entry); if(idx>=0) arr.splice(idx,1); }
