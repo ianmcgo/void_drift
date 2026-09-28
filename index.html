@@ -1980,6 +1980,11 @@
            buttons/panels -- same tab mechanism as every other Data Pad tab -->
       <button class="clickable" id="btnWalletTabSkills">SKILLS</button>
       <button class="clickable" id="btnWalletTabServer">SERVER</button>
+      <!-- new: CONTRACTS -- unifies station daily quests ("DAILY CONTRACT") and the
+           new six-tree story-contract system ("STORY CONTRACT") behind one shared
+           "one active contract at a time" slot. Same .walletTabs/.walletTabSection
+           tab mechanism as every tab above. -->
+      <button class="clickable" id="btnWalletTabContracts">CONTRACTS</button>
     </div>
     <!-- item 6: CREDITS/KNOWLEDGE readout now sits in a FIXED row right below the tab
          bar, shown on every tab (not just LEDGER) so the tab bar's position never shifts
@@ -2123,6 +2128,23 @@
       <div class="walletTabSection" id="serverHistorySection">
         <div class="psection" style="margin-top:0;">LOGIN HISTORY — LAST 100</div>
         <div id="serverHistoryList"></div>
+      </div>
+    </div>
+    <!-- new: CONTRACTS -- two sub-tabs, same .subTabs/.subTabSection pattern as
+         LIBRARY/FINANCE OFFICE/GALACTIC NAVY above. ACTIVE CONTRACTS shows whatever
+         is in the ONE shared active-contract slot (a station "DAILY CONTRACT" or one
+         of the six "STORY CONTRACT" trees, from any source); STORY CONTRACTS lists
+         the six trees with their state (see renderContractsPanel). -->
+    <div class="walletTabSection" id="walletContractsSection">
+      <div class="subTabs">
+        <button class="clickable active" id="btnContractsTabActive">ACTIVE CONTRACTS</button>
+        <button class="clickable" id="btnContractsTabStory">STORY CONTRACTS</button>
+      </div>
+      <div class="subTabSection active" id="contractsActiveSection">
+        <div id="contractsActiveList"></div>
+      </div>
+      <div class="subTabSection" id="contractsStorySection">
+        <div id="contractsStoryList"></div>
       </div>
     </div>
   </div>
@@ -2902,7 +2924,7 @@
 // compatibility depends on it. Add new keys, don't rename old ones.
 
 // ---------- version / build info (shown in the ESC settings menu) ----------
-const GAME_VERSION = "0.43.0";
+const GAME_VERSION = "0.44.0";
 const GAME_LAST_EDITED = "2026-09-27";
 const GAME_BUILD_TIME = "17:00 PT"; // wall-clock time this build was published, not just the date
 
@@ -2918,6 +2940,12 @@ const GAME_BUILD_TIME = "17:00 PT"; // wall-clock time this build was published,
 // append-only (at the top) changelog.
 const PATCH_NOTES = [
   // -- ADD NEW ENTRIES HERE (top of array = newest, shown first) --
+  { version: "0.44.0", changes: [
+    "Added a CONTRACTS tab to the Data Pad, with ACTIVE CONTRACTS (whatever you currently have accepted, from any source, with objective/progress/time remaining) and STORY CONTRACTS (six new tutorial contract chains) sub-tabs.",
+    "Added six Story Contracts that teach Combat, Mining, the Marketplace, Manufacturing, Scribing and Skills through a few simple hands-on tasks each, with small Knowledge rewards.",
+    "Station quests are now labeled DAILY CONTRACTS alongside the new STORY CONTRACTS, and share the exact same one-active-contract-at-a-time slot.",
+    "Added an ABANDON CONTRACT action so a stuck or unwanted contract (daily or story) can be cleared without waiting it out."
+  ]},
   { version: "0.43.0", changes: [
     "Added this PATCH NOTES screen, reachable from the SETTINGS menu.",
     "Manufacturing now only lets you build one type of item at a time, across every station — starting a different recipe while one is already building is blocked with a clear message.",
@@ -4074,6 +4102,8 @@ function startSkillTraining(key){
   pauseActiveTraining(); // switching skills auto-pauses whatever was running, progress preserved
   activeTraining = { key, startedAtMs: Date.now() };
   logEvent('SKILL TRAINING STARTED — ' + def.name.toUpperCase() + ' LV.' + target, 'good');
+  // (v0.44.0) SKILLS story contract hook -- "start training a basic/advanced skill"
+  if(typeof storyContractOnSkillTrainingStarted === 'function') storyContractOnSkillTrainingStarted(key);
   renderSkillsPanel();
 }
 function stopSkillTraining(key){
@@ -4097,6 +4127,8 @@ function checkSkillTrainingCompletion(){
     activeTraining = null;
     logEvent('SKILL TRAINED — ' + SKILL_DEFS[key].name.toUpperCase() + ' LV.' + target, 'good');
     flashMessage(SKILL_DEFS[key].name.toUpperCase() + ' TRAINED TO LV.' + target, 'good');
+    // (v0.44.0) SKILLS story contract hook -- "reach LV.1 in that skill"
+    if(typeof storyContractOnSkillLevelReached === 'function') storyContractOnSkillLevelReached(key, target);
     renderSkillsPanel();
     if(typeof refreshWalletPanel === 'function') refreshWalletPanel();
   }
@@ -8862,6 +8894,8 @@ function learnSkillBook(stackId){
   knownSkillBooks.add(skillBookKey(stack.bookSkill, stack.bookLevel));
   flashMessage('LEARNED: ' + label.toUpperCase(), 'good');
   logEvent('LEARNED SKILL BOOK — ' + label.toUpperCase(), 'good');
+  // (v0.44.0) SCRIBING/SKILLS story contract hook -- "LEARN a Skill Book"
+  if(typeof storyContractOnSkillBookLearned === 'function') storyContractOnSkillBookLearned();
   updateCargoUI();
   if(typeof renderSkillsPanel === 'function') renderSkillsPanel();
 }
@@ -8906,6 +8940,8 @@ function learnSkillBookFrom(from, stackId){
   knownSkillBooks.add(skillBookKey(stack.bookSkill, stack.bookLevel));
   flashMessage('LEARNED: ' + label.toUpperCase(), 'good');
   logEvent('LEARNED SKILL BOOK — ' + label.toUpperCase(), 'good');
+  // (v0.44.0) SCRIBING/SKILLS story contract hook -- "LEARN a Skill Book"
+  if(typeof storyContractOnSkillBookLearned === 'function') storyContractOnSkillBookLearned();
   renderDockStorageRows();
   if(typeof renderSkillsPanel === 'function') renderSkillsPanel();
 }
@@ -9738,6 +9774,8 @@ document.getElementById('marketStorageSellConfirm').addEventListener('click', ()
   restockMarket(stack.itemType, amt, Math.max(1, Math.round(def.sellPrice * 1.2)));
   flashMessage('SOLD ' + amt + ' ' + def.label.toUpperCase() + ' — +' + proceeds + ' CR (' + tax + ' CR TAX)', 'good');
   logEvent('SOLD ' + amt + ' ' + def.label.toUpperCase() + ' FROM STORAGE — +' + proceeds + ' CR — ' + tax + ' CR STATION TAX', 'good');
+  // (v0.44.0) MARKETPLACE story contract hook
+  if(typeof storyContractOnMarketSell === 'function') storyContractOnMarketSell();
   marketStorageSellStackId = null;
   document.getElementById('marketStorageSellPrompt').style.display = 'none';
   updateCargoUI();
@@ -9811,6 +9849,8 @@ document.getElementById('marketBuyConfirm').addEventListener('click', ()=>{
   if(m.qty <= 0) marketStock = marketStock.filter(x=>x!==m);
   flashMessage('BOUGHT ' + amt + ' ' + def.label.toUpperCase() + ' — -' + cost + ' CR (' + tax + ' CR TAX)', 'good');
   logEvent('PURCHASED ' + amt + ' ' + def.label.toUpperCase() + ' — -' + cost + ' CR — ' + tax + ' CR STATION TAX', 'good');
+  // (v0.44.0) MARKETPLACE story contract hook
+  if(typeof storyContractOnMarketBuy === 'function') storyContractOnMarketBuy();
   updateCargoUI();
   refreshEquipmentPanel();
   renderMarketPanel();
@@ -10237,6 +10277,8 @@ document.getElementById('btnAuctionList').addEventListener('click', async ()=>{
   addLedgerEntry(-AUCTION_LISTING_FEE, 'Auction listing fee (' + def.label + ')');
   flashMessage('LISTED ' + qty + 'x ' + def.label.toUpperCase() + ' FOR ' + price + ' CR', 'good');
   if(typeof renderDockStorageRows === 'function') renderDockStorageRows();
+  // (v0.44.0) MARKETPLACE story contract hook
+  if(typeof storyContractOnAuctionListed === 'function') storyContractOnAuctionListed();
   addStationTax(dockedStation.id, AUCTION_LISTING_FEE);
   await syncAuctionListingsOnDock(dockedStation);
 });
@@ -10589,6 +10631,8 @@ function startManufacturing(bpType, qty){
   q.unitMs = effectiveCraftSeconds(bpType, recipe) * 1000;
   flashMessage('BUILDING ' + qty + ' — ' + recipe.label.toUpperCase(), 'good');
   // item 12: no event log entry for queuing a manufacturing job -- flashMessage above covers it
+  // (v0.44.0) MANUFACTURING story contract hook -- "start a manufacturing job"
+  if(typeof storyContractOnManufacturingStarted === 'function') storyContractOnManufacturingStarted();
   updateCargoUI();
   renderManufacturingPanel();
 }
@@ -10624,6 +10668,9 @@ function checkManufacturingCompletion(){
       // (non-ship) recipe.
       depositItemsToStationStorage(recipe.outputType, recipe.outputQtyPerUnit * newlyDone, stationId);
       // item 12: no event log entry for a manufacturing job completing
+      // (v0.44.0) MANUFACTURING story contract hook -- "complete a manufacturing job"
+      // (the whole batch, not merely one unit, so a multi-unit batch counts once)
+      if(q.completed >= q.total && typeof storyContractOnManufacturingCompleted === 'function') storyContractOnManufacturingCompleted();
       if(q.completed >= q.total){ q.total = 0; q.completed = 0; q.startedAtMs = 0; q.unitMs = 0; }
     });
   });
@@ -11232,6 +11279,8 @@ function checkLibraryCraftCompletion(){
       c.qtyCompleted = already + newlyDone;
       logEvent('LIBRARY: ' + newlyDone + ' x ' + c.cubeKnowledge + '-KNOWLEDGE MEMORY CUBE COMPLETE AT ' + stationNameById(stationId).toUpperCase() + ' — DEPOSITED TO STORAGE', 'good');
       flashMessage(newlyDone + ' MEMORY CUBE' + (newlyDone>1?'S':'') + ' COMPLETE AT ' + stationNameById(stationId).toUpperCase(), 'good');
+      // (v0.44.0) SCRIBING story contract hook -- "scribe a Memory Cube"
+      if(typeof storyContractOnMemoryCubeScribed === 'function') storyContractOnMemoryCubeScribed();
       if(c.qtyCompleted >= qtyTotal) delete libraryCrafting[stationId];
       return;
     }
@@ -11242,6 +11291,8 @@ function checkLibraryCraftCompletion(){
       stationStorage(stationId).push({ stackId: nextStorageStackId++, itemType:bpType, qty:1 });
       // item 12: no event log entry for a blueprint scribe completing
       flashMessage('MANUFACTURING BLUEPRINT LV.' + c.blueprintLevel + ' COMPLETE', 'good');
+      // (v0.44.0) MANUFACTURING story contract hook -- "scribe a Manufacturing Blueprint"
+      if(typeof storyContractOnBlueprintScribed === 'function') storyContractOnBlueprintScribed();
     } else if(c.kind === 'recipe_blueprint'){
       // item 1 (v0.28.0): one specific named blueprint per recipe -- see
       // BLUEPRINT_RECIPE_DEFS/startRecipeBlueprintScribe above
@@ -11249,10 +11300,14 @@ function checkLibraryCraftCompletion(){
       stationStorage(stationId).push({ stackId: nextStorageStackId++, itemType:c.recipeBlueprintType, qty:1 });
       // item 12: no event log entry for a blueprint scribe completing
       flashMessage(label.toUpperCase() + ' COMPLETE', 'good');
+      // (v0.44.0) MANUFACTURING story contract hook -- "scribe a Manufacturing Blueprint"
+      if(typeof storyContractOnBlueprintScribed === 'function') storyContractOnBlueprintScribed();
     } else {
       stationStorage(stationId).push({ stackId: nextStorageStackId++, itemType:'skill_book', qty:1, bookSkill: c.bookSkill, bookLevel: c.bookLevel });
       // item 12: no event log entry for a skill book scribe completing
       flashMessage(SKILL_DEFS[c.bookSkill].name.toUpperCase() + ' LV.' + c.bookLevel + ' BOOK COMPLETE', 'good');
+      // (v0.44.0) SCRIBING story contract hook -- "scribe a Skill Book"
+      if(typeof storyContractOnSkillBookScribed === 'function') storyContractOnSkillBookScribed();
     }
     delete libraryCrafting[stationId];
   });
@@ -11784,6 +11839,8 @@ document.getElementById('dsMoveConfirm').addEventListener('click', ()=>{
     // item 12: no event log entry for storing an item -- the storage grid's own
     // refresh below is the feedback (a quick flashMessage still confirms it)
     flashMessage('STORED ' + amt + ' ' + itemDisplayDef(itemType).label.toUpperCase(), 'good');
+    // (v0.44.0) MINING/MANUFACTURING story contract hook -- "deposit ore"/"gather materials"
+    if(typeof storyContractOnStoredToStation === 'function') storyContractOnStoredToStation(itemType, amt);
   } else { // withdraw
     const stack = stationStorage().find(s=>s.stackId===stackId);
     if(!stack){ closeStorageMovePrompt(); return; }
@@ -12130,6 +12187,9 @@ function equipWeaponTier(tier, force){
   equippedWeaponTier = tier;
   flashMessage('WEAPON LV.' + tier + ' EQUIPPED', 'good');
   // item 12: no event log entry for equipping -- flashMessage above covers it
+  // (v0.44.0) COMBAT story contract hook -- a genuine player-driven equip only
+  // (skip when force is true, e.g. the automatic tier-0 fallback below)
+  if(!force && typeof storyContractOnWeaponEquipped === 'function') storyContractOnWeaponEquipped();
   refreshEquipmentPanel();
 }
 
@@ -12269,6 +12329,8 @@ function gainMiningXP(amount){
   if(typeof refreshWalletPanel === 'function') refreshWalletPanel();
   // (v0.32.0) item 3: daily TOP ORE MINED leaderboard counter -- best-effort
   if(typeof recordDailyStat === 'function') recordDailyStat('ore_mined', amount);
+  // (v0.44.0) MINING story contract hook -- fires on every tick ore is actually mined
+  if(amount > 0 && typeof storyContractOnOreMined === 'function') storyContractOnOreMined();
 }
 // no-op stub kept so old call sites (elsewhere in the file) that still exist
 // from before the skills rework don't throw -- mining stats now live on the
@@ -12818,7 +12880,10 @@ function acceptQuest(questId){
   // giver at ANY station, not per-office/per-station any more (replaces the old
   // per-station-per-faction QUEST_CAP check below, which is now unreachable at 1 but
   // left in place as a harmless belt-and-suspenders in case QUEST_CAP is ever raised).
-  if(activeQuests.length >= 1){
+  // (v0.44.0) item 4: this is now hasActiveContract() -- the SAME shared check the
+  // new story contracts use (see startStoryContract below) -- so a station daily
+  // quest and a story contract can never both be active, either order.
+  if(hasActiveContract()){
     flashMessage('ONLY ONE ACTIVE CONTRACT AT A TIME — COMPLETE OR ABANDON YOUR CURRENT ONE FIRST', 'warn');
     return;
   }
@@ -12897,6 +12962,8 @@ function recordPirateKillForQuests(){
     if(q.faction === 'navy' && q.kind === 'kill'){ q.killProgress = (q.killProgress || 0) + 1; any = true; }
   });
   if(any) refreshOpenQuestPanels();
+  // (v0.44.0) COMBAT story contract hook -- same "any hostile kill, either kill site" call
+  if(typeof storyContractOnHostileKilled === 'function') storyContractOnHostileKilled();
 }
 function turnInQuest(questId){
   const q = activeQuests.find(x=>x.id===questId);
@@ -12931,6 +12998,335 @@ function turnInQuest(questId){
   renderQuestPanel(q.faction);
   updateDockedPanel();
 }
+// ---------- STORY CONTRACTS (v0.44.0) -- Data Pad CONTRACTS tab / STORY CONTRACTS
+// sub-tab. Six short, sequential tutorial-style quest chains -- Combat, Mining,
+// Marketplace, Manufacturing, Scribing, Skills -- each teaching one system through
+// a small number of concrete, checkable tasks. Every step check rides on an
+// EXISTING action's own success path or existing tracked state (see each
+// storyContractOn*/storyContractTick hook's own call site below) -- nothing new is
+// tracked purely for this feature. Rewards are small, flat Knowledge amounts (same
+// scale as ore-depletion/NPC-kill Knowledge -- see STORY_CONTRACT_STEP_KNOWLEDGE/
+// STORY_CONTRACT_COMPLETE_KNOWLEDGE), never a dominant Knowledge source.
+//
+// Scribing vs Manufacturing differentiation (explicit per the design brief): SCRIBING
+// stays entirely on the LIBRARY's cube/book side (scribe a Memory Cube, scribe a
+// Skill Book, LEARN that book); MANUFACTURING covers the build side (scribe a
+// Manufacturing BLUEPRINT -- a Library action, but the one that specifically unlocks
+// Manufacturing -- then gather materials and run an actual build job in the
+// MANUFACTURING panel). Neither tree teaches the exact same single action twice.
+//
+// item 4 (shared one-active-contract rule): hasActiveContract() below is now the
+// single source of truth acceptQuest() also checks -- see its own comment there.
+// NAMING STABILITY: STORY_CONTRACTS keys and every step's .id are persistent
+// (read back out of storyContractProgress on load) -- add, never rename.
+const STORY_CONTRACT_STEP_KNOWLEDGE = 2;     // per-step reward
+const STORY_CONTRACT_COMPLETE_KNOWLEDGE = 4; // one-time bonus once a whole tree finishes
+const STORY_CONTRACTS = {
+  combat: {
+    name: 'FIRST BLOOD',
+    giver: 'GALACTIC NAVY TRAINING OFFICER',
+    flavor: 'Every belt runner needs to know which end of the ship the guns point out of. The Navy training officer will walk you through it — then let you loose on something that shoots back.',
+    steps: [
+      { id:'equip_weapon', label:'Equip any weapon.' },
+      { id:'kill_one',     label:'Destroy one hostile ship.' },
+      { id:'kill_three',   label:'Destroy three hostile ships in total.' }
+    ]
+  },
+  mining: {
+    name: 'ROCK BREAKER',
+    giver: 'MINING CORP FOREMAN',
+    flavor: 'Ore doesn’t jump into your hold on its own. Mount a laser, crack open a rock, and bring the haul home to storage.',
+    steps: [
+      { id:'own_laser',   label:'Own a mining laser (any tier).' },
+      { id:'mine_ore',    label:'Mine ore from an asteroid.' },
+      { id:'deposit_ore', label:'Deposit mined ore into station storage.' }
+    ]
+  },
+  marketplace: {
+    name: 'TRADE RUN',
+    giver: 'STATION MARKET CLERK',
+    flavor: 'Credits move because somebody’s buying what somebody else needs to sell. Work the counter from both sides, then try the auction floor.',
+    steps: [
+      { id:'buy_item',     label:'Buy an item from the market.' },
+      { id:'sell_item',    label:'Sell an item at the market.' },
+      { id:'list_auction', label:'List an item on the auction house.' }
+    ]
+  },
+  manufacturing: {
+    name: 'ASSEMBLY LINE',
+    giver: 'MANUFACTURING FOREMAN',
+    flavor: 'Blueprints, raw ore, and a bit of patience turn into hulls, guns and gear. Scribe the plan, stock the shelf, and run a batch.',
+    steps: [
+      { id:'scribe_blueprint', label:'Scribe a Manufacturing Blueprint at the LIBRARY.' },
+      { id:'gather_materials', label:'Gather at least 5 units of any ore or ingot into station storage.' },
+      { id:'start_job',        label:'Start a manufacturing job.' },
+      { id:'complete_job',     label:'Complete a manufacturing job.' }
+    ]
+  },
+  scribing: {
+    name: 'KEEPER OF RECORDS',
+    giver: 'STATION LIBRARIAN',
+    flavor: 'The LIBRARY isn’t just for reading old logs — knowledge itself can be distilled into a cube or bound into a book. Come make something.',
+    steps: [
+      { id:'scribe_cube', label:'Scribe a Memory Cube at the LIBRARY.' },
+      { id:'scribe_book', label:'Scribe a Skill Book at the LIBRARY.' },
+      { id:'learn_book',  label:'LEARN that Skill Book.' }
+    ]
+  },
+  skills: {
+    name: 'STUDENT OF THE TRADE',
+    giver: 'STATION TRAINING CLERK',
+    flavor: 'Every skill trained makes the belt a little less dangerous and a lot more profitable. Start with the basics, then push into the advanced curriculum.',
+    steps: [
+      { id:'start_basic',    label:'Start training a basic skill.' },
+      { id:'reach_lv1',      label:'Reach LV.1 in that skill.' },
+      { id:'learn_book',     label:'LEARN a Skill Book.' },
+      { id:'start_advanced', label:'Start training an advanced skill.' }
+    ]
+  }
+};
+const STORY_CONTRACT_ORDER = ['combat','mining','marketplace','manufacturing','scribing','skills'];
+let storyContractProgress = {}; // { [key]: { stepIndex:Number, completed:Boolean, killCount:Number, trackedSkillKey } }
+let activeStoryContractKey = null; // the shared "one active contract" slot's story-side half
+function storyContractState(key){
+  let s = storyContractProgress[key];
+  if(!s || typeof s !== 'object'){ s = { stepIndex:0, completed:false, killCount:0 }; storyContractProgress[key] = s; }
+  if(typeof s.stepIndex !== 'number' || !isFinite(s.stepIndex)) s.stepIndex = 0;
+  if(typeof s.completed !== 'boolean') s.completed = false;
+  if(typeof s.killCount !== 'number' || !isFinite(s.killCount)) s.killCount = 0;
+  return s;
+}
+// item 4: the ONE shared check every accept path (station daily quest AND story
+// contract) now goes through -- see acceptQuest above and startStoryContract below.
+function hasActiveContract(){ return activeQuests.length > 0 || !!activeStoryContractKey; }
+function startStoryContract(key){
+  const tree = STORY_CONTRACTS[key];
+  if(!tree) return;
+  const s = storyContractState(key);
+  if(s.completed){ flashMessage('STORY CONTRACT ALREADY COMPLETE', 'warn'); return; }
+  if(hasActiveContract()){
+    flashMessage('ONLY ONE ACTIVE CONTRACT AT A TIME — COMPLETE OR ABANDON YOUR CURRENT ONE FIRST', 'warn');
+    return;
+  }
+  activeStoryContractKey = key;
+  flashMessage('STORY CONTRACT STARTED — ' + tree.name.toUpperCase(), 'good');
+  logEvent('STORY CONTRACT STARTED — ' + tree.name.toUpperCase(), 'good');
+  if(typeof renderContractsPanel === 'function') renderContractsPanel();
+}
+// removes an accepted station daily quest with no reward/penalty. Transport
+// deliveries route through the existing failTransportQuest cleanup instead, since
+// their cargo is already loaded/tagged and needs the same stripping + rep penalty
+// a failed delivery already applies.
+function abandonQuest(questId){
+  const q = activeQuests.find(x=>x.id===questId);
+  if(!q) return;
+  if(q.faction === 'transport'){ failTransportQuest(q, 'ABANDONED'); return; }
+  activeQuests = activeQuests.filter(x=>x.id !== questId);
+  flashMessage('CONTRACT ABANDONED', 'warn');
+  logEvent(QUEST_FACTION_LABEL[q.faction] + ' contract abandoned — ' + q.qty + 'x ' + q.itemLabel, 'warn');
+  updateCargoUI();
+  refreshOpenQuestPanels();
+  if(typeof renderContractsPanel === 'function') renderContractsPanel();
+}
+// frees the single shared active-contract slot, whichever kind currently holds it.
+// Abandoning a story contract keeps its already-completed steps (real teaching
+// milestones, not progress worth punishing) -- only the "currently active" flag
+// clears, so the player can resume it later or start a different contract meanwhile.
+function abandonActiveContract(){
+  if(activeStoryContractKey){
+    const tree = STORY_CONTRACTS[activeStoryContractKey];
+    const name = tree ? tree.name : activeStoryContractKey;
+    activeStoryContractKey = null;
+    flashMessage('STORY CONTRACT ABANDONED — PROGRESS KEPT', 'warn');
+    logEvent('STORY CONTRACT ABANDONED — ' + name.toUpperCase(), 'warn');
+    if(typeof renderContractsPanel === 'function') renderContractsPanel();
+    return;
+  }
+  if(activeQuests.length){ abandonQuest(activeQuests[0].id); return; }
+  flashMessage('NO ACTIVE CONTRACT TO ABANDON', 'warn');
+}
+// advances one specific step of the CURRENTLY ACTIVE story contract, in order -- a
+// no-op if that contract isn't the active one, is already complete, or the step
+// isn't the one currently awaited (steps are strictly sequential).
+function advanceStoryContractStep(key, stepId){
+  if(activeStoryContractKey !== key) return;
+  const tree = STORY_CONTRACTS[key];
+  const s = storyContractState(key);
+  if(s.completed) return;
+  const step = tree.steps[s.stepIndex];
+  if(!step || step.id !== stepId) return;
+  s.stepIndex++;
+  awardKnowledge(STORY_CONTRACT_STEP_KNOWLEDGE, tree.name + ' — step complete');
+  logEvent('STORY CONTRACT: ' + tree.name.toUpperCase() + ' — ' + step.label.toUpperCase() + ' COMPLETE', 'good');
+  if(s.stepIndex >= tree.steps.length){
+    s.completed = true;
+    activeStoryContractKey = null; // slot frees automatically -- the tree is done
+    awardKnowledge(STORY_CONTRACT_COMPLETE_KNOWLEDGE, tree.name + ' complete');
+    flashMessage('STORY CONTRACT COMPLETE — ' + tree.name.toUpperCase(), 'good');
+    logEvent('STORY CONTRACT COMPLETE — ' + tree.name.toUpperCase(), 'good');
+  }
+  if(typeof renderContractsPanel === 'function') renderContractsPanel();
+  if(typeof refreshWalletPanel === 'function') refreshWalletPanel();
+}
+// ---- per-tree event hooks -- each called from that action's own existing
+// success path (see each call site elsewhere in the file for the exact hook) ----
+function storyContractOnWeaponEquipped(){ advanceStoryContractStep('combat', 'equip_weapon'); }
+function storyContractOnHostileKilled(){
+  if(activeStoryContractKey !== 'combat') return;
+  const s = storyContractState('combat');
+  if(s.completed) return;
+  if(s.stepIndex === 1){
+    s.killCount = 1; // this first kill also counts toward the "three total" below
+    advanceStoryContractStep('combat', 'kill_one');
+  } else if(s.stepIndex === 2){
+    s.killCount = (s.killCount||0) + 1;
+    if(s.killCount >= 3) advanceStoryContractStep('combat', 'kill_three');
+  }
+}
+function storyContractOnOreMined(){ advanceStoryContractStep('mining', 'mine_ore'); }
+const STORY_ORE_TYPES = Object.keys(ORE_PRICES); // ['iron','copper','silver','gold','diamond']
+const STORY_MFG_MATERIAL_TYPES = STORY_ORE_TYPES.concat([INGOT_IRON, INGOT_COPPER, INGOT_SILVER, INGOT_GOLD, INGOT_DIAMOND]);
+// called from the STORE-to-station-storage action (see dsMoveConfirm) with whatever
+// item type/qty just moved -- feeds both the Mining ("deposit ore") and
+// Manufacturing ("gather materials") steps, whichever is actually waiting on it
+function storyContractOnStoredToStation(itemType, qty){
+  if(!qty || qty <= 0) return;
+  if(STORY_ORE_TYPES.indexOf(itemType) >= 0) advanceStoryContractStep('mining', 'deposit_ore');
+  if(STORY_MFG_MATERIAL_TYPES.indexOf(itemType) >= 0 && activeStoryContractKey === 'manufacturing'){
+    const s = storyContractState('manufacturing');
+    if(!s.completed && s.stepIndex === 1 && totalInStationStorage(itemType) >= 5) advanceStoryContractStep('manufacturing', 'gather_materials');
+  }
+}
+function storyContractOnMarketBuy(){ advanceStoryContractStep('marketplace', 'buy_item'); }
+function storyContractOnMarketSell(){ advanceStoryContractStep('marketplace', 'sell_item'); }
+function storyContractOnAuctionListed(){ advanceStoryContractStep('marketplace', 'list_auction'); }
+function storyContractOnManufacturingStarted(){ advanceStoryContractStep('manufacturing', 'start_job'); }
+function storyContractOnManufacturingCompleted(){ advanceStoryContractStep('manufacturing', 'complete_job'); }
+function storyContractOnBlueprintScribed(){ advanceStoryContractStep('manufacturing', 'scribe_blueprint'); }
+function storyContractOnMemoryCubeScribed(){ advanceStoryContractStep('scribing', 'scribe_cube'); }
+function storyContractOnSkillBookScribed(){ advanceStoryContractStep('scribing', 'scribe_book'); }
+function storyContractOnSkillBookLearned(){
+  advanceStoryContractStep('scribing', 'learn_book');
+  advanceStoryContractStep('skills', 'learn_book');
+}
+function storyContractOnSkillTrainingStarted(key){
+  const def = SKILL_DEFS[key];
+  if(!def) return;
+  if(def.tier === 'basic'){
+    if(activeStoryContractKey === 'skills'){
+      const s = storyContractState('skills');
+      if(!s.completed && s.stepIndex === 0) s.trackedSkillKey = key;
+    }
+    advanceStoryContractStep('skills', 'start_basic');
+  } else if(def.tier === 'advanced'){
+    advanceStoryContractStep('skills', 'start_advanced');
+  }
+}
+function storyContractOnSkillLevelReached(key, level){
+  if(activeStoryContractKey !== 'skills' || level < 1) return;
+  const s = storyContractState('skills');
+  if(s.stepIndex === 1 && s.trackedSkillKey === key) advanceStoryContractStep('skills', 'reach_lv1');
+}
+// passive (state, not one-shot action) checks -- polled periodically rather than
+// hooked into a single call site, since "own a mining laser" isn't an action.
+// Only evaluates the tree that's both active AND actually waiting on this passive
+// step, so this stays cheap even with the interval running constantly.
+function storyContractTick(){
+  if(activeStoryContractKey === 'mining'){
+    const s = storyContractState('mining');
+    if(!s.completed && s.stepIndex === 0 && maxOwnedMiningLaserTier() >= 0) advanceStoryContractStep('mining', 'own_laser');
+  }
+}
+setInterval(storyContractTick, 3000);
+let contractsTab = 'active';
+function setContractsTab(tab){
+  contractsTab = tab;
+  document.getElementById('btnContractsTabActive').classList.toggle('active', tab==='active');
+  document.getElementById('btnContractsTabStory').classList.toggle('active', tab==='story');
+  document.getElementById('contractsActiveSection').classList.toggle('active', tab==='active');
+  document.getElementById('contractsStorySection').classList.toggle('active', tab==='story');
+  renderContractsPanel();
+}
+// renders the Data Pad's CONTRACTS tab -- ACTIVE CONTRACTS shows whatever occupies
+// the one shared active-contract slot (a station daily quest OR a story contract,
+// see hasActiveContract), STORY CONTRACTS lists all six trees with their state.
+function renderContractsPanel(){
+  const panel = document.getElementById('walletPanel');
+  if(!panel || !panel.classList.contains('show') || walletTab !== 'contracts') return;
+  const activeEl = document.getElementById('contractsActiveList');
+  if(activeEl){
+    if(activeQuests.length){
+      const q = activeQuests[0];
+      const have = questHaveQty(q);
+      const turnInAt = questTurnInStationId(q);
+      const left = questTimeLeft(q);
+      const timeStr = left === null ? 'NO TIME LIMIT' : (fmtQuestTime(Math.max(0, left)) + ' LEFT');
+      const objective = q.faction === 'transport'
+        ? 'DELIVER ' + q.qty + 'x ' + q.itemLabel.toUpperCase() + ' FROM ' + q.stationName.toUpperCase() + ' TO ' + q.destStationName.toUpperCase()
+        : (q.kind === 'kill' ? 'DESTROY ' + q.qty + ' HOSTILE SHIP' + (q.qty===1?'':'S') + ' FOR ' + QUEST_FACTION_LABEL[q.faction]
+           : 'DELIVER ' + q.qty + 'x ' + q.itemLabel.toUpperCase() + ' TO ' + stationNameById(turnInAt).toUpperCase());
+      activeEl.innerHTML =
+        '<div class="dockSubRow" style="flex-direction:column; align-items:flex-start; border:1px solid var(--panel-border); padding:8px;">'
+        + '<div style="font-size:10px; color:var(--phosphor-dim);">DAILY CONTRACT — ' + QUEST_FACTION_LABEL[q.faction] + '</div>'
+        + '<div class="dsName" style="margin-top:2px;">' + objective + '</div>'
+        + '<div style="margin-top:4px; color:var(--phosphor-dim); font-size:11px;">PROGRESS: ' + have + ' / ' + q.qty + '</div>'
+        + '<div style="margin-top:2px; color:var(--phosphor-dim); font-size:11px;">TIME REMAINING: ' + timeStr + '</div>'
+        + '<button class="cmdbtn" style="width:100%; margin-top:8px;" id="btnContractsAbandon">ABANDON CONTRACT</button>'
+        + '</div>';
+    } else if(activeStoryContractKey){
+      const tree = STORY_CONTRACTS[activeStoryContractKey];
+      const s = storyContractState(activeStoryContractKey);
+      const step = tree.steps[s.stepIndex];
+      activeEl.innerHTML =
+        '<div class="dockSubRow" style="flex-direction:column; align-items:flex-start; border:1px solid var(--panel-border); padding:8px;">'
+        + '<div style="font-size:10px; color:var(--phosphor-dim);">STORY CONTRACT — ' + tree.giver + '</div>'
+        + '<div class="dsName" style="margin-top:2px;">' + tree.name + '</div>'
+        + '<div style="margin-top:4px; color:var(--phosphor-dim); font-size:11px;">OBJECTIVE: ' + (step ? step.label : 'COMPLETE') + '</div>'
+        + '<div style="margin-top:2px; color:var(--phosphor-dim); font-size:11px;">PROGRESS: ' + s.stepIndex + ' / ' + tree.steps.length + ' STEPS</div>'
+        + '<button class="cmdbtn" style="width:100%; margin-top:8px;" id="btnContractsAbandon">ABANDON CONTRACT</button>'
+        + '</div>';
+    } else {
+      activeEl.innerHTML = '<div class="ledgerEmpty">NO ACTIVE CONTRACT — VISIT A STATION QUEST GIVER OR START A STORY CONTRACT BELOW</div>';
+    }
+  }
+  const storyEl = document.getElementById('contractsStoryList');
+  if(storyEl){
+    storyEl.innerHTML = STORY_CONTRACT_ORDER.map(key=>{
+      const tree = STORY_CONTRACTS[key];
+      const s = storyContractState(key);
+      let statusHtml, actionHtml = '';
+      if(s.completed){
+        statusHtml = '<span style="color:var(--phosphor);">COMPLETED</span>';
+      } else if(activeStoryContractKey === key){
+        const step = tree.steps[s.stepIndex];
+        statusHtml = 'IN PROGRESS — ' + s.stepIndex + '/' + tree.steps.length + ' — NEXT: ' + (step ? step.label : '');
+      } else if(hasActiveContract()){
+        statusHtml = '<span style="color:var(--amber);">LOCKED — ANOTHER CONTRACT IS ACTIVE</span>';
+      } else {
+        statusHtml = s.stepIndex > 0 ? ('PAUSED — ' + s.stepIndex + '/' + tree.steps.length + ' STEPS DONE') : 'NOT STARTED';
+        actionHtml = '<button class="cmdbtn" style="width:100%; margin-top:6px;" data-start-story="' + key + '">START</button>';
+      }
+      return '<div class="dockSubRow" style="flex-direction:column; align-items:flex-start; border:1px solid var(--panel-border); padding:8px; margin-bottom:8px;">'
+        + '<div class="dsName">' + tree.name + '</div>'
+        + '<div style="color:var(--phosphor-dim); font-size:11px; margin:4px 0;">' + tree.flavor + '</div>'
+        + '<div style="font-size:11px;">' + statusHtml + '</div>'
+        + actionHtml
+        + '</div>';
+    }).join('');
+  }
+}
+document.getElementById('contractsActiveList').addEventListener('click', (e)=>{
+  const btn = e.target.closest('#btnContractsAbandon');
+  if(btn) abandonActiveContract();
+});
+document.getElementById('contractsStoryList').addEventListener('click', (e)=>{
+  const btn = e.target.closest('button[data-start-story]');
+  if(btn) startStoryContract(btn.dataset.startStory);
+});
+document.getElementById('btnWalletTabContracts').addEventListener('click', ()=> setWalletTab('contracts'));
+document.getElementById('btnContractsTabActive').addEventListener('click', ()=> setContractsTab('active'));
+document.getElementById('btnContractsTabStory').addEventListener('click', ()=> setContractsTab('story'));
+setContractsTab(contractsTab);
 // ---- office panels (dockNavyPanel / dockMiningPanel / dockTransportPanel) ----
 function questRowHtml(q, bodyLines, btnHtml){
   return '<div class="dockSubRow" style="flex-direction:column; align-items:flex-start; border:1px solid var(--panel-border); padding:8px; margin-bottom:8px;">'
@@ -13082,8 +13478,12 @@ function renderQuestPanel(faction){
           const canTurnIn = atRightStation && have >= q.qty;
           const btnLabel = !atRightStation ? ('TURN IN AT ' + stationNameById(turnInAt).toUpperCase()) : 'TURN IN';
           const haveSuffix = faction === 'transport' ? ' ABOARD' : (q.kind === 'kill' ? ' KILLED' : ' CARRIED');
+          // (v0.44.0) item 2: labeled "DAILY CONTRACT" for clarity now that the new
+          // Data Pad CONTRACTS tab also surfaces the same accepted quest alongside
+          // the new "STORY CONTRACT" trees -- purely a label, no behavior change.
           return questRowHtml(q,
-            '<div style="width:100%; display:flex; justify-content:space-between;"><span class="dsName">' + q.qty + 'x ' + q.itemLabel + '</span><span>'
+            '<div style="font-size:10px; color:var(--phosphor-dim);">DAILY CONTRACT</div>'
+            + '<div style="width:100%; display:flex; justify-content:space-between;"><span class="dsName">' + q.qty + 'x ' + q.itemLabel + '</span><span>'
               + have + ' / ' + q.qty + haveSuffix + '</span></div>'
             + '<div style="color:var(--phosphor-dim); font-size:11px; margin-top:4px; text-align:left;">' + where + '</div>'
             + '<div style="color:var(--phosphor-dim); font-size:11px; margin:4px 0; text-align:left;">REWARD: ' + q.reward + ' CR + ' + q.repReward + ' REP — ' + timeStr + '</div>',
@@ -14596,6 +14996,9 @@ function setWalletTab(tab){
   // item 13: SKILLS/SERVER tab buttons
   document.getElementById('btnWalletTabSkills').classList.toggle('active', tab==='skills');
   document.getElementById('btnWalletTabServer').classList.toggle('active', tab==='server');
+  // new: CONTRACTS tab button/content section
+  document.getElementById('btnWalletTabContracts').classList.toggle('active', tab==='contracts');
+  document.getElementById('walletContractsSection').classList.toggle('active', tab==='contracts');
   document.getElementById('walletLedgerSection').classList.toggle('active', tab==='ledger');
   document.getElementById('walletStatsSection').classList.toggle('active', tab==='stats');
   document.getElementById('walletMedalsSection').classList.toggle('active', tab==='medals');
@@ -14690,6 +15093,7 @@ function refreshWalletPanel(){
   // item 13: SKILLS/SERVER tabs, same dispatch pattern as every other tab here
   if(walletTab === 'skills') renderSkillsPanel();
   if(walletTab === 'server') refreshServerPanel();
+  if(walletTab === 'contracts' && typeof renderContractsPanel === 'function') renderContractsPanel();
 }
 document.getElementById('btnWallet').addEventListener('click', ()=> toggleWalletPanel());
 // (v0.31.0) item 3: DATA PAD is also openable from the station nav sidebar column now
@@ -16354,6 +16758,11 @@ function getPlayerSaveData(){
     // save blob with no Supabase schema change needed.
     knownSkillBooks: Array.from(knownSkillBooks),
     activeQuests: activeQuests.map(q=> Object.assign({}, q)),
+    // (v0.44.0) STORY CONTRACTS -- small, plain-object state, round-trips through
+    // the existing jsonb save blob with no Supabase schema change needed. Additive:
+    // an old save with neither field just gets the fresh defaults (nothing started).
+    storyContractProgress: JSON.parse(JSON.stringify(storyContractProgress)),
+    activeStoryContractKey: activeStoryContractKey,
     stationReputation: JSON.parse(JSON.stringify(stationReputation)),
     // lifetime stats -- also drive the MEDALS/achievements tab, which recomputes
     // itself live from these counters (nothing achievement-specific to save)
@@ -16513,6 +16922,14 @@ function applyPlayerSaveData(d){
   // whenever they choose (no auto-migration/auto-consume here on purpose).
   if(Array.isArray(d.knownSkillBooks)) knownSkillBooks = new Set(d.knownSkillBooks);
   if(Array.isArray(d.activeQuests)) activeQuests = d.activeQuests.map(q=> Object.assign({}, q));
+  // (v0.44.0) STORY CONTRACTS -- additive/non-destructive: absent on an old save,
+  // which just leaves the fresh defaults declared above (no tree started/completed).
+  if(d.storyContractProgress && typeof d.storyContractProgress === 'object'){
+    storyContractProgress = JSON.parse(JSON.stringify(d.storyContractProgress));
+  }
+  if(typeof d.activeStoryContractKey === 'string' && STORY_CONTRACTS[d.activeStoryContractKey]){
+    activeStoryContractKey = d.activeStoryContractKey;
+  }
   if(d.stationReputation && typeof d.stationReputation === 'object'){
     // stationReputation is declared `const` (its CONTENTS are what's mutable,
     // see reputation engine comments above) -- clear+refill in place rather
