@@ -161,14 +161,28 @@
   }
   /* #bootContent scrolls independently so the LAUNCH button below it always
      stays on-screen, even when the instructional text is taller than a short
-     mobile viewport -- fixes the button being pushed off-screen on some phones. */
+     mobile viewport -- fixes the button being pushed off-screen on some phones.
+     v0.44.1: the #bootscreen radial-gradient scrim above is deliberately LEAST
+     opaque at dead-center (0.45) and darkest at the edges (0.72) -- but this box
+     sits vertically centered, i.e. exactly in that least-opaque middle, so once the
+     v0.42.0 attract-mode flythrough gave it a busy moving background, the title/
+     tagline/keys text ended up fighting the scene right where the scrim helps
+     least. Fixed with its own small terminal-panel scrim (same phosphor-panel
+     language as every other HUD panel, not just a flat opacity bump) behind the
+     text itself, independent of the big screen-wide gradient. */
   #bootContent{
     flex:1 1 auto; min-height:0; width:100%; max-width:680px;
     overflow-y:auto; display:flex; flex-direction:column; align-items:center;
     justify-content:center;
+    padding:18px 22px;
+    box-sizing:border-box;
+    background:linear-gradient(180deg, rgba(2,8,7,0.72) 0%, rgba(2,8,7,0.58) 100%);
+    border:1px solid var(--panel-border);
+    border-radius:2px;
+    box-shadow:0 0 22px rgba(0,0,0,0.5);
   }
-  #bootscreen h1{font-size:min(9vw,64px); letter-spacing:6px; margin:0 0 6px 0; text-shadow:0 0 12px var(--phosphor);}
-  #bootscreen p{font-size:min(4.2vw,20px); color:var(--phosphor-dim); max-width:640px; line-height:1.5;}
+  #bootscreen h1{font-size:min(9vw,64px); letter-spacing:6px; margin:0 0 6px 0; text-shadow:0 0 12px var(--phosphor), 0 2px 6px rgba(0,0,0,0.9);}
+  #bootscreen p{font-size:min(4.2vw,20px); color:var(--phosphor-dim); max-width:640px; line-height:1.5; text-shadow:0 1px 4px rgba(0,0,0,0.9);}
   #bootscreen .startbtn{
     flex:0 0 auto; margin-top:14px; font-family:'VT323',monospace; font-size:26px; letter-spacing:3px;
     background:transparent; border:2px solid var(--phosphor); color:var(--phosphor);
@@ -2924,9 +2938,9 @@
 // compatibility depends on it. Add new keys, don't rename old ones.
 
 // ---------- version / build info (shown in the ESC settings menu) ----------
-const GAME_VERSION = "0.44.0";
+const GAME_VERSION = "0.44.1";
 const GAME_LAST_EDITED = "2026-09-27";
-const GAME_BUILD_TIME = "17:00 PT"; // wall-clock time this build was published, not just the date
+const GAME_BUILD_TIME = "18:04 PT"; // wall-clock time this build was published, not just the date
 
 // ---------- PATCH NOTES (shown in Settings -> PATCH NOTES) ----------
 // FOR FUTURE UPDATES: add your new version's entry as a NEW OBJECT AT THE VERY TOP
@@ -2938,8 +2952,28 @@ const GAME_BUILD_TIME = "17:00 PT"; // wall-clock time this build was published,
 // implementation detail/jargon. Grep for "PATCH_NOTES" to find this block again.
 // Do NOT rename/remove past entries when adding a new one — this is a permanent,
 // append-only (at the top) changelog.
+//
+// STANDING CONTENT RULE (effective permanently from v0.44.1 onward, applies to every
+// future entry too): patch note wording must NEVER name any copyrighted game,
+// franchise or real product (even one this project's own visuals/mechanics may have
+// drawn inspiration from), and must NEVER reference the developer having uploaded 3D
+// model files, images, screenshots or other reference material for analysis/
+// inspiration during development (e.g. no "redesigned based on uploaded reference
+// models" style wording). Describe every change strictly in THIS game's own terms —
+// what actually changed for the player — with no mention of development-process
+// details like that. (Existing entries below were audited against this rule when it
+// was introduced and none needed changes.)
 const PATCH_NOTES = [
   // -- ADD NEW ENTRIES HERE (top of array = newest, shown first) --
+  { version: "0.44.1", changes: [
+    "Title screen background now opens in the asteroid belt instead of right on top of the station, and the station leg of the flythrough backs off to a proper full view of it instead of sitting uncomfortably close.",
+    "Improved contrast behind the title screen text so it stays readable over the moving starfield background.",
+    "Fixed a stray graphical artifact that could flash in the corner of the title screen on first load.",
+    "STUDENT OF THE TRADE (Skills story contract) no longer gets stuck on 'start training a basic skill' or 'start training an advanced skill' if you'd already trained every skill in that tier beforehand — that progress now counts.",
+    "FIRST BLOOD (Combat story contract) no longer requires re-equipping a weapon you already had equipped before starting it.",
+    "Reworded the Marketplace story contract's market-purchase step for clarity — any market purchase, including ammo, counts.",
+    "Fixed a rare case where a Skills or Scribing story contract's 'learn a Skill Book' step could have nothing left to learn if every skill was already fully trained."
+  ]},
   { version: "0.44.0", changes: [
     "Added a CONTRACTS tab to the Data Pad, with ACTIVE CONTRACTS (whatever you currently have accepted, from any source, with objective/progress/time remaining) and STORY CONTRACTS (six new tutorial contract chains) sub-tabs.",
     "Added six Story Contracts that teach Combat, Mining, the Marketplace, Manufacturing, Scribing and Skills through a few simple hands-on tasks each, with small Knowledge rewards.",
@@ -3237,6 +3271,23 @@ const canvas = document.getElementById('gameCanvas');
 const renderer = new THREE.WebGLRenderer({ canvas, antialias:false, powerPreference:'low-power', logarithmicDepthBuffer:true });
 renderer.setPixelRatio(1);
 renderer.setClearColor(0x000000, 1);
+// v0.44.1: force an immediate clear of the GPU backbuffer right now, synchronously,
+// instead of waiting for the first requestAnimationFrame-driven renderer.render()
+// call (attractLoop/animate, both async via rAF) to get around to it. setClearColor
+// above only sets STATE -- it doesn't actually touch the framebuffer -- so between
+// canvas creation and that first real render, the browser can paint one frame of
+// whatever was already sitting in the newly-allocated GPU backbuffer memory. That's
+// the actual cause of the "weird red line in the top left" reported on the title
+// screen: PIXEL_SCALE below renders internally at roughly 1/3.4 of the real CSS
+// size then upscales with image-rendering:pixelated (see resize()), so even a
+// couple of stray uninitialized pixels in the tiny internal backbuffer's corner get
+// blown up into an easily-noticed blocky sliver once scaled to full screen. This
+// was never visible during ordinary play because by the time the player reaches
+// #gameCanvas post-LAUNCH the render loop has already been running and clearing
+// every frame for a while -- but the NEW (v0.42.0) attract-mode flythrough put this
+// canvas on screen, uncleared, the instant the title screen itself first loads,
+// which is exactly when this one-frame gap was reachable.
+renderer.clear();
 
 const PIXEL_SCALE = 3.4; // internal render is 1/PIXEL_SCALE of the CSS size -> chunky PS1 pixels
 function resize(){
@@ -13047,7 +13098,7 @@ const STORY_CONTRACTS = {
     giver: 'STATION MARKET CLERK',
     flavor: 'Credits move because somebody’s buying what somebody else needs to sell. Work the counter from both sides, then try the auction floor.',
     steps: [
-      { id:'buy_item',     label:'Buy an item from the market.' },
+      { id:'buy_item',     label:'Buy anything from the market (even ammo counts).' },
       { id:'sell_item',    label:'Sell an item at the market.' },
       { id:'list_auction', label:'List an item on the auction house.' }
     ]
@@ -13231,10 +13282,58 @@ function storyContractOnSkillLevelReached(key, level){
 // hooked into a single call site, since "own a mining laser" isn't an action.
 // Only evaluates the tree that's both active AND actually waiting on this passive
 // step, so this stays cheap even with the interval running constantly.
+//
+// v0.44.1 DEAD-END GUARD: a step phrased as "start/do X for the first time" can
+// permanently strand a veteran player who already did every possible instance of X
+// before they ever started this contract -- there is then nothing left TO start.
+// allSkillsAtMaxLevel() below (and the equipped-weapon check further down) retroactively
+// credit exactly that situation, the same way the pre-existing own_laser check above
+// already retroactively credits a player who owned a mining laser before starting.
+// tierFilter omitted checks EVERY skill regardless of tier; passed, it only requires
+// that tier's skills be maxed (skills of the other tier are skipped, not required).
+function allSkillsAtMaxLevel(tierFilter){
+  return SKILL_ORDER.every(k=>{
+    const def = SKILL_DEFS[k];
+    if(tierFilter && def.tier !== tierFilter) return true;
+    return (skillLevels[k]||0) >= skillMaxLevel(k);
+  });
+}
 function storyContractTick(){
   if(activeStoryContractKey === 'mining'){
     const s = storyContractState('mining');
     if(!s.completed && s.stepIndex === 0 && maxOwnedMiningLaserTier() >= 0) advanceStoryContractStep('mining', 'own_laser');
+  }
+  // combat's "equip any weapon" step used to require a fresh equip ACTION -- a
+  // player who already had a weapon equipped before starting FIRST BLOOD would find
+  // nothing to click to advance past step 0 without unequipping and re-equipping.
+  // Retroactively credit whoever already has one on right now.
+  if(activeStoryContractKey === 'combat'){
+    const s = storyContractState('combat');
+    if(!s.completed && s.stepIndex === 0 && equippedWeaponTier > 0) advanceStoryContractStep('combat', 'equip_weapon');
+  }
+  if(activeStoryContractKey === 'skills'){
+    const s = storyContractState('skills');
+    if(!s.completed){
+      if(s.stepIndex === 0 && allSkillsAtMaxLevel('basic')){
+        // every basic skill is already maxed -- there's no basic skill left to
+        // "start training" for the first time. Credit this step AND the next
+        // (reach LV.1), since an already-maxed basic skill is trivially already
+        // past LV.1 too -- real remaining work resumes at LEARN A SKILL BOOK.
+        advanceStoryContractStep('skills', 'start_basic');
+        advanceStoryContractStep('skills', 'reach_lv1');
+      } else if(s.stepIndex === 3 && allSkillsAtMaxLevel('advanced')){
+        advanceStoryContractStep('skills', 'start_advanced');
+      }
+      // LEARN A SKILL BOOK dead-ends only in the extreme case where literally every
+      // skill in the game (basic AND advanced) is already at its own max level --
+      // there is then no book of any kind left to ever learn.
+      if(s.stepIndex === 2 && allSkillsAtMaxLevel()) advanceStoryContractStep('skills', 'learn_book');
+    }
+  }
+  // scribing's own LEARN A SKILL BOOK step shares the exact same extreme edge case.
+  if(activeStoryContractKey === 'scribing'){
+    const s = storyContractState('scribing');
+    if(!s.completed && s.stepIndex === 2 && allSkillsAtMaxLevel()) advanceStoryContractStep('scribing', 'learn_book');
   }
 }
 setInterval(storyContractTick, 3000);
@@ -20964,11 +21063,23 @@ function updateCamera(){
 // single-galaxy-focused world loaded at once, per updateGalaxyVisibility's own
 // comment -- nothing is streamed in/out), so this is just camera movement, no extra
 // loading/unloading and no perf cliff from repeatedly instantiating zone content.
+// v0.44.1: reordered so the flythrough OPENS in the belt (an asteroid field) rather
+// than at the station -- a brand-new visitor's very first frame on the title screen
+// used to be a close-up of station hull, not recognizable as anything. Station is now
+// LAST in the cycle, and its dist was bumped 900->5500: stationEntry.radius above is
+// 195*STATION_SCALE = 3900 (the station's own collision/hull extent), so orbiting at
+// dist:900 put the camera INSIDE that radius, grazing/clipping through hull plates and
+// the red aviation mast beacon (mastLight, 0xff3030, see buildSpaceStation) at close
+// range -- this was the actual cause of both "can't see anything" AND the reported
+// "weird red line" artifact (a sliver of that unlit-through-geometry red beacon at
+// near-plane range), not a separate bug. 5500 clears the hull radius with room to see
+// the whole structure. The other three zones' distances were already comfortably
+// outside their scenery (loose asteroid/debris fields, nothing solid that large).
 const ATTRACT_ZONES = [
-  { center: STATION_ZONE_CENTER, dist: 900 },
   { center: BELT_ZONE_CENTER,    dist: 1600 },
   { center: RED_ZONE_CENTER,     dist: 1500 },
-  { center: GREEN_ZONE_CENTER,   dist: 1300 }
+  { center: GREEN_ZONE_CENTER,   dist: 1300 },
+  { center: STATION_ZONE_CENTER, dist: 5500 }
 ];
 const ATTRACT_ZONE_SECONDS = 30; // ~30s dwell per zone, per the request
 let attractMode = false;
