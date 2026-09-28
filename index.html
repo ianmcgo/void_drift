@@ -143,7 +143,17 @@
   #hudDock .dockTab:hover{ background:rgba(109,255,194,0.2); }
 
   #bootscreen{
-    position:fixed; inset:0; z-index:100; background:#000; color:var(--phosphor);
+    position:fixed; inset:0; z-index:100;
+    /* v0.42.0: was a solid #000 -- now a translucent scrim so the live attract-mode
+       flythrough (see startAttractMode/updateAttractCamera near the inspect-camera
+       code) shows through from #gameCanvas behind it. Still opaque enough at top/
+       bottom (title, LAUNCH, footer) to stay readable over busy 3D content; the
+       login/signup form itself (#authPanel) has its own solid panel background
+       and is unaffected by this. Fully opaque background:#000 remains the CSS
+       fallback via background-color below if a browser can't parse the gradient. */
+    background-color:#000;
+    background:radial-gradient(ellipse at center, rgba(0,0,0,0.45) 0%, rgba(0,0,0,0.72) 100%);
+    color:var(--phosphor);
     display:flex; align-items:center; justify-content:flex-start; flex-direction:column;
     font-family:'VT323', monospace; text-align:center;
     padding:20px 20px calc(16px + env(safe-area-inset-bottom,0px)) 20px;
@@ -1187,6 +1197,30 @@
   #helpBetaWarning p{ color:var(--phosphor-dim); margin:0 0 4px; }
   #helpBetaWarning a{ color:var(--danger); }
 
+  /* PATCH NOTES window -- reached from the settings menu (see openPatchNotesMenu),
+     same centered/scrollable modal language as #helpMenu (just its own id so it can
+     swap in/out of #settingsMenu's place independently of Help). */
+  #patchNotesMenu{
+    display:none;
+    top:50%; left:50%; transform:translate(-50%,-50%);
+    width:min(92vw,560px); max-height:82vh; overflow-y:auto;
+    background:var(--panel-bg); border:1px solid var(--panel-border);
+    padding:20px 24px 22px; text-align:left; pointer-events:auto; z-index:75;
+  }
+  #patchNotesMenu.show{display:block;}
+  #patchNotesMenu h2{
+    font-family:'VT323',monospace; font-size:26px; letter-spacing:3px; color:var(--amber);
+    margin:0 0 14px; text-align:center; text-shadow:0 0 8px rgba(255,176,32,0.5);
+  }
+  #patchNotesMenu .dbtns{display:flex; flex-direction:column; gap:10px; margin-top:16px;}
+  .patchEntry{margin-bottom:16px;}
+  .patchEntry .patchVersion{
+    font-family:'VT323',monospace; font-size:17px; letter-spacing:1px; color:var(--amber);
+    border-bottom:1px solid var(--panel-border); padding-bottom:3px; margin-bottom:6px;
+  }
+  .patchEntry ul{margin:0; padding-left:18px;}
+  .patchEntry li{font-size:12px; color:var(--phosphor-dim); line-height:1.5; margin-bottom:3px;}
+
   /* item: forced starter-ship-choice modal -- shown exactly once, immediately after
      a brand-new character picks their starting station and is auto-docked there (see
      forceInitialShipChoice()). Same centered, solid-background modal language as
@@ -1527,8 +1561,8 @@
     #dockedPanel .dbtns .cmdbtn{ font-size:14px; padding:7px 8px; }
     #dockedPanel .psection{ font-size:11px; margin-top:8px; }
     #settingsMenu, #customHudPanel{ width:min(88vw,260px); padding:12px 14px 14px; }
-    #helpMenu{ width:min(94vw,360px); max-height:88vh; padding:14px 16px 16px; }
-    #settingsMenu h2, #helpMenu h2, #customHudPanel h2{ font-size:18px; margin-bottom:8px; }
+    #helpMenu, #patchNotesMenu{ width:min(94vw,360px); max-height:88vh; padding:14px 16px 16px; }
+    #settingsMenu h2, #helpMenu h2, #customHudPanel h2, #patchNotesMenu h2{ font-size:18px; margin-bottom:8px; }
     .settingsRow{ margin:8px 0; }
     .settingsRow label{ font-size:11px; }
     #settingsMenu .dbtns, #helpMenu .dbtns, #customHudPanel .dbtns{ gap:6px; margin-top:4px; }
@@ -1606,7 +1640,7 @@
     .popupPanel .phdr{font-size:15px; margin-bottom:3px; padding-bottom:3px;}
     #dockedPanel{max-height:94vh; padding:12px 16px 14px;}
     #dockedPanel h2{font-size:21px;}
-    #settingsMenu, #helpMenu, #customHudPanel{max-height:90vh; padding:12px 16px 14px;}
+    #settingsMenu, #helpMenu, #customHudPanel, #patchNotesMenu{max-height:90vh; padding:12px 16px 14px;}
     /* width matches CLOCK/OVERVIEW (34vw/170px max, from the general block above,
        unchanged here); max-height matches EVENT LOG's own cap just above (same
        reasoning: a forced fixed height here would just push EVENT LOG's forced
@@ -1699,7 +1733,7 @@
   <div id="bootBuildStamp">
     <span id="bootVersionRead">v0.0.0</span><br>
     Game made by Ian McGonigal<br>
-    <a href="mailto:ianmcgon@gmail.com">ianmcgon@gmail.com</a> — <a id="authReportBugLink" href="mailto:ianmcgon@gmail.com?subject=VOID%20DRIFT%20bug%20report">Report bugs or suggestions here</a>
+    <a id="authReportBugLink" href="mailto:ianmcgon@gmail.com?subject=VOID%20DRIFT%20bug%20report">Report bugs or suggestions here</a>
   </div>
 </div>
 
@@ -2148,6 +2182,7 @@
   <div class="dbtns">
     <button class="cmdbtn" id="btnOpenCustomHud">CUSTOM HUD</button>
     <button class="cmdbtn" id="btnOpenHelp">HELP</button>
+    <button class="cmdbtn" id="btnOpenPatchNotes">PATCH NOTES</button>
     <button class="cmdbtn" id="btnToggleFullscreen">⛶ FULL SCREEN</button>
     <!-- item: this used to start hidden and only reveal itself when the
          player_saves fetch specifically failed (see the cloudSyncError check
@@ -2201,6 +2236,21 @@
   <div class="dbtns">
     <button class="cmdbtn" id="btnResetHud">RESET HUD LAYOUT</button>
     <button class="cmdbtn" id="btnCloseCustomHud">◀ BACK</button>
+  </div>
+</div>
+
+<!-- PATCH NOTES -- reached only from Settings (see openPatchNotesMenu), swaps
+     #settingsMenu out for a scrollable, newest-first list of every shipped
+     version, rendered from the PATCH_NOTES array (see its own comment near
+     GAME_VERSION for exactly where/how a future update adds a new entry). Same
+     content-SWAP pattern Help/Custom HUD already use, so settingsMenuOpen stays
+     true throughout and the existing ship-pause-while-Settings-is-open behavior
+     just keeps applying. -->
+<div class="hud" id="patchNotesMenu">
+  <h2>PATCH NOTES</h2>
+  <div id="patchNotesList"></div>
+  <div class="dbtns">
+    <button class="cmdbtn" id="btnClosePatchNotes">◀ BACK</button>
   </div>
 </div>
 
@@ -2852,9 +2902,246 @@
 // compatibility depends on it. Add new keys, don't rename old ones.
 
 // ---------- version / build info (shown in the ESC settings menu) ----------
-const GAME_VERSION = "0.41.0";
-const GAME_LAST_EDITED = "2026-09-26";
-const GAME_BUILD_TIME = "15:14 PT"; // wall-clock time this build was published, not just the date
+const GAME_VERSION = "0.43.0";
+const GAME_LAST_EDITED = "2026-09-27";
+const GAME_BUILD_TIME = "17:00 PT"; // wall-clock time this build was published, not just the date
+
+// ---------- PATCH NOTES (shown in Settings -> PATCH NOTES) ----------
+// FOR FUTURE UPDATES: add your new version's entry as a NEW OBJECT AT THE VERY TOP
+// of the PATCH_NOTES array below (right after the "-- ADD NEW ENTRIES HERE --"
+// marker comment) — this array is rendered newest-first, top-to-bottom, exactly as
+// written, so prepending is all that's needed; nothing else reads/depends on this
+// array's order or length. Each entry is { version: "X.Y.Z", changes: [ "...", ... ] }
+// — one short, player-facing bullet per meaningful change, no internal
+// implementation detail/jargon. Grep for "PATCH_NOTES" to find this block again.
+// Do NOT rename/remove past entries when adding a new one — this is a permanent,
+// append-only (at the top) changelog.
+const PATCH_NOTES = [
+  // -- ADD NEW ENTRIES HERE (top of array = newest, shown first) --
+  { version: "0.43.0", changes: [
+    "Added this PATCH NOTES screen, reachable from the SETTINGS menu.",
+    "Manufacturing now only lets you build one type of item at a time, across every station — starting a different recipe while one is already building is blocked with a clear message.",
+    "Fixed the Event Log popping up in the middle of the screen when entering space after undocking — it now reliably returns to its usual bottom-left spot."
+  ]},
+  { version: "0.42.0", changes: [
+    "Removed the visible email address from the title screen footer (the bug-report link remains).",
+    "Added a live cinematic camera flythrough of the game world as the title screen's background."
+  ]},
+  { version: "0.41.0", changes: [
+    "Fixed the player incorrectly getting achievement/Fame credit for kills made by other NPCs (like the Navy killing a pirate).",
+    "Fixed black boxes dropping from kills the player didn't actually make."
+  ]},
+  { version: "0.40.2", changes: [
+    "Moved the bug-report link from next to the login email field down to the title screen's footer."
+  ]},
+  { version: "0.40.1", changes: [
+    "NPC Prospectors now carry more ore before leaving and spawn more often.",
+    "Doubled the number of asteroids in every asteroid field."
+  ]},
+  { version: "0.40.0", changes: [
+    "Confirmed derelict cargo pods stay retired as intended.",
+    "Debris now despawns after 2 in-game days.",
+    "Added many new cargo transport routes between gates and stations.",
+    "Added NPC Prospector ships that mine and flee, dropping some of their cargo if killed by pirates."
+  ]},
+  { version: "0.39.0", changes: [
+    "Added a \"report bugs or suggestions\" link to the login screen.",
+    "Added a \"Forgot Password\" flow with email reset.",
+    "Added a beta-release warning to Settings → Help."
+  ]},
+  { version: "0.38.0", changes: [
+    "Added a full Manufacturing skill tree: general Manufacturing (crafting speed), plus separate skills for Bullets/Shields/Weapons/Mining Lasers (unlock and speed up each tier), plus Ships, Prospector, and Wayfarer (build entire ships from raw materials).",
+    "Scribing any manufacturing blueprint now requires knowing Manufacturing."
+  ]},
+  { version: "0.37.0", changes: [
+    "Manufacturing now correctly pulls materials from station storage instead of cargo.",
+    "Added the Diamond ore tier, Diamond Ingots, and Diamond Bullets.",
+    "Added real Shield/Weapon/Mining Laser LV.4 gear and blueprints.",
+    "Skill books now work in two steps: learn the book to permanently unlock training, then start training separately.",
+    "Fixed the Skills panel showing \"time remaining\" twice."
+  ]},
+  { version: "0.36.0", changes: [
+    "Fixed new Prospector characters being unable to equip or move their starter mining laser after logging back in.",
+    "Fixed Hardcore-server deaths not actually resetting your character due to an autosave race condition."
+  ]},
+  { version: "0.35.2", changes: [
+    "Selected items in Cargo, Storage, and Market now visibly highlight so you can tell what you clicked."
+  ]},
+  { version: "0.35.1", changes: [
+    "Fixed the Iron Bullet recipe still using raw ore instead of Iron Ingots, and fixed its sell price being far too low as a result."
+  ]},
+  { version: "0.35.0", changes: [
+    "Confirmed blueprints and Manufacturing already correctly handle balance changes and logging out mid-craft.",
+    "Fixed reloading the page forcing an unnecessary re-login.",
+    "Added more frequent autosaving.",
+    "Added catch-up logic so timers resolve correctly when you refocus a backgrounded tab."
+  ]},
+  { version: "0.34.0", changes: [
+    "Removed the unnecessary collapse button from the Data Pad and Event Log while docked.",
+    "Added a close button to the docked Event Log.",
+    "Cleaned up the Library's cube-scribing UI.",
+    "Added a live time-remaining readout to the Skills panel.",
+    "Fixed a duplicate blueprint entry showing in your Stats.",
+    "Reorganized the Library, Finance Office, and Galactic Navy panels into tabs.",
+    "Extended the scroll-into-view fix to more popup prompts."
+  ]},
+  { version: "0.33.0", changes: [
+    "Added live time-remaining countdowns to Manufacturing and Library crafting, plus the ability to spend a Memory Cube to speed them up.",
+    "Fixed skill book availability checks not properly checking both cargo and storage while docked.",
+    "Fixed the equip-confirm popup being hidden below the fold.",
+    "Memory Cubes can now be crafted in batches and stack up to 500."
+  ]},
+  { version: "0.32.0", changes: [
+    "Fixed being unable to store gear items your ship can't equip.",
+    "Added a Server → History tab showing recent login sessions.",
+    "Reworked the Leaderboard: all-time Top 3 Fame, plus daily Top 3 for NPC kills, ore mined, PVP kills (PVP servers only), and quests completed."
+  ]},
+  { version: "0.31.2", changes: [
+    "Fixed a bug that was hiding the storage move/store prompt behind an invisible stuck equip-confirm box."
+  ]},
+  { version: "0.31.1", changes: [
+    "Fixed being unable to move gear items to storage after the previous update.",
+    "Fixed the Iron Bullet Blueprint disappearing from the scribe list once learned.",
+    "Added an Event Log button to the station sidebar.",
+    "Fixed books losing their identity (\"unidentified book\") when moved between storage and cargo.",
+    "Fixed the Manufacturing quantity field resetting to 10 while typing."
+  ]},
+  { version: "0.31.0", changes: [
+    "Reorganized Auction listings, Storage, and Fitting: equip/unequip moved into the Storage panel.",
+    "Removed upgrade gear from station markets as a stopgap for a stock bug.",
+    "Manufacturing's progress bar now updates live instead of freezing.",
+    "The skill book scribing list now shows all levels, greying out ones you can't scribe yet instead of hiding them."
+  ]},
+  { version: "0.30.0", changes: [
+    "Redesigned Meridian Station's visuals.",
+    "First attempt at fixing the space HUD incorrectly appearing when logging back in while docked."
+  ]},
+  { version: "0.29.0", changes: [
+    "Added pirate, Navy, and cargo-transport combat AI: pirates intrude into green/spaceport zones, the Navy hunts and kills them from long range, and pirates prioritize attacking cargo transports over the player.",
+    "Added new combat dialogue.",
+    "Fixed the equip-confirm popup appearing when there was nothing to equip.",
+    "Moved Skills and Server info from the Telemetry HUD into Data Pad tabs.",
+    "Replaced derelict cargo pods with a new Ship Debris system."
+  ]},
+  { version: "0.28.0", changes: [
+    "Reworked Manufacturing blueprints into 16 clearly separate, individually scribable blueprints.",
+    "Added quest limits (one active quest at a time) and bigger ore-quest payouts.",
+    "Rebalanced the economy — higher ore/scrap prices, profitable ingot and bullet manufacturing.",
+    "Station market stock is now genuinely finite. Stations passively restock a small amount of ore each in-game hour while populated.",
+    "Moved inter-galaxy gates into green zones only.",
+    "Doubled ore density per zone."
+  ]},
+  { version: "0.27.0", changes: [
+    "Removed Autopilot from the universe map.",
+    "Fixed the warp-in visual overlapping cargo ships at stations.",
+    "Upgrades now require an explicit confirm to equip instead of auto-equipping.",
+    "Added item stacking in storage and cargo.",
+    "The Market now lets you instantly sell storage items.",
+    "Removed the standalone \"Sell Cargo\" box; moved \"Store Ship\" into Storage.",
+    "Logging out while docked now keeps you docked on your next login.",
+    "Fixed the mobile Settings menu and dock layout."
+  ]},
+  { version: "0.26.0", changes: [
+    "Fixed undefined skill books. Added all 21 skill book items across 7 skills.",
+    "Added a full Manufacturing system: ore smelting, tiered gear upgrades, and new ammo tiers.",
+    "Manufacturing blueprint scribing is gated by your Academics level.",
+    "Mining range increased to 500m."
+  ]},
+  { version: "0.25.1", changes: [
+    "Removed the now-redundant standalone Custom HUD button from the station sidebar."
+  ]},
+  { version: "0.25.0", changes: [
+    "Settings is now reachable from every station and via the Escape key."
+  ]},
+  { version: "0.24.0", changes: [
+    "Fully fixed the game's title to just \"VOID DRIFT\".",
+    "Loan payments now genuinely pay down principal over time, not just interest. Added a \"Pay Off In Full\" option.",
+    "Players who'd had their starter ship removed by an earlier migration now also get the forced ship-choice modal.",
+    "The onboarding modal now finances and auto-equips your starting gear immediately."
+  ]},
+  { version: "0.23.0", changes: [
+    "Removed \"Belt Runner\" from the title (partial fix).",
+    "Added a forced ship-choice onboarding modal for brand-new characters, with spinning ship previews and real stat comparisons."
+  ]},
+  { version: "0.22.0", changes: [
+    "Consolidated all HUD layout controls into a single Custom HUD button in Settings.",
+    "Fixed Station HUD save/load being completely unreachable while docked.",
+    "Fixed Help's \"Show All Medals\" opening the wrong panel.",
+    "Fixed the Medals tab still showing unearned medals.",
+    "Found and fixed the root cause of the long-running Target panel/Item Inspector sizing bug."
+  ]},
+  { version: "0.21.0", changes: [
+    "Removed the minimize button from station popup boxes.",
+    "Reset HUD Layout now also resets opacity.",
+    "Fixed panels not being draggable/resizable on mobile.",
+    "Redesigned the Orbit control into a single expandable button.",
+    "Throttle now works without a target selected, and Stop no longer clears your target.",
+    "Added a Disengage button to the Target panel.",
+    "Added a full keybinding scheme (targeting, throttle, star map, reload, cargo, Data Pad) with documentation in Settings → Help.",
+    "Approach and Orbit no longer require a target lock — only Mining, Combat, and Salvage still do.",
+    "Added save/load custom HUD layouts, separate for space and stations."
+  ]},
+  { version: "0.20.3", changes: [
+    "Fixed ship financing incorrectly requiring and deducting credits (it's meant to be free, paid back via loan).",
+    "Fixed the Stop button not deselecting throttle buttons.",
+    "Added an opacity slider to Settings.",
+    "Fixed a dead Autopilot button on the universe map.",
+    "Fixed cumulative playtime resetting every login.",
+    "Fixed the wallet ledger being wiped on every login.",
+    "Removed the loan payment box from the Data Pad while in space (payments require docking)."
+  ]},
+  { version: "0.20.2", changes: [
+    "Fixed a major UI regression: a duplicated Data Pad title bar, an overlapping Equipment panel, Credits/Knowledge showing on every tab instead of just Ledger, and overlapping HUD panels in space.",
+    "Reverted the station docking panels back to semi-transparent, draggable, resizable windows.",
+    "Fixed mobile layout."
+  ]},
+  { version: "0.20.1", changes: [
+    "Big UI/UX pass: fixed login spam from Fame level-ups, fixed dead space in the Target and Event Log panels, enlarged the Telemetry buttons, quieted the event log further, relabeled the Ledger tab, made Medals collapsible, restricted loan payments to while docked, adjusted Finance Office pricing and wording, added countdown timers for UBI/callsign changes/daily quests, added partial black-box turn-ins, lowered the default Memory Cube quantity, and reworked the station panel layout."
+  ]},
+  { version: "0.20.0", changes: [
+    "Ships are now real inventory items instead of just an equipped state.",
+    "Renamed \"Shipyard\" to \"Finance Office\" — financing a ship delivers it to station storage instead of instantly equipping it, and you can only have one ship loan out at a time.",
+    "Loan payments are now weekly. Missing payments sends a bounty hunter after you, and losing to one costs you all your Knowledge.",
+    "New characters start in an escape pod and choose their home station.",
+    "Added black-box bounty turn-ins at the Navy office, plus weekly passive income for station treasuries.",
+    "Manufacturing and Library crafting now continue even while you're logged out.",
+    "Skill Books can now be used from storage or cargo."
+  ]},
+  { version: "0.19.3", changes: [
+    "Fixed Memory Cube quantity resetting to 10 when changed.",
+    "Fixed black-box items being unsellable from storage.",
+    "Station crafting costs are now taxed.",
+    "Reorganized the station menu into a more compact grid.",
+    "Fixed login spam from old medal notifications.",
+    "Removed dock/undock/warp spam from the event log.",
+    "Fixed a serious warp bug that could leave your ship drifting with all controls locked.",
+    "Autopilot no longer uses jump gates — it chains direct warps to its destination.",
+    "Moved the Stop button onto the telemetry bar.",
+    "Moved Knowledge off the HUD and into the wallet.",
+    "Added real content to the Settings Help screen.",
+    "The universe map now lets you click a location to zoom in and choose to warp or autopilot, instead of auto-warping instantly."
+  ]},
+  { version: "0.19.2", changes: [
+    "Opening Settings no longer pauses the game.",
+    "Added the Fame system with achievement points and expanding tiered medal chains (playtime, kills, ore mined, credits earned, distance traveled, contracts completed, skill levels, warps).",
+    "Autopilot now takes the full warp charge time and properly zeroes your velocity on activation.",
+    "Timers keep running correctly even when the browser tab is in the background.",
+    "Added the Memory Cube and Skill Book crafting economy.",
+    "Added the Game Master role with moderation commands, plus mute/unmute for all players.",
+    "Wallet credits are now only visible on the Ledger tab.",
+    "Added an in-game Mail system with a welcome message for new players.",
+    "The online player list now shows session time and Fame instead of level."
+  ]},
+  { version: "0.19.1", changes: [
+    "Station storage is now genuinely separate per station, instead of one shared bank across all stations."
+  ]},
+  { version: "0.19.0", changes: [
+    "Auction house listings capped at 4 per player, with storage-based listing and buying.",
+    "Unidentified ships now show a spinning \"?\" placeholder model.",
+    "Added a new Knowledge resource and the Academics skill.",
+    "Added the Library station panel for crafting Memory Cubes and scribing Skill Books."
+  ]}
+];
 
 // ---------- update-available banner ----------
 // Periodically re-fetches this very page (same-origin -- works identically whether
@@ -6074,6 +6361,20 @@ function stationForGalaxy(g){ return STATIONS.find(s=>s.galaxy === g) || station
 // startDockingSequence/enterDock, read by the dock UI + storage/shipyard log lines.
 // Falls back to the home station (Meridian) whenever nothing is docked.
 let dockedStation = null;
+// (v0.43.0) bugfix: snapshot of #eventLog's SPACE-context inline style, taken the
+// instant enterDock() runs -- restored on exitDock() below. #eventLog is one shared
+// DOM element used both in space and while docked (see enterDock/exitDock's own
+// v0.34.0 comments on its collapse/close button swap), and drag/resize while docked
+// is explicitly still allowed there -- but that drag writes an absolute pixel
+// left/top straight onto this same element via makePanelManageable's
+// lockPixelPosition(). With nothing to reset it, a position picked while docked
+// (anywhere convenient next to the station panels, often nowhere near the bottom-
+// left corner) used to leak straight back into space on undock instead of the
+// panel's real bottom-left space position. Snapshotting on the way in and
+// reapplying on the way out keeps the two contexts' positions independent, same as
+// every other docked sub-panel already gets for free by being its own separate DOM
+// element instead of a shared one.
+let eventLogSpaceStyleSnapshot = null;
 function activeStationEntry(){ return dockedStation || stationEntry; }
 function nearestStation(){
   let best = null, bestDist = Infinity;
@@ -8939,6 +9240,11 @@ function toggleDockSubPanel(name){
 function enterDock(station){
   if(docked) return;
   docked = true;
+  // (v0.43.0) bugfix: capture #eventLog's current (space-context) inline style
+  // BEFORE anything below touches it (setSpaceHudVisible(false) just past this,
+  // for one, sets its display) -- see eventLogSpaceStyleSnapshot's own comment at
+  // its declaration for why this needs capturing at all.
+  eventLogSpaceStyleSnapshot = document.getElementById('eventLog').getAttribute('style');
   // which station we're docked at (v0.10.0 multi-galaxy) -- defaults to the nearest
   // station if a caller didn't say, so enterDock() with no args still does the right thing
   dockedStation = station || nearestStation() || stationEntry;
@@ -9007,6 +9313,22 @@ function exitDock(){
   if(typeof walletPanelApi !== 'undefined' && walletPanelApi && walletPanelApi.collapseBtn) walletPanelApi.collapseBtn.style.display = '';
   // (v0.34.0) item 2: hide EVENT LOG's X close box again back in space.
   if(typeof eventLogPanelApi !== 'undefined' && eventLogPanelApi && eventLogPanelApi.closeBtn) eventLogPanelApi.closeBtn.style.display = 'none';
+  // (v0.43.0) bugfix: restore #eventLog's pre-dock (space-context) inline style,
+  // undoing any drag/resize the player did to it while docked -- see
+  // eventLogSpaceStyleSnapshot's own comment at its declaration. setAttribute
+  // wholesale-replaces the style attribute (matching how applyCustomHudLayout
+  // already does this same restore for its own saved layouts), so
+  // setSpaceHudVisible(true) above is re-run right after to guarantee display
+  // ends up correct regardless of what the snapshot itself contained.
+  {
+    const eventLogEl = document.getElementById('eventLog');
+    if(eventLogEl && eventLogSpaceStyleSnapshot !== null){
+      if(eventLogSpaceStyleSnapshot) eventLogEl.setAttribute('style', eventLogSpaceStyleSnapshot);
+      else eventLogEl.removeAttribute('style');
+    }
+    eventLogSpaceStyleSnapshot = null;
+  }
+  setSpaceHudVisible(true);
   // regression fix (item E): close every individual floating station sub-panel
   // (there's no longer a single shared #dockedPanel box to hide)
   showDockSubPanel('dockMainPanel');
@@ -10160,6 +10482,27 @@ function getManufacturingQueue(bpType, stationId){
   if(!manufacturingQueues[stationId][bpType]) manufacturingQueues[stationId][bpType] = { total:0, completed:0, startedAtMs:0, unitMs:0 };
   return manufacturingQueues[stationId][bpType];
 }
+// (v0.43.0) item: "you should not be able to manufacture more than one type of item
+// at a time" -- manufacturingQueues is keyed PER STATION (see its own comment
+// above), but the restriction here is read as a GLOBAL, per-PLAYER limit across
+// every station, not a separate one-per-station allowance: a player only has one
+// pair of hands, and letting them run, say, Iron Bullets at Meridian AND Copper
+// Ingots at a second station simultaneously is exactly the "more than one type of
+// item at a time" the request calls out, just spread across two stations instead
+// of one panel. This scans every station's queue bucket (not just the currently
+// docked one) for any batch still in progress. Returns null when nothing is
+// building anywhere, or { stationId, bpType, recipe } for whichever one is.
+function findActiveManufacturingJob(){
+  for(const sid of Object.keys(manufacturingQueues)){
+    const bucket = manufacturingQueues[sid];
+    for(const bpType of Object.keys(bucket)){
+      if(bucket[bpType] && bucket[bpType].total > 0){
+        return { stationId: sid, bpType, recipe: MANUFACTURING_RECIPES[bpType] };
+      }
+    }
+  }
+  return null;
+}
 // checks the FULL batch is affordable (every listed input + credits) before deducting
 // anything or queueing anything -- refuses outright rather than silently building a
 // partial batch and stopping partway. (v0.26.0) generalized from a single hardcoded
@@ -10204,6 +10547,20 @@ function startManufacturing(bpType, qty){
   }
   qty = Math.max(1, Math.min(100, Math.round(qty) || 0));
   const stationId = activeStationEntry().id;
+  // (v0.43.0) item: global, per-player "only one item type manufacturing at a
+  // time" lock -- see findActiveManufacturingJob's own comment on why this checks
+  // EVERY station, not just this one. A genuinely different recipe already
+  // running anywhere blocks starting this one outright; the pre-existing
+  // same-station/same-recipe check just below (unchanged) still separately
+  // refuses to let a second batch pile onto an already-running batch of the
+  // SAME recipe at the SAME station ("topping up" an in-progress batch was never
+  // supported -- there's nothing to add to until it finishes).
+  const activeJob = findActiveManufacturingJob();
+  if(activeJob && !(activeJob.stationId === stationId && activeJob.bpType === bpType)){
+    const activeLabel = activeJob.recipe ? activeJob.recipe.label.toUpperCase() : 'A BATCH';
+    flashMessage('ALREADY MANUFACTURING ' + activeLabel + ' — WAIT FOR IT TO FINISH', 'warn');
+    return;
+  }
   const q = getManufacturingQueue(bpType, stationId);
   if(q.total > 0){ flashMessage('ALREADY BUILDING A BATCH', 'warn'); return; }
   const creditsNeeded = recipe.creditsPerUnit * qty;
@@ -10327,6 +10684,12 @@ function renderManufacturingPanel(){
   wrap.querySelectorAll('[data-mfg-qty]').forEach(inp=>{
     if(inp.value !== '') preservedQty[inp.dataset.mfgQty] = inp.value;
   });
+  // (v0.43.0) item: computed ONCE per render, not per-recipe-row -- see
+  // findActiveManufacturingJob's own comment for why this is a GLOBAL (every
+  // station, not just this one) per-player "one item type at a time" lock. Any
+  // row that isn't the actual active job (if there is one) gets its BUILD button
+  // disabled with a clear reason instead of silently failing on click.
+  const activeJob = findActiveManufacturingJob();
   wrap.innerHTML = known.map(bpType=>{
     const recipe = MANUFACTURING_RECIPES[bpType];
     const q = getManufacturingQueue(bpType, stationId);
@@ -10334,8 +10697,21 @@ function renderManufacturingPanel(){
     const elapsedInUnit = q.total > 0 ? (Date.now() - q.startedAtMs) - (q.completed * q.unitMs) : 0;
     const pct = q.total > 0 ? Math.min(100, (elapsedInUnit / q.unitMs) * 100) : 0;
     const building = q.total > 0;
+    const blockedByOtherJob = !building && activeJob && !(activeJob.stationId === stationId && activeJob.bpType === bpType);
     const locked = !!(recipe.minSkill && (skillLevels[recipe.minSkill.key]||0) < recipe.minSkill.level);
     const lockNote = locked ? '<div class="drow" style="font-size:10px; color:var(--danger);"><span>NEEDS ' + SKILL_DEFS[recipe.minSkill.key].name.toUpperCase() + ' LV.' + recipe.minSkill.level + ' TO BUILD</span></div>' : '';
+    // (v0.43.0) item: this row's own blocked-by-a-different-active-job note, shown
+    // instead of a Quantity/BUILD row (see the ternary swapping it in below) --
+    // names the exact recipe that's tying up the player's one manufacturing slot,
+    // same "ALREADY MANUFACTURING X — WAIT FOR IT TO FINISH" wording startManufacturing
+    // itself flashes if this got clicked anyway. No cancel option exists anywhere
+    // in Manufacturing (a batch is never refunded once started, see the "keeps
+    // building even if you undock" note below), so there's genuinely nothing to
+    // offer here but "wait" -- unlike a cancel-capable system, this deliberately
+    // does NOT invite a cancel action that doesn't exist.
+    const blockedNote = blockedByOtherJob
+      ? '<div class="drow" style="font-size:10px; color:var(--danger);"><span>ALREADY MANUFACTURING ' + (activeJob.recipe ? activeJob.recipe.label.toUpperCase() : 'A BATCH') + ' — WAIT FOR IT TO FINISH</span></div>'
+      : '';
     // item 1 (v0.28.0): explicit "REQUIRES" row naming the exact blueprint this recipe
     // is unlocked by, so the panel never leaves it ambiguous which specific blueprint
     // to go scribe more of / what unlocked this row in the first place
@@ -10345,6 +10721,7 @@ function renderManufacturingPanel(){
       + '<div class="drow" style="font-size:10px; color:var(--phosphor-dim);"><span>REQUIRES</span><span>' + bpLabel.toUpperCase() + '</span></div>'
       + '<div class="drow"><span>COST PER UNIT</span><span>' + mfgCostLine(recipe) + '</span></div>'
       + lockNote
+      + blockedNote
       + (building
         ? '<div class="drow"><span>CRAFTING</span><span>' + (q.completed + 1) + ' / ' + q.total + '</span></div>'
         + '<div class="drow"><span>QUEUE REMAINING</span><span>' + (q.total - q.completed) + '</span></div>'
@@ -10360,7 +10737,7 @@ function renderManufacturingPanel(){
         : '<div class="dockSubRow">'
           + '<span class="dsName">Quantity</span>'
           + '<input type="number" min="1" max="100" step="1" value="' + (preservedQty[bpType] !== undefined ? preservedQty[bpType] : '10') + '" data-mfg-qty="' + bpType + '">'
-          + '<button class="cmdbtn" data-mfg-build="' + bpType + '"' + (locked ? ' disabled style="opacity:0.4;"' : '') + '>BUILD</button>'
+          + '<button class="cmdbtn" data-mfg-build="' + bpType + '"' + ((locked || blockedByOtherJob) ? ' disabled style="opacity:0.4;"' : '') + '>BUILD</button>'
           + '</div>')
       + '</div>';
   }).join('');
@@ -15592,6 +15969,38 @@ function closeHelpMenu(){
 document.getElementById('btnOpenHelp').addEventListener('click', openHelpMenu);
 document.getElementById('btnCloseHelp').addEventListener('click', closeHelpMenu);
 
+// ---------- PATCH NOTES window (v0.43.0) ----------
+// Same swap-out-of-Settings pattern as HELP just above -- see openPatchNotesMenu.
+// Rendered directly from the PATCH_NOTES array (declared near GAME_VERSION at the
+// top of this script) every time it's opened, so it's always current with
+// whatever's in that array -- no separate "build this once" step to forget.
+let patchNotesMenuOpen = false;
+function renderPatchNotesPanel(){
+  const wrap = document.getElementById('patchNotesList');
+  if(!wrap) return;
+  wrap.innerHTML = PATCH_NOTES.map(entry=>{
+    return '<div class="patchEntry">'
+      + '<div class="patchVersion">v' + entry.version + '</div>'
+      + '<ul>' + entry.changes.map(c=> '<li>' + c + '</li>').join('') + '</ul>'
+      + '</div>';
+  }).join('');
+}
+function openPatchNotesMenu(){
+  if(!settingsMenuOpen || patchNotesMenuOpen) return;
+  patchNotesMenuOpen = true;
+  renderPatchNotesPanel();
+  document.getElementById('settingsMenu').classList.remove('show');
+  document.getElementById('patchNotesMenu').classList.add('show');
+}
+function closePatchNotesMenu(){
+  if(!patchNotesMenuOpen) return;
+  patchNotesMenuOpen = false;
+  document.getElementById('patchNotesMenu').classList.remove('show');
+  document.getElementById('settingsMenu').classList.add('show');
+}
+document.getElementById('btnOpenPatchNotes').addEventListener('click', openPatchNotesMenu);
+document.getElementById('btnClosePatchNotes').addEventListener('click', closePatchNotesMenu);
+
 // ---------- item 3 REWORK: CUSTOM HUD panel (consolidates every HUD-layout
 // save/load/reset control that used to be scattered across Settings and
 // #dockNavColumn into one place) ----------
@@ -20116,6 +20525,89 @@ function updateCamera(){
   camera.lookAt(focus);
 }
 
+// ---------- title-screen attract mode (v0.42.0) ----------
+// Background flythrough shown behind the login form on #bootscreen: reuses the SAME
+// spherical orbit-around-a-focus-point math as the inspect camera above (offset =
+// sin/cos(az,pol) * dist around a focus, camera.lookAt(focus)) -- deliberately the
+// "inspection view" camera rig the project already has, just driven by a scripted
+// timer/az sweep instead of camState (mouse drag) or inspectTarget (clicked object).
+// It NEVER reads or writes camState/inspecting/inspectTarget/shipState, so it can't
+// clobber the real player's camera angle or ship position, and it's fully torn down
+// (see stopAttractMode) the instant LAUNCH fires.
+//
+// SCOPE DECISION: tours Galaxy A's 4 zones (station/belt/red/green) rather than all
+// 16 zones across all 4 galaxies. Reason: updateGalaxyVisibility() (see its own
+// comment above) deliberately keeps only the CURRENT galaxy's stations/gates/debris
+// visible and hides every other galaxy's meshes as a perf optimization, and it
+// derives "current" from currentZoneKey()/shipState.pos -- the real player ship
+// state this feature must not touch. Galaxy A is already the one visible pre-login
+// (shipState defaults there), so touring its 4 zones needs no visibility-system
+// changes and zero risk of ever touching shipState. All content for these 4 zones is
+// already resident in the one shared `scene` graph (this game keeps its whole small
+// single-galaxy-focused world loaded at once, per updateGalaxyVisibility's own
+// comment -- nothing is streamed in/out), so this is just camera movement, no extra
+// loading/unloading and no perf cliff from repeatedly instantiating zone content.
+const ATTRACT_ZONES = [
+  { center: STATION_ZONE_CENTER, dist: 900 },
+  { center: BELT_ZONE_CENTER,    dist: 1600 },
+  { center: RED_ZONE_CENTER,     dist: 1500 },
+  { center: GREEN_ZONE_CENTER,   dist: 1300 }
+];
+const ATTRACT_ZONE_SECONDS = 30; // ~30s dwell per zone, per the request
+let attractMode = false;
+let attractTimer = 0;
+let attractZoneIdx = 0;
+let attractShipWasVisible = true;
+function updateAttractCamera(dt){
+  attractTimer += dt;
+  if(attractTimer >= ATTRACT_ZONE_SECONDS){
+    attractTimer = 0;
+    attractZoneIdx = (attractZoneIdx + 1) % ATTRACT_ZONES.length;
+  }
+  const z = ATTRACT_ZONES[attractZoneIdx];
+  const t = attractTimer;
+  // slow continuous drift, never a jarring teleport-and-stop within a zone: azimuth
+  // sweeps steadily, polar angle and distance both breathe gently on their own
+  // periods so the path never repeats itself exactly during the ~30s dwell.
+  const az = t * 0.055;
+  const pol = 1.15 + Math.sin(t * 0.17) * 0.22;
+  const dist = z.dist * (1 + Math.sin(t * 0.09) * 0.18);
+  const focus = z.center;
+  const offset = new THREE.Vector3(
+    Math.sin(az)*Math.sin(pol),
+    Math.cos(pol),
+    Math.cos(az)*Math.sin(pol)
+  ).multiplyScalar(dist);
+  camera.position.copy(focus).add(offset);
+  camera.lookAt(focus);
+}
+// Invisible-ship + HUD-hidden: hides the player's own ship mesh (there is otherwise
+// nothing else standing in for "an invisible ship" -- the camera itself has no mesh)
+// and reuses setSpaceHudVisible(false) (see SPACE_HUD_IDS), the SAME function LAUNCH
+// itself calls to pre-hide the space HUD, so no normal flight HUD panel can render
+// behind the login form.
+function startAttractMode(){
+  if(attractMode) return;
+  attractMode = true;
+  attractTimer = 0;
+  attractZoneIdx = 0;
+  attractShipWasVisible = (ship.visible !== false);
+  ship.visible = false;
+  setSpaceHudVisible(false);
+  // attractLoop/attractRAF are declared further down (right after resize()), where
+  // this is actually kicked off, but the assignment lives here so stopAttractMode
+  // (called from the LAUNCH handler, far below in the file) always has the current
+  // handle to cancel, however either function ends up getting called.
+  attractLastTs = null;
+  if(typeof attractLoop === 'function' && attractRAF == null) attractRAF = requestAnimationFrame(attractLoop);
+}
+function stopAttractMode(){
+  if(!attractMode) return;
+  attractMode = false;
+  ship.visible = attractShipWasVisible;
+  if(attractRAF != null){ cancelAnimationFrame(attractRAF); attractRAF = null; }
+}
+
 // ---------- click-to-inspect camera mode ----------
 // clicking the 🔍 button on an overview row (see addOverviewRow) fades the screen to
 // black, retargets the existing drag-orbit/scroll-zoom camera at the selected
@@ -21481,7 +21973,10 @@ function animate(){
     playerStunned = Math.max(0, (playerStunnedEndsAtMs - Date.now())/1000);
     shipState.vel.set(0,0,0); // ion-blast stun (see updateBountyHunters): fully immobilized
   }
-  updateCamera(); // already branches on `inspecting` to orbit the inspected target instead of the ship
+  // title-screen attract mode (v0.42.0): while it's running, drive the camera from
+  // the scripted zone-tour sweep instead of the normal ship/inspect orbit -- see
+  // startAttractMode/stopAttractMode. Never touches camState/shipState either way.
+  if(attractMode) updateAttractCamera(dt); else updateCamera(); // already branches on `inspecting` to orbit the inspected target instead of the ship
   updateSky(); // recenters the skybox on the just-updated camera.position -- see updateSky() comment
   updateLocking(dt);
   updateBrackets();
@@ -21512,6 +22007,28 @@ function animate(){
 
 window.addEventListener('resize', resize);
 resize();
+
+// ---------- title-screen attract mode: its own render loop ----------
+// animate() (the real game loop) is deliberately only ever started from inside the
+// LAUNCH click handler (see `gameLaunched = true; animate();` at the end of it) --
+// nothing renders to #gameCanvas at all before that. So the attract-mode background
+// (see startAttractMode/updateAttractCamera above, near the inspect camera) needs
+// its OWN small requestAnimationFrame loop that runs only pre-LAUNCH and is
+// cancelled the instant LAUNCH fires (see stopAttractMode, called first thing in
+// the LAUNCH handler below), so it can never coexist with or fight the real
+// animate() loop's own renderer.render call.
+let attractRAF = null;
+let attractLastTs = null;
+function attractLoop(ts){
+  attractRAF = requestAnimationFrame(attractLoop);
+  if(attractLastTs == null) attractLastTs = ts;
+  const dt = Math.min(0.1, Math.max(0, (ts - attractLastTs) / 1000));
+  attractLastTs = ts;
+  updateAttractCamera(dt);
+  updateSky(); // recenters the starfield/nebula backdrop on the camera -- same as animate() does every frame
+  renderer.render(scene, camera);
+}
+startAttractMode();
 
 // ---------- mobile rotate-device guard ----------
 // item: "make the mobile version switch to landscape orientation so all the menus
@@ -21593,6 +22110,12 @@ document.getElementById('startBtn').addEventListener('click', async ()=>{
   // same row every other client/GM sees, not a client-side flag)
   const modBlockMsg = await checkModerationBlock();
   if(modBlockMsg){ flashMessage('ACCESS BLOCKED', 'warn'); logEvent('=== ' + modBlockMsg + ' ===', 'warn'); return; }
+  // v0.42.0: tear down the title-screen attract-mode background flythrough FIRST,
+  // synchronously, before anything else below -- cancels its own requestAnimationFrame
+  // loop (see attractLoop) and restores the player's own ship mesh's visibility, so it
+  // can never keep running alongside (and fighting) the real animate() loop this same
+  // handler starts further down.
+  stopAttractMode();
   document.getElementById('bootscreen').style.display = 'none';
   // bug fix: the space-flight HUD panels (#telemetry/#overview/#eventLog/
   // #targetPanel/etc) have no hidden-by-default CSS state -- they're only ever
