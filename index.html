@@ -162,27 +162,26 @@
   /* #bootContent scrolls independently so the LAUNCH button below it always
      stays on-screen, even when the instructional text is taller than a short
      mobile viewport -- fixes the button being pushed off-screen on some phones.
-     v0.44.1: the #bootscreen radial-gradient scrim above is deliberately LEAST
-     opaque at dead-center (0.45) and darkest at the edges (0.72) -- but this box
-     sits vertically centered, i.e. exactly in that least-opaque middle, so once the
-     v0.42.0 attract-mode flythrough gave it a busy moving background, the title/
-     tagline/keys text ended up fighting the scene right where the scrim helps
-     least. Fixed with its own small terminal-panel scrim (same phosphor-panel
-     language as every other HUD panel, not just a flat opacity bump) behind the
-     text itself, independent of the big screen-wide gradient. */
+     v0.44.1 gave this its own filled terminal-panel scrim (background gradient +
+     border + box-shadow) behind the title/login text, to fight the busy moving
+     v0.42.0 attract-mode flythrough right where the big screen-wide radial scrim
+     above is at its least opaque (dead center). v0.44.2: the user explicitly
+     asked for that panel/box gone -- "remove the panel/scrim from the title i
+     dont like it" -- so it's removed outright here; the live 3D scene now shows
+     straight through behind the text again, same as before v0.44.1. Readability
+     is instead carried entirely by text-shadow on the text itself (h1/p below,
+     and #bootAccountStatus/.bootLinkBtn/.bootServerLabel/.serverBtn further down)
+     plus a small further size bump ("maybe just make the text a little bigger"),
+     rather than a filled background box. */
   #bootContent{
     flex:1 1 auto; min-height:0; width:100%; max-width:680px;
     overflow-y:auto; display:flex; flex-direction:column; align-items:center;
     justify-content:center;
     padding:18px 22px;
     box-sizing:border-box;
-    background:linear-gradient(180deg, rgba(2,8,7,0.72) 0%, rgba(2,8,7,0.58) 100%);
-    border:1px solid var(--panel-border);
-    border-radius:2px;
-    box-shadow:0 0 22px rgba(0,0,0,0.5);
   }
-  #bootscreen h1{font-size:min(9vw,64px); letter-spacing:6px; margin:0 0 6px 0; text-shadow:0 0 12px var(--phosphor), 0 2px 6px rgba(0,0,0,0.9);}
-  #bootscreen p{font-size:min(4.2vw,20px); color:var(--phosphor-dim); max-width:640px; line-height:1.5; text-shadow:0 1px 4px rgba(0,0,0,0.9);}
+  #bootscreen h1{font-size:min(9.6vw,68px); letter-spacing:6px; margin:0 0 6px 0; text-shadow:0 0 14px var(--phosphor), 0 2px 8px rgba(0,0,0,0.95), 0 0 3px rgba(0,0,0,0.9);}
+  #bootscreen p{font-size:min(4.6vw,21px); color:var(--phosphor-dim); max-width:640px; line-height:1.5; text-shadow:0 1px 5px rgba(0,0,0,0.95), 0 0 3px rgba(0,0,0,0.9);}
   #bootscreen .startbtn{
     flex:0 0 auto; margin-top:14px; font-family:'VT323',monospace; font-size:26px; letter-spacing:3px;
     background:transparent; border:2px solid var(--phosphor); color:var(--phosphor);
@@ -355,8 +354,40 @@
   }
   .orbitDropdown .cmdbtn{ width:100%; box-sizing:border-box; border-top:none; }
 
-  /* reticle brackets */
-  .bracket{position:fixed; z-index:35; pointer-events:none; border:2px solid var(--phosphor); transform:translate(-50%,-50%);}
+  /* reticle brackets
+     (v0.44.2) bugfix ROOT CAUSE: this rule never had a default `display:none` --
+     visibility was ENTIRELY JS-driven (updateBrackets()/enterInspectMode() are the
+     only places that ever set .style.display on bracketEl/hostileMarkerEls), and
+     updateBrackets() itself only ever runs from inside animate(), which is never
+     started until LAUNCH fires (see animate()'s own comment: "nothing renders to
+     #gameCanvas at all before that"). That left a real window -- the ENTIRE
+     pre-login title screen, including the whole v0.42.0 attract-mode flythrough --
+     where these elements had NO inline style at all yet, so the browser default
+     (a plain block-level div, fully visible) applied instead. ensureBrackets()/
+     ensureHostileMarkers() both run unconditionally at script init (not gated on
+     login/LAUNCH), appending bracketEl and one hostileMarkerEls[] div PER PIRATE
+     straight onto document.body before any of that JS-driven hiding could ever
+     run -- so every one of those divs sat there, fully visible, unpositioned
+     (position:fixed with no left/top set defaults to the viewport origin, and the
+     shared transform:translate(-50%,-50%) straddles it right across (0,0)), for
+     the whole boot/attract/login flow. With N pirates that's N identical hostile-
+     marker text nodes ("⚠ Pirate Fighter ...", red/var(--danger), monospace)
+     stacked exactly on top of each other in the top-left corner -- which is
+     EXACTLY the "red strip of garbled monospace glyphs" the user's screenshots
+     show, not a WebGL/render-target artifact at all (a 3D rendering glitch could
+     never produce crisp overlapping DOM text). The empty green-bordered .bracket
+     box (0-size, so effectively just its 2px border) sits at the same spot for
+     the same reason. THIS is the real root cause -- the previous v0.44.1 fix
+     (moving the attract-mode station-zone orbit distance from 900 to 5500 to
+     clear the station's red mast beacon) was chasing a DIFFERENT, cosmetically
+     similar-sounding "red line" theory that never touched this code path at all,
+     which is exactly why the user still saw the same artifact after that fix
+     shipped. The actual fix is just giving both rules the missing default hidden
+     state, same as every other HUD element in this game already has (either via
+     CSS or being gated behind LAUNCH) -- updateBrackets()/enterInspectMode() still
+     unhide them exactly as before, the instant there's an actual selected target/
+     nearby hostile to show, and only once the real flight HUD is running. */
+  .bracket{position:fixed; z-index:35; pointer-events:none; border:2px solid var(--phosphor); transform:translate(-50%,-50%); display:none;}
   .bracket.selected{border-color:#fff; opacity:0.85;}
   .bracket.locking{border-color:var(--amber);}
   .bracket.locked{border-color:var(--phosphor); animation:pulse 1.1s infinite;}
@@ -367,6 +398,7 @@
     position:fixed; z-index:34; pointer-events:none; transform:translate(-50%,-50%);
     font-family:'VT323',monospace; color:var(--danger); font-size:13px; letter-spacing:1px;
     text-shadow:0 0 4px rgba(255,0,0,0.8); white-space:nowrap;
+    display:none; /* (v0.44.2) see .bracket's comment just above -- same missing-default-hidden-state bug, same fix */
   }
 
   #centerReticle{
@@ -727,14 +759,14 @@
      browser's bulky default scrollbar, which read as a jarring light-grey slab against
      this HUD's thin phosphor-green borders. scrollbar-width/-color covers Firefox; the
      ::-webkit-scrollbar rules cover Chrome/Safari/Edge. */
-  .popupPanel .popupBody, #dockedPanel, #helpMenu, #overview .list, #eventLog .list{
+  .popupPanel .popupBody, #dockedPanel, #helpMenu .panelScrollBody, #patchNotesMenu .panelScrollBody, #overview .list, #eventLog .list{
     scrollbar-width:thin; scrollbar-color:var(--panel-border) transparent;
   }
-  .popupPanel .popupBody::-webkit-scrollbar, #dockedPanel::-webkit-scrollbar, #helpMenu::-webkit-scrollbar,
+  .popupPanel .popupBody::-webkit-scrollbar, #dockedPanel::-webkit-scrollbar, #helpMenu .panelScrollBody::-webkit-scrollbar, #patchNotesMenu .panelScrollBody::-webkit-scrollbar,
   #overview .list::-webkit-scrollbar, #eventLog .list::-webkit-scrollbar{ width:6px; }
-  .popupPanel .popupBody::-webkit-scrollbar-track, #dockedPanel::-webkit-scrollbar-track, #helpMenu::-webkit-scrollbar-track,
+  .popupPanel .popupBody::-webkit-scrollbar-track, #dockedPanel::-webkit-scrollbar-track, #helpMenu .panelScrollBody::-webkit-scrollbar-track, #patchNotesMenu .panelScrollBody::-webkit-scrollbar-track,
   #overview .list::-webkit-scrollbar-track, #eventLog .list::-webkit-scrollbar-track{ background:transparent; }
-  .popupPanel .popupBody::-webkit-scrollbar-thumb, #dockedPanel::-webkit-scrollbar-thumb, #helpMenu::-webkit-scrollbar-thumb,
+  .popupPanel .popupBody::-webkit-scrollbar-thumb, #dockedPanel::-webkit-scrollbar-thumb, #helpMenu .panelScrollBody::-webkit-scrollbar-thumb, #patchNotesMenu .panelScrollBody::-webkit-scrollbar-thumb,
   #overview .list::-webkit-scrollbar-thumb, #eventLog .list::-webkit-scrollbar-thumb{
     background-color:var(--panel-border); border-radius:3px;
   }
@@ -1018,24 +1050,29 @@
      below the mobile-fullscreen/saved-game notes, above LAUNCH. Hidden outright
      when Supabase isn't configured (see supabaseConfigured()) via JS, not CSS,
      since that's a one-time boot-time decision rather than a media query. */
-  #bootAccountRow{ margin-top:14px; font-size:12px; letter-spacing:1px; color:var(--phosphor-dim); display:flex; flex-direction:column; align-items:center; gap:8px; }
+  /* (v0.44.2) no filled scrim behind these any more (see #bootContent's own
+     comment) -- text-shadow carries readability instead, and sizes are bumped a
+     touch from their v0.44.1 values ("maybe just make the text a little bigger"). */
+  #bootAccountRow{ margin-top:14px; font-size:13px; letter-spacing:1px; color:var(--phosphor-dim); display:flex; flex-direction:column; align-items:center; gap:8px; text-shadow:0 1px 4px rgba(0,0,0,0.95), 0 0 3px rgba(0,0,0,0.9); }
   /* boxed buttons (LOG IN/REGISTER, LOG OUT) -- same bordered-button language as
      .serverBtn/.cmdbtn instead of a bare underlined text link, so they're easier
      to tap/click, especially on mobile. */
   .bootLinkBtn{
     background:transparent; color:var(--phosphor); font-family:'VT323',monospace;
-    font-size:15px; letter-spacing:1px; cursor:pointer; pointer-events:auto;
+    font-size:16px; letter-spacing:1px; cursor:pointer; pointer-events:auto;
     border:1px solid var(--panel-border); padding:6px 16px;
+    text-shadow:0 1px 3px rgba(0,0,0,0.9);
   }
   .bootLinkBtn:hover{ background:rgba(109,255,194,0.12); color:var(--amber); border-color:var(--amber); }
 
   /* server selector (PVE/PVP/HARDCORE) -- multiplayer roadmap step 3 */
   #bootServerRow{ margin-top:14px; display:flex; flex-direction:column; align-items:center; gap:6px; max-width:420px; }
-  .bootServerLabel{ font-size:11px; letter-spacing:2px; color:var(--phosphor-dim); }
+  .bootServerLabel{ font-size:12px; letter-spacing:2px; color:var(--phosphor-dim); text-shadow:0 1px 3px rgba(0,0,0,0.9); }
   .serverBtns{ display:flex; gap:6px; flex-wrap:wrap; justify-content:center; }
   .serverBtn{
-    font-family:'VT323',monospace; font-size:15px; letter-spacing:1px; color:var(--phosphor-dim);
+    font-family:'VT323',monospace; font-size:16px; letter-spacing:1px; color:var(--phosphor-dim);
     background:transparent; border:1px solid var(--panel-border); padding:5px 14px; cursor:pointer; pointer-events:auto;
+    text-shadow:0 1px 3px rgba(0,0,0,0.9);
   }
   .serverBtn:hover{ background:rgba(109,255,194,0.12); color:var(--phosphor); }
   .serverBtn.active{ background:var(--phosphor); border-color:var(--phosphor); color:#001108; font-weight:bold; }
@@ -1183,14 +1220,36 @@
   #helpMenu{
     display:none;
     top:50%; left:50%; transform:translate(-50%,-50%);
-    width:min(92vw,560px); max-height:82vh; overflow-y:auto;
+    width:min(92vw,560px); max-height:82vh; overflow:hidden;
     background:var(--panel-bg); border:1px solid var(--panel-border);
-    padding:20px 24px 22px; text-align:left; pointer-events:auto; z-index:75;
+    padding:0; text-align:left; pointer-events:auto; z-index:75;
+    flex-direction:column;
   }
-  #helpMenu.show{display:block;}
+  #helpMenu.show{display:flex;}
+  /* (v0.44.2) "put the back button on the help menu ... on the top and bottom ...
+     so people can go back without having to scroll all the way down. or just
+     always have the back button available" -- this HOW TO PLAY content is long,
+     and BACK used to live only in the .dbtns row at the very bottom of it. Split
+     into a fixed-height sticky header (this bar, holding BACK + the title) plus
+     its own independently-scrolling body (#helpMenu .panelScrollBody) -- same
+     flex-column "fixed header/footer row, one flexible scrolling row" pattern
+     #eventLog/other panels in this game already use, rather than a CSS
+     position:sticky trick layered on the panel's own scroll container. BACK is
+     now on-screen at every scroll position, not just top and bottom -- strictly
+     better than only duplicating the button at both ends, per the user's own
+     "or just always have the back button available" alternative. The original
+     bottom BACK (in .dbtns, alongside SHOW ALL MEDALS) is left in place too. */
+  #helpMenu .panelStickyHeader{
+    flex:0 0 auto; display:flex; align-items:center; gap:10px;
+    padding:14px 20px 10px; border-bottom:1px solid var(--panel-border);
+    background:var(--panel-bg);
+  }
+  #helpMenu .panelStickyHeader .cmdbtn{ flex:0 0 auto; font-size:13px; padding:5px 10px; }
+  #helpMenu .panelScrollBody{ flex:1 1 auto; min-height:0; overflow-y:auto; padding:16px 24px 22px; }
   #helpMenu h2{
     font-family:'VT323',monospace; font-size:26px; letter-spacing:3px; color:var(--amber);
-    margin:0 0 14px; text-align:center; text-shadow:0 0 8px rgba(255,176,32,0.5);
+    margin:0; text-align:center; text-shadow:0 0 8px rgba(255,176,32,0.5);
+    flex:1 1 auto;
   }
   #helpMenu p{font-size:13px; color:var(--phosphor-dim); line-height:1.6; margin:0 0 4px;}
   #helpMenu .dbtns{display:flex; flex-direction:column; gap:10px; margin-top:16px;}
@@ -1217,14 +1276,27 @@
   #patchNotesMenu{
     display:none;
     top:50%; left:50%; transform:translate(-50%,-50%);
-    width:min(92vw,560px); max-height:82vh; overflow-y:auto;
+    width:min(92vw,560px); max-height:82vh; overflow:hidden;
     background:var(--panel-bg); border:1px solid var(--panel-border);
-    padding:20px 24px 22px; text-align:left; pointer-events:auto; z-index:75;
+    padding:0; text-align:left; pointer-events:auto; z-index:75;
+    flex-direction:column;
   }
-  #patchNotesMenu.show{display:block;}
+  #patchNotesMenu.show{display:flex;}
+  /* (v0.44.2) same sticky-header split as #helpMenu just above -- see its own
+     comment for the full reasoning. BACK stays on-screen the whole time you're
+     scrolling through the newest-first patch history instead of only being
+     reachable at the very bottom. */
+  #patchNotesMenu .panelStickyHeader{
+    flex:0 0 auto; display:flex; align-items:center; gap:10px;
+    padding:14px 20px 10px; border-bottom:1px solid var(--panel-border);
+    background:var(--panel-bg);
+  }
+  #patchNotesMenu .panelStickyHeader .cmdbtn{ flex:0 0 auto; font-size:13px; padding:5px 10px; }
+  #patchNotesMenu .panelScrollBody{ flex:1 1 auto; min-height:0; overflow-y:auto; padding:16px 24px 22px; }
   #patchNotesMenu h2{
     font-family:'VT323',monospace; font-size:26px; letter-spacing:3px; color:var(--amber);
-    margin:0 0 14px; text-align:center; text-shadow:0 0 8px rgba(255,176,32,0.5);
+    margin:0; text-align:center; text-shadow:0 0 8px rgba(255,176,32,0.5);
+    flex:1 1 auto;
   }
   #patchNotesMenu .dbtns{display:flex; flex-direction:column; gap:10px; margin-top:16px;}
   .patchEntry{margin-bottom:16px;}
@@ -1575,8 +1647,11 @@
     #dockedPanel .dbtns .cmdbtn{ font-size:14px; padding:7px 8px; }
     #dockedPanel .psection{ font-size:11px; margin-top:8px; }
     #settingsMenu, #customHudPanel{ width:min(88vw,260px); padding:12px 14px 14px; }
-    #helpMenu, #patchNotesMenu{ width:min(94vw,360px); max-height:88vh; padding:14px 16px 16px; }
-    #settingsMenu h2, #helpMenu h2, #customHudPanel h2, #patchNotesMenu h2{ font-size:18px; margin-bottom:8px; }
+    #helpMenu, #patchNotesMenu{ width:min(94vw,360px); max-height:88vh; }
+    #helpMenu .panelScrollBody, #patchNotesMenu .panelScrollBody{ padding:14px 16px 16px; }
+    #helpMenu .panelStickyHeader, #patchNotesMenu .panelStickyHeader{ padding:10px 16px 8px; }
+    #settingsMenu h2, #helpMenu h2, #customHudPanel h2, #patchNotesMenu h2{ font-size:18px; margin-bottom:0; }
+    #settingsMenu h2, #customHudPanel h2{ margin-bottom:8px; }
     .settingsRow{ margin:8px 0; }
     .settingsRow label{ font-size:11px; }
     #settingsMenu .dbtns, #helpMenu .dbtns, #customHudPanel .dbtns{ gap:6px; margin-top:4px; }
@@ -1654,7 +1729,10 @@
     .popupPanel .phdr{font-size:15px; margin-bottom:3px; padding-bottom:3px;}
     #dockedPanel{max-height:94vh; padding:12px 16px 14px;}
     #dockedPanel h2{font-size:21px;}
-    #settingsMenu, #helpMenu, #customHudPanel, #patchNotesMenu{max-height:90vh; padding:12px 16px 14px;}
+    #settingsMenu, #customHudPanel{max-height:90vh; padding:12px 16px 14px;}
+    #helpMenu, #patchNotesMenu{max-height:90vh;}
+    #helpMenu .panelScrollBody, #patchNotesMenu .panelScrollBody{padding:12px 16px 14px;}
+    #helpMenu .panelStickyHeader, #patchNotesMenu .panelStickyHeader{padding:8px 16px 6px;}
     /* width matches CLOCK/OVERVIEW (34vw/170px max, from the general block above,
        unchanged here); max-height matches EVENT LOG's own cap just above (same
        reasoning: a forced fixed height here would just push EVENT LOG's forced
@@ -2283,15 +2361,29 @@
      true throughout and the existing ship-pause-while-Settings-is-open behavior
      just keeps applying. -->
 <div class="hud" id="patchNotesMenu">
-  <h2>PATCH NOTES</h2>
-  <div id="patchNotesList"></div>
-  <div class="dbtns">
-    <button class="cmdbtn" id="btnClosePatchNotes">◀ BACK</button>
+  <!-- (v0.44.2) sticky header: BACK is always on-screen here now, not just at the
+       bottom of this list -- see #patchNotesMenu .panelStickyHeader's CSS comment. -->
+  <div class="panelStickyHeader">
+    <button class="cmdbtn" id="btnClosePatchNotesTop">◀ BACK</button>
+    <h2>PATCH NOTES</h2>
+  </div>
+  <div class="panelScrollBody">
+    <div id="patchNotesList"></div>
+    <div class="dbtns">
+      <button class="cmdbtn" id="btnClosePatchNotes">◀ BACK</button>
+    </div>
   </div>
 </div>
 
 <div class="hud" id="helpMenu">
-  <h2>HOW TO PLAY</h2>
+  <!-- (v0.44.2) sticky header: BACK is always on-screen here now, not just at the
+       bottom of this (long) content -- see #helpMenu .panelStickyHeader's CSS
+       comment. -->
+  <div class="panelStickyHeader">
+    <button class="cmdbtn" id="btnCloseHelpTop">◀ BACK</button>
+    <h2>HOW TO PLAY</h2>
+  </div>
+  <div class="panelScrollBody">
   <div id="helpBetaWarning">
     <div class="psection">⚠ BETA RELEASE</div>
     <p>This is a <b>BETA</b> release. Items, progress, and account data may be lost or corrupted by future updates.</p>
@@ -2394,6 +2486,7 @@
   <div class="dbtns">
     <button class="cmdbtn" id="btnOpenAllMedals">SHOW ALL MEDALS</button>
     <button class="cmdbtn" id="btnCloseHelp">◀ BACK</button>
+  </div>
   </div>
 </div>
 
@@ -2938,7 +3031,7 @@
 // compatibility depends on it. Add new keys, don't rename old ones.
 
 // ---------- version / build info (shown in the ESC settings menu) ----------
-const GAME_VERSION = "0.44.1";
+const GAME_VERSION = "0.44.2";
 const GAME_LAST_EDITED = "2026-09-27";
 const GAME_BUILD_TIME = "18:04 PT"; // wall-clock time this build was published, not just the date
 
@@ -2965,6 +3058,12 @@ const GAME_BUILD_TIME = "18:04 PT"; // wall-clock time this build was published,
 // was introduced and none needed changes.)
 const PATCH_NOTES = [
   // -- ADD NEW ENTRIES HERE (top of array = newest, shown first) --
+  { version: "0.44.2", changes: [
+    "Fixed the real cause of the stray graphical artifact in the corner of the title screen: a leftover hostile-target readout could render fully visible before you'd ever launched into space. It now stays hidden until it's actually supposed to be on screen.",
+    "Removed the background panel behind the title screen text — the title and login now sit directly over the live scene again, with slightly larger, easier-to-read text instead.",
+    "The HELP and PATCH NOTES windows now keep a BACK button pinned at the top at all times, so you can leave either one without scrolling all the way down first.",
+    "STUDENT OF THE TRADE (Skills story contract): reworked 'start training a basic/advanced skill' to credit ANY prior or in-progress training in that tier, not just a case where every skill in it was already fully maxed out — a veteran with real, partial skill progress no longer gets stuck.",
+  ]},
   { version: "0.44.1", changes: [
     "Title screen background now opens in the asteroid belt instead of right on top of the station, and the station leg of the flythrough backs off to a proper full view of it instead of sitting uncomfortably close.",
     "Improved contrast behind the title screen text so it stays readable over the moving starfield background.",
@@ -13298,6 +13397,40 @@ function allSkillsAtMaxLevel(tierFilter){
     return (skillLevels[k]||0) >= skillMaxLevel(k);
   });
 }
+// v0.44.2 REWORK -- the v0.44.1 guard above (allSkillsAtMaxLevel('basic'/'advanced'))
+// was still far too narrow a bar for start_basic/start_advanced: it only retroactively
+// credited a veteran if EVERY single skill of that tier was already maxed out. Any
+// player with real, substantial prior progress -- e.g. three basic skills at LV.3 and
+// two more mid-training, but not literally every basic skill at its cap -- still hit
+// the exact same dead end this guard was supposed to fix, which is exactly what the
+// user reported: "it didnt fix the contracts for story missions that have stuff I
+// already completed." Their own suggested fix is the right one: "make it more general
+// like start any skill" -- i.e. the bar for "start training A skill" should never have
+// been "start one from absolute scratch" (or, after the first patch, "every skill of
+// this tier already maxed") in the first place. It should just be "has this player
+// EVER engaged with training a skill of this tier at all, at any point, past or
+// present" -- any level reached, or training currently in progress counts; a skill
+// doesn't need to be maxed, or even complete, just genuinely started at some point.
+// anyEngagedSkillKey() is the one general replacement for that whole narrow-guard
+// pattern: it returns the first skill of the given tier (or any tier, if omitted)
+// the player has ever trained at least one level in, or is training right now, so the
+// caller can both credit the "start" step AND immediately know whether "reach LV.1"
+// is already satisfied too (skillLevels[key] >= 1) -- without ever inventing a fake
+// "already done" outcome for a BRAND-NEW character, who by definition has never
+// engaged with training anything and will still see every one of these steps as a
+// real, meaningful task.
+function anyEngagedSkillKey(tierFilter){
+  let inProgressFallback = null;
+  const activeKey = (typeof activeTraining !== 'undefined' && activeTraining) ? activeTraining.key : null;
+  for(let i=0;i<SKILL_ORDER.length;i++){
+    const k = SKILL_ORDER[i];
+    const def = SKILL_DEFS[k];
+    if(tierFilter && def.tier !== tierFilter) continue;
+    if((skillLevels[k]||0) >= 1) return k; // prefer one already past LV.1 -- credits reach_lv1 too
+    if(!inProgressFallback && (activeKey === k || (skillLevels[k]||0) > 0)) inProgressFallback = k;
+  }
+  return inProgressFallback; // in-progress-but-still-under-LV.1 training, or null if truly untouched
+}
 function storyContractTick(){
   if(activeStoryContractKey === 'mining'){
     const s = storyContractState('mining');
@@ -13314,19 +13447,24 @@ function storyContractTick(){
   if(activeStoryContractKey === 'skills'){
     const s = storyContractState('skills');
     if(!s.completed){
-      if(s.stepIndex === 0 && allSkillsAtMaxLevel('basic')){
-        // every basic skill is already maxed -- there's no basic skill left to
-        // "start training" for the first time. Credit this step AND the next
-        // (reach LV.1), since an already-maxed basic skill is trivially already
-        // past LV.1 too -- real remaining work resumes at LEARN A SKILL BOOK.
-        advanceStoryContractStep('skills', 'start_basic');
-        advanceStoryContractStep('skills', 'reach_lv1');
-      } else if(s.stepIndex === 3 && allSkillsAtMaxLevel('advanced')){
+      // v0.44.2: see anyEngagedSkillKey()'s own comment above -- "has this player
+      // EVER trained/started training a skill of this tier at all" replaces the old,
+      // far-too-strict "every skill of this tier already maxed" bar.
+      if(s.stepIndex === 0){
+        const engagedKey = anyEngagedSkillKey('basic');
+        if(engagedKey){
+          s.trackedSkillKey = engagedKey;
+          advanceStoryContractStep('skills', 'start_basic');
+          if((skillLevels[engagedKey]||0) >= 1) advanceStoryContractStep('skills', 'reach_lv1');
+        }
+      } else if(s.stepIndex === 3 && anyEngagedSkillKey('advanced')){
         advanceStoryContractStep('skills', 'start_advanced');
       }
       // LEARN A SKILL BOOK dead-ends only in the extreme case where literally every
       // skill in the game (basic AND advanced) is already at its own max level --
-      // there is then no book of any kind left to ever learn.
+      // there is then no book of any kind left to ever learn. This one genuinely IS
+      // an "impossible, not just already-done" edge case (you truly cannot learn ANY
+      // book if nothing is left to train), so it's kept as the strict all-maxed check.
       if(s.stepIndex === 2 && allSkillsAtMaxLevel()) advanceStoryContractStep('skills', 'learn_book');
     }
   }
@@ -16471,6 +16609,8 @@ function closeHelpMenu(){
 }
 document.getElementById('btnOpenHelp').addEventListener('click', openHelpMenu);
 document.getElementById('btnCloseHelp').addEventListener('click', closeHelpMenu);
+// (v0.44.2) sticky-header BACK button -- see #helpMenu .panelStickyHeader's CSS comment
+document.getElementById('btnCloseHelpTop').addEventListener('click', closeHelpMenu);
 
 // ---------- PATCH NOTES window (v0.43.0) ----------
 // Same swap-out-of-Settings pattern as HELP just above -- see openPatchNotesMenu.
@@ -16503,6 +16643,8 @@ function closePatchNotesMenu(){
 }
 document.getElementById('btnOpenPatchNotes').addEventListener('click', openPatchNotesMenu);
 document.getElementById('btnClosePatchNotes').addEventListener('click', closePatchNotesMenu);
+// (v0.44.2) sticky-header BACK button -- see #patchNotesMenu .panelStickyHeader's CSS comment
+document.getElementById('btnClosePatchNotesTop').addEventListener('click', closePatchNotesMenu);
 
 // ---------- item 3 REWORK: CUSTOM HUD panel (consolidates every HUD-layout
 // save/load/reset control that used to be scattered across Settings and
